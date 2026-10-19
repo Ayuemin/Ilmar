@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import com.ayuemin.ilmar.ui.IlmarPanelShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,11 +20,16 @@ fun SettingsScreen(onBack: () -> Unit) {
     ) {
         TextButton(onClick = onBack) { Text("← Назад") }
         Spacer(Modifier.height(12.dp))
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium)
+        Text("Настройки", style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface)
         Text("Ilmar · управление приложением",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(28.dp))
+        Text("ПОДКЛЮЧЕНИЯ И ДАННЫЕ",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(12.dp))
         SettingsSection("Модель и провайдер",
             "Подключение API ещё не реализовано. Выбор модели станет доступен после настройки безопасного хранения ключей.")
         SettingsSection("Чаты и память",
@@ -36,8 +43,9 @@ fun SettingsScreen(onBack: () -> Unit) {
 @Composable
 private fun SettingsSection(title: String, description: String) {
     Surface(
-        color = Color(0xFF232530),
-        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = IlmarPanelShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
     ) {
         Column(Modifier.padding(18.dp)) {
