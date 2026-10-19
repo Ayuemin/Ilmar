@@ -62,11 +62,16 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 }
             }
         }
+        if (selected.messages.isEmpty()) Text("Начни новый разговор",
+            color = Color(0xFFB7A5E9), style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(20.dp),
+                maxLines = 5,
                 placeholder = { Text("Сообщение") }
             )
             Button(enabled = draft.isNotBlank(), onClick = {
