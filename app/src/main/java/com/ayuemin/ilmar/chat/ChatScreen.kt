@@ -24,7 +24,7 @@ fun ChatScreen() {
     val selected = chats.first { it.id == selectedId }
     Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Ilmar", style = MaterialTheme.typography.headlineMedium)
+            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium)
             TextButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
                 store.create(id, "Новый чат")
@@ -41,10 +41,10 @@ fun ChatScreen() {
             }
         }
         HorizontalDivider()
-        Text(selected.title, style = MaterialTheme.typography.titleMedium)
+        Text(selected.title, color = Color.White, style = MaterialTheme.typography.titleMedium)
         LazyColumn(Modifier.weight(3f)) {
             items(selected.messages) { message ->
-                Text((if (message.fromUser) "Вы: " else "Ilmar: ") + message.text,
+                Text((if (message.fromUser) "Вы: " else "Ilmar: ") + message.text, color = Color.White,
                     modifier = Modifier.padding(vertical = 8.dp))
             }
         }
