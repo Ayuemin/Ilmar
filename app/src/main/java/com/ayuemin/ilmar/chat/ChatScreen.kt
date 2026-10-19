@@ -51,8 +51,14 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
             items(selected.messages) { message ->
-                Text((if (message.fromUser) "Вы: " else "Ilmar: ") + message.text, color = Color.White,
-                    modifier = Modifier.padding(vertical = 8.dp))
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
+                    Surface(color = if (message.fromUser) Color(0xFF38304D) else Color(0xFF242632),
+                        shape = RoundedCornerShape(18.dp), modifier = Modifier.widthIn(max = 320.dp)) {
+                        Text(message.text, color = Color.White,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                    }
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
