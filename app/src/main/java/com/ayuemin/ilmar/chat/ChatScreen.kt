@@ -3,6 +3,7 @@ package com.ayuemin.ilmar.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -43,23 +44,38 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             )
         }
     ) {
-    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰") }
-            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium,
+    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                Text("☰", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            }
+            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f))
-            TextButton(onClick = onSettings) { Text("⚙") }
-            TextButton(onClick = {
+            IconButton(onClick = onSettings) { Text("⚙", color = Color.White) }
+            IconButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
                 store.create(id, "Новый чат")
                 chats = chats + ChatSession(id, "Новый чат")
                 selectedId = id
                 draft = ""
-            }) { Text("+ Чат") }
+            }) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall) }
         }
         Text(selected.title, color = Color(0xFFB7A5E9), style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(vertical = 8.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(),
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        if (selected.messages.isEmpty()) {
+            Column(Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Ilmar", style = MaterialTheme.typography.headlineLarge, color = Color.White)
+                Spacer(Modifier.height(12.dp))
+                Text("Твой личный ИИ-агент", color = Color(0xFFBFC0CD),
+                    style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(8.dp))
+                Text("Подключение модели появится в настройках",
+                    color = Color(0xFF9698A9), style = MaterialTheme.typography.bodySmall)
+            }
+        } else LazyColumn(Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
             items(selected.messages) { message ->
@@ -73,9 +89,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 }
             }
         }
-        if (selected.messages.isEmpty()) Text("Начни новый разговор",
-            color = Color(0xFFB7A5E9), style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(bottom = 8.dp))
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = draft,
