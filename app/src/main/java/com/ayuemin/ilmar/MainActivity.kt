@@ -35,7 +35,7 @@ fun IlmarApp() {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text("Ilmar", style = MaterialTheme.typography.headlineLarge)
-                    Text("Android agent · first build", style = MaterialTheme.typography.bodyMedium)
+                    Text("Чат в разработке", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
