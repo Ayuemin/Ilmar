@@ -103,4 +103,5 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         Text("Локальный чат · ИИ пока не подключён",
             color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
     }
+    }
 }
