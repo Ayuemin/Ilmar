@@ -5,13 +5,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun ChatScreen() {
-    var chats by remember { mutableStateOf(listOf(ChatSession(1L, "Новый чат"))) }
-    var selectedId by remember { mutableStateOf(1L) }
+    val context = LocalContext.current
+    val store = remember(context) { ChatStore(context.applicationContext) }
+    var chats by remember { mutableStateOf(store.load().ifEmpty {
+        store.create(1L, "Новый чат")
+        listOf(ChatSession(1L, "Новый чат"))
+    }) }
+    var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
     val selected = chats.first { it.id == selectedId }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -19,6 +25,7 @@ fun ChatScreen() {
             Text("Ilmar", style = MaterialTheme.typography.headlineMedium)
             TextButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
+                store.create(id, "Новый чат")
                 chats = chats + ChatSession(id, "Новый чат")
                 selectedId = id
                 draft = ""
@@ -49,6 +56,8 @@ fun ChatScreen() {
             Button(enabled = draft.isNotBlank(), onClick = {
                 val message = draft.trim()
                 if (message.isNotEmpty()) {
+                    store.append(selectedId, ChatMessage(message, true),
+                        if (selected.messages.isEmpty()) message.take(40) else null)
                     chats = chats.map { chat ->
                         if (chat.id == selectedId) chat.copy(
                             title = if (chat.messages.isEmpty()) message.take(40) else chat.title,
