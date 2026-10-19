@@ -13,6 +13,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import com.ayuemin.ilmar.ui.IlmarWelcome
+import com.ayuemin.ilmar.ui.IlmarCircleAction
+import com.ayuemin.ilmar.ui.IlmarFieldShape
 
 @Composable
 fun ChatScreen(onSettings: () -> Unit = {}) {
@@ -65,16 +68,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             modifier = Modifier.padding(vertical = 8.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
         if (selected.messages.isEmpty()) {
-            Column(Modifier.align(Alignment.Center).padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Ilmar", style = MaterialTheme.typography.headlineLarge, color = Color.White)
-                Spacer(Modifier.height(12.dp))
-                Text("Твой личный ИИ-агент", color = Color(0xFFBFC0CD),
-                    style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(8.dp))
-                Text("Подключение модели появится в настройках",
-                    color = Color(0xFF9698A9), style = MaterialTheme.typography.bodySmall)
-            }
+            IlmarWelcome(Modifier.align(Alignment.Center))
         } else LazyColumn(Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -95,7 +89,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(20.dp),
+                shape = IlmarFieldShape,
                 maxLines = 5,
                 placeholder = { Text("Сообщение") }
             )
