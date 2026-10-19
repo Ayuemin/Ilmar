@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -20,7 +22,7 @@ fun ChatScreen() {
     var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
     val selected = chats.first { it.id == selectedId }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Ilmar", style = MaterialTheme.typography.headlineMedium)
             TextButton(onClick = {
