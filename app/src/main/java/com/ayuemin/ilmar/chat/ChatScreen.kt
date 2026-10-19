@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun ChatScreen() {
+fun ChatScreen(onSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val store = remember(context) { ChatStore(context.applicationContext) }
     var chats by remember { mutableStateOf(store.load().ifEmpty {
@@ -26,7 +26,9 @@ fun ChatScreen() {
     Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { showChats = !showChats }) { Text("☰") }
-            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = onSettings) { Text("⚙") }
             TextButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
                 store.create(id, "Новый чат")
@@ -73,6 +75,6 @@ fun ChatScreen() {
             }) { Text("➤") }
         }
         Text("Локальный чат · ИИ пока не подключён",
-            style = MaterialTheme.typography.labelSmall)
+            color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
     }
 }
