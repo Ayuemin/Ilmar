@@ -3,27 +3,48 @@ package com.ayuemin.ilmar
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("← К чату") }
-        Text("Настройки Ilmar", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(24.dp))
-        Text("Модель и провайдер", style = MaterialTheme.typography.titleLarge)
-        Text("Подключение API пока не реализовано. Ключи не вводятся и не сохраняются.")
-        HorizontalDivider(Modifier.padding(vertical = 20.dp))
-        Text("Чаты и память", style = MaterialTheme.typography.titleLarge)
-        Text("История сохраняется локально в SQLite. Удаление и экспорт появятся позже.")
-        HorizontalDivider(Modifier.padding(vertical = 20.dp))
-        Text("Инструменты и разрешения", style = MaterialTheme.typography.titleLarge)
-        Text("Управление инструментами и фоновыми разрешениями в разработке.")
-        HorizontalDivider(Modifier.padding(vertical = 20.dp))
-        Text("О приложении", style = MaterialTheme.typography.titleLarge)
-        Text("Ilmar · 0.1.0-dev")
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        TextButton(onClick = onBack) { Text("← Назад") }
+        Spacer(Modifier.height(12.dp))
+        Text("Настройки", style = MaterialTheme.typography.headlineMedium)
+        Text("Ilmar · управление приложением",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(28.dp))
+        SettingsSection("Модель и провайдер",
+            "Подключение API ещё не реализовано. Выбор модели станет доступен после настройки безопасного хранения ключей.")
+        SettingsSection("Чаты и память",
+            "История хранится на устройстве в SQLite. Удаление и экспорт пока недоступны.")
+        SettingsSection("Инструменты и разрешения",
+            "Управление инструментами появится в следующих версиях.")
+        SettingsSection("О приложении", "Ilmar · 0.1.0-dev")
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, description: String) {
+    Surface(
+        color = Color(0xFF232530),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(description, style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFBFC0CD))
+        }
     }
 }
