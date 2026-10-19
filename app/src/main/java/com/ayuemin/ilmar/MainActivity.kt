@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,9 +29,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             var settings by remember { mutableStateOf(false) }
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                if (settings) SettingsScreen(onBack = { settings = false })
-                else ChatScreen(onSettings = { settings = true })
+            MaterialTheme(colorScheme = darkColorScheme(
+                background = Color(0xFF14151C), surface = Color(0xFF14151C),
+                onBackground = Color(0xFFF2F0F8), onSurface = Color(0xFFF2F0F8)
+            )) {
+                Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+                    color = Color(0xFF14151C)) {
+                    if (settings) SettingsScreen(onBack = { settings = false })
+                    else ChatScreen(onSettings = { settings = true })
+                }
             }
         }
     }
