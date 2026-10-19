@@ -31,7 +31,7 @@ fun ChatScreen() {
                 draft = ""
             }) { Text("+ Чат") }
         }
-        LazyColumn(Modifier.weight(1f)) {
+        LazyColumn(Modifier.heightIn(max = 160.dp)) {
             items(chats, key = { it.id }) { chat ->
                 TextButton(onClick = { selectedId = chat.id; draft = "" }) {
                     Text(if (chat.id == selectedId) "● " + chat.title else chat.title)
