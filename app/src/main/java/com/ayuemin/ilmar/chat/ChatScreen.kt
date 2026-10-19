@@ -21,9 +21,11 @@ fun ChatScreen() {
     }) }
     var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
+    var showChats by remember { mutableStateOf(false) }
     val selected = chats.first { it.id == selectedId }
     Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = { showChats = !showChats }) { Text("☰") }
             Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium)
             TextButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
@@ -33,7 +35,7 @@ fun ChatScreen() {
                 draft = ""
             }) { Text("+ Чат") }
         }
-        LazyColumn(Modifier.heightIn(max = 160.dp)) {
+        if (showChats) LazyColumn(Modifier.heightIn(max = 160.dp)) {
             items(chats, key = { it.id }) { chat ->
                 TextButton(onClick = { selectedId = chat.id; draft = "" }) {
                     Text(if (chat.id == selectedId) "● " + chat.title else chat.title)
