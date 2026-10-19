@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -23,7 +24,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     var draft by remember { mutableStateOf("") }
     var showChats by remember { mutableStateOf(false) }
     val selected = chats.first { it.id == selectedId }
-    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { showChats = !showChats }) { Text("☰") }
             Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium,
@@ -44,7 +45,6 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 }
             }
         }
-        HorizontalDivider()
         Text(selected.title, color = Color.White, style = MaterialTheme.typography.titleMedium)
         LazyColumn(Modifier.weight(3f)) {
             items(selected.messages) { message ->
