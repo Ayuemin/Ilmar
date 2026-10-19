@@ -1,5 +1,4 @@
 name: Android fast checks
-
 on:
   push:
     branches: [main]
@@ -11,40 +10,27 @@ on:
       - '**/*.md'
       - 'docs/**'
   workflow_dispatch:
-
+permissions:
+  contents: read
 concurrency:
   group: android-checks-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Check project presence
-        id: project
-        shell: bash
-        run: |
-          if [[ -f ./gradlew && -f ./settings.gradle.kts || -f ./gradlew && -f ./settings.gradle ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Android project not yet initialized; skipping Gradle."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/setup-java@v4
-        if: steps.project.outputs.present == 'true'
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.project.outputs.present == 'true'
         with:
+          gradle-version: '8.11.1'
           cache-read-only: ${{ github.event_name == 'pull_request' }}
-      - name: Compile and unit tests (no APK)
-        if: steps.project.outputs.present == 'true'
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:compileDebugSources :app:testDebugUnitTest --build-cache --parallel --stacktrace
+      - name: Compile Kotlin and unit tests
+        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --stacktrace --no-daemon
