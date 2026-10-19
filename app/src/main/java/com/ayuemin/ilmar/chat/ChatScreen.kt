@@ -35,12 +35,13 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 store.create(id, "Новый чат")
                 chats = chats + ChatSession(id, "Новый чат")
                 selectedId = id
+                showChats = false
                 draft = ""
             }) { Text("+ Чат") }
         }
         if (showChats) LazyColumn(Modifier.heightIn(max = 160.dp)) {
             items(chats, key = { it.id }) { chat ->
-                TextButton(onClick = { selectedId = chat.id; draft = "" }) {
+                TextButton(onClick = { selectedId = chat.id; draft = ""; showChats = false }) {
                     Text(if (chat.id == selectedId) "● " + chat.title else chat.title)
                 }
             }
