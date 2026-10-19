@@ -45,8 +45,11 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 }
             }
         }
-        Text(selected.title, color = Color.White, style = MaterialTheme.typography.titleMedium)
-        LazyColumn(Modifier.weight(3f)) {
+        Text(selected.title, color = Color(0xFFB7A5E9), style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(vertical = 8.dp))
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(vertical = 12.dp)) {
             items(selected.messages) { message ->
                 Text((if (message.fromUser) "Вы: " else "Ilmar: ") + message.text, color = Color.White,
                     modifier = Modifier.padding(vertical = 8.dp))
