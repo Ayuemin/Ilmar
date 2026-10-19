@@ -1,0 +1,50 @@
+name: Android fast checks
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: android-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check project presence
+        id: project
+        shell: bash
+        run: |
+          if [[ -f ./gradlew && -f ./settings.gradle.kts || -f ./gradlew && -f ./settings.gradle ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Android project not yet initialized; skipping Gradle."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.project.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.project.outputs.present == 'true'
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Compile and unit tests (no APK)
+        if: steps.project.outputs.present == 'true'
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:compileDebugSources :app:testDebugUnitTest --build-cache --parallel --stacktrace
