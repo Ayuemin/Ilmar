@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(onSettings: () -> Unit = {}) {
@@ -22,11 +23,29 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     }) }
     var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
-    var showChats by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ChatDrawer(chats, selectedId,
+                onSelect = { selectedId = it; draft = ""; scope.launch { drawerState.close() } },
+                onNew = {
+                    val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
+                    store.create(id, "Новый чат")
+                    chats = chats + ChatSession(id, "Новый чат")
+                    selectedId = id
+                    draft = ""
+                    scope.launch { drawerState.close() }
+                },
+                onSettings = { scope.launch { drawerState.close() }; onSettings() }
+            )
+        }
+    ) {
     Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = { showChats = !showChats }) { Text("☰") }
+            TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("☰") }
             Text("Ilmar", color = Color.White, style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.weight(1f))
             TextButton(onClick = onSettings) { Text("⚙") }
@@ -35,16 +54,8 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 store.create(id, "Новый чат")
                 chats = chats + ChatSession(id, "Новый чат")
                 selectedId = id
-                showChats = false
                 draft = ""
             }) { Text("+ Чат") }
-        }
-        if (showChats) LazyColumn(Modifier.heightIn(max = 160.dp)) {
-            items(chats, key = { it.id }) { chat ->
-                TextButton(onClick = { selectedId = chat.id; draft = ""; showChats = false }) {
-                    Text(if (chat.id == selectedId) "● " + chat.title else chat.title)
-                }
-            }
         }
         Text(selected.title, color = Color(0xFFB7A5E9), style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(vertical = 8.dp))
