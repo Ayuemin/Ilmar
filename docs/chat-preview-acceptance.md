@@ -93,3 +93,11 @@ behavior without rewriting the registry or touching credentials/history. HTTP
 Before acceptance, retry the existing message on the phone. If 404 remains after
 the route is correct, verify the model ID against the provider's actual catalog;
 this change does not assert that the screenshot's model ID exists.
+
+## Composer model placement
+
+By user request, the current model selector lives inside the composer toolbar,
+between Add (+) and the microphone. The chat header contains the chat title.
+Verify that tapping the selector opens the model bottom sheet, that the current
+chat selection persists, and that long names truncate without displacing the
+microphone/send buttons on a small screen or with enlarged fonts.

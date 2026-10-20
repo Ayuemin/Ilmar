@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ayuemin.ilmar.ui.IlmarWelcome
 import kotlinx.coroutines.launch
@@ -88,13 +89,8 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             .padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Открыть диалоги") }
-                Column(Modifier.weight(1f)) {
-                    Text(selected.title, maxLines = 1, style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { showModels = true }, contentPadding = PaddingValues(0.dp)) {
-                        Text(selectedModel?.name ?: "Выбрать модель", maxLines = 1)
-                        Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp))
-                    }
-                }
+                Text(selected.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Box {
                     IconButton(onClick = { overflow = true }) { Icon(Icons.Default.MoreVert, "Действия с чатом") }
                     DropdownMenu(overflow, { overflow = false }) {
@@ -148,7 +144,13 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }
-                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { showModels = true }, modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp)) {
+                            Text(selectedModel?.name ?: "Выбрать модель", maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f, fill = false))
+                            Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp))
+                        }
                         IconButton(onClick = {
                             try {
                                 speechError = null
