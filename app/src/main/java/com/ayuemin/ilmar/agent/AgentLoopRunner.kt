@@ -37,7 +37,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
             val traceId = java.util.UUID.randomUUID().toString()
             val groupStart = history.size
             history += JSONObject().put("role", "assistant").put("content", result.text)
-                .put("_trace_id", traceId)
+                .put("_trace_id", traceId).put("_started_calls", JSONArray())
                 .put("tool_calls", JSONArray().apply { result.toolCalls.forEach { call ->
                     put(JSONObject().put("id", call.id).put("type", "function").put("function", JSONObject().put("name", call.name).put("arguments", call.arguments)))
                 } })
@@ -48,7 +48,10 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools. Его можно изменить в расширенных настройках.")
                 val tool = tools.find { it.schema.name == call.name }
                 if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
-                if (blockUnresolved(traceId, call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
+                if (blockUnresolved("$traceId:${call.id}", call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
+                // Planned calls are not execution intents. Persist only this call immediately before entering its executor.
+                history[groupStart].getJSONArray("_started_calls").put(call.id)
+                onCheckpoint(traceId, history.drop(groupStart))
                 onProgress("Раунд $round · выполняется ${call.name}")
                 val output = try {
                     if (tool == null) JSONObject().put("error", "UNKNOWN_TOOL").put("message", "Инструмент ${call.name} не доступен; используй только предоставленные schemas.").toString()

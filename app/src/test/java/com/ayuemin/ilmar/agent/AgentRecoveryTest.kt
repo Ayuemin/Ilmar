@@ -43,10 +43,10 @@ class AgentRecoveryTest {
             else GenerationResult("done")
         }
         assertEquals("done", result.text)
-        assertEquals(2, checkpoints.size)
+        assertEquals(3, checkpoints.size)
         assertEquals("assistant", checkpoints[0].single().getString("role"))
-        assertEquals("tool", checkpoints[1].last().getString("role"))
-        assertEquals("saved", checkpoints[1].last().getString("content"))
+        assertEquals("tool", checkpoints[2].last().getString("role"))
+        assertEquals("saved", checkpoints[2].last().getString("content"))
     }
 
     @Test fun executionCheckpointKeepsUnknownAndSeparatesFailedCallsAcrossTraces() {

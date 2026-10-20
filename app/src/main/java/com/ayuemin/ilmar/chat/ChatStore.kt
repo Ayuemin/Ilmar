@@ -40,19 +40,25 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         db.beginTransaction()
         try {
             if (db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { !it.moveToFirst() }) return
+            if (!saveToolTrace(chatId, traceId, messages)) return
+            val started = assistant.optJSONArray("_started_calls")
             for (i in 0 until calls.length()) {
                 val call = calls.getJSONObject(i)
                 val id = "$traceId:${call.getString("id")}"
                 val function = call.getJSONObject("function")
                 val result = results[call.getString("id")]?.optString("content")
-                // Never downgrade a previously confirmed success on a stale checkpoint.
+                // Old checkpoints had no started marker: keep their conservative UNKNOWN semantics.
+                if (result == null && started != null && (0 until started.length()).none { started.optString(it) == call.getString("id") }) continue
+                // Never downgrade a confirmed result on a stale checkpoint.
                 db.execSQL("INSERT OR IGNORE INTO task_executions VALUES(?,?,?,?,?,?,?,?)",
                     arrayOf<Any?>(id, chatId, traceId, function.getString("name"), function.getString("arguments"),
                         "UNKNOWN", null, System.currentTimeMillis()))
                 if (result != null) {
-                    val failed = runCatching { org.json.JSONObject(result).has("error") }.getOrDefault(false)
-                    db.execSQL("UPDATE task_executions SET status=?, result=?, updated_at=? WHERE execution_id=? AND chat_id=?",
-                        arrayOf<Any>(if (failed) "FAILED" else "SUCCEEDED", result, System.currentTimeMillis(), id, chatId))
+                    val error = runCatching { org.json.JSONObject(result).opt("error") }.getOrNull()
+                    // Timeout says nothing about whether an external effect committed.
+                    val status = when (error) { "TOOL_TIMEOUT" -> "UNKNOWN"; null -> "SUCCEEDED"; else -> "FAILED" }
+                    db.execSQL("UPDATE task_executions SET status=?, result=?, updated_at=? WHERE execution_id=? AND chat_id=? AND status='UNKNOWN'",
+                        arrayOf<Any>(status, result, System.currentTimeMillis(), id, chatId))
                 }
             }
             db.setTransactionSuccessful()
@@ -63,12 +69,20 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         readableDatabase.rawQuery("SELECT status FROM task_executions WHERE chat_id=? AND execution_id=?",
             arrayOf(chatId.toString(), executionId)).use { if (it.moveToFirst()) it.getString(0) else null }
 
-    /** Fail closed for a matching unresolved operation from an earlier trace. */
-    fun unresolvedExecution(chatId: Long, traceId: String, toolName: String, arguments: String): Boolean =
-        readableDatabase.rawQuery(
-            "SELECT 1 FROM task_executions WHERE chat_id=? AND trace_id<>? AND tool_name=? AND arguments=? AND status='UNKNOWN' LIMIT 1",
-            arrayOf(chatId.toString(), traceId, toolName, arguments)
-        ).use { it.moveToFirst() }
+    /** Compare legacy and new argument encodings alike; exclude only the current execution, not its whole trace. */
+    fun unresolvedExecution(chatId: Long, executionId: String, toolName: String, arguments: String): Boolean {
+        val policy = com.ayuemin.ilmar.agent.ToolOperationPolicy
+        if (policy.safeToRepeat(toolName, arguments)) return false
+        val canonical = policy.canonical(arguments)
+        return readableDatabase.rawQuery(
+            "SELECT arguments FROM task_executions WHERE chat_id=? AND execution_id<>? AND tool_name=? AND status='UNKNOWN'",
+            arrayOf(chatId.toString(), executionId, toolName)
+        ).use { rows ->
+            var found = false
+            while (!found && rows.moveToNext()) found = policy.canonical(rows.getString(0)) == canonical
+            found
+        }
+    }
 
     /** Durable, factual recovery note. UNKNOWN calls must never be assumed safe to repeat. */
     fun recoveryNote(chatId: Long): String {
@@ -92,9 +106,17 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     private fun createToolTraces(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE tool_traces(id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, payload TEXT NOT NULL)")
     }
-    fun saveToolTrace(chatId: Long, id: String, messages: List<org.json.JSONObject>) {
-        writableDatabase.execSQL("INSERT OR REPLACE INTO tool_traces SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM chats WHERE id=?)",
+    fun saveToolTrace(chatId: Long, id: String, messages: List<org.json.JSONObject>): Boolean {
+        val db = writableDatabase
+        val previous = readToolTrace(chatId, id)?.let { org.json.JSONArray(it) }
+        if (previous != null) {
+            if (previous.optJSONObject(0)?.optJSONArray("tool_calls")?.toString() != messages.firstOrNull()?.optJSONArray("tool_calls")?.toString()) return false
+            val confirmed = (0 until previous.length()).map { previous.getJSONObject(it) }.filter { it.optString("role") == "tool" }
+            if (confirmed.any { old -> messages.none { it.optString("role") == "tool" && it.optString("tool_call_id") == old.optString("tool_call_id") && it.optString("content") == old.optString("content") } }) return false
+        }
+        db.execSQL("INSERT OR REPLACE INTO tool_traces SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM chats WHERE id=?)",
             arrayOf<Any>(id, chatId, org.json.JSONArray(messages).toString(), chatId))
+        return true
     }
     fun readToolTrace(chatId: Long, id: String): String? = readableDatabase.rawQuery("SELECT payload FROM tool_traces WHERE chat_id=? AND id=?", arrayOf(chatId.toString(), id)).use { if (it.moveToFirst()) it.getString(0) else null }
     private fun createContext(db: SQLiteDatabase) {
@@ -235,4 +257,3 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         }
     }
 }
-
