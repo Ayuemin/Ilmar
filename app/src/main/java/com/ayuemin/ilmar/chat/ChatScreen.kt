@@ -1,6 +1,10 @@
 package com.ayuemin.ilmar.chat
 
 import androidx.compose.foundation.layout.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import android.speech.RecognizerIntent
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -51,6 +55,18 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     val chatModes = remember(context) { ChatModePreferences(context) }
     var showModes by remember { mutableStateOf(false) }
     val credentials = remember(context) { CredentialStore(context) }
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) draft = (draft.trim() + " " + spoken).trim()
+        }
+    }
+    var overflow by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var statsOpen by remember { mutableStateOf(false) }
+    var clearOpen by remember { mutableStateOf(false) }
+    var providerOpen by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
@@ -60,6 +76,21 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         if (visibleCount > 0) messageListState.scrollToItem(visibleCount - 1)
     }
     if (showModes) ChatModeMenu(selectedId, chatModes) { showModes = false }
+    if (providerOpen) ChatProviderDialog(selectedId, chatModes, prefs) { providerOpen = false }
+    if (statsOpen) AlertDialog(onDismissRequest = { statsOpen = false },
+        title = { Text("Статистика чата") },
+        text = { Text("Сообщений: ${selected.messages.size}. Символов: ${selected.messages.sumOf { it.text.length }}. Точный расход токенов пока не учитывается.") },
+        confirmButton = { TextButton(onClick = { statsOpen = false }) { Text("Закрыть") } })
+    if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false },
+        title = { Text("Очистить чат?") },
+        text = { Text("Сообщения будут удалены без возможности восстановления.") },
+        confirmButton = { TextButton(onClick = {
+            if (streamingChatId == selectedId) activeRequest?.cancel()
+            store.clearMessages(selectedId)
+            chats = chats.map { if (it.id == selectedId) it.copy(messages = emptyList()) else it }
+            clearOpen = false
+        }) { Text("Очистить") } },
+        dismissButton = { TextButton(onClick = { clearOpen = false }) { Text("Отмена") } })
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -83,9 +114,22 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             IlmarCircleAction("☰", "Открыть диалоги", onClick = { scope.launch { drawerState.open() } })
             Text(selected.title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-            IlmarCircleAction("⋮", "Настройки", onClick = onSettings)
+            Box {
+                IlmarCircleAction("⋮", "Действия с чатом", onClick = { overflow = true })
+                DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
+                    DropdownMenuItem(text = { Text("Статистика токенов") }, onClick = { overflow = false; statsOpen = true })
+                    DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { overflow = false; searchOpen = true })
+                    DropdownMenuItem(text = { Text("Провайдер и модель") }, onClick = { overflow = false; providerOpen = true })
+                    DropdownMenuItem(text = { Text("Очистить чат") }, onClick = { overflow = false; clearOpen = true })
+                    DropdownMenuItem(text = { Text("Добавить в проект · позже") }, enabled = false, onClick = {})
+                }
+            }
 
         }
+        if (searchOpen) OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth(), singleLine = true,
+            placeholder = { Text("Поиск в чате") },
+            trailingIcon = { TextButton(onClick = { searchOpen = false; searchQuery = "" }) { Text("×") } })
         Box(Modifier.weight(1f).fillMaxWidth()) {
         if (selected.messages.isEmpty() && !(sending && streamingChatId == selectedId)) {
             IlmarWelcome(Modifier.align(Alignment.Center))
@@ -93,7 +137,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             state = messageListState,
             verticalArrangement = Arrangement.spacedBy(if (compactMessages) 4.dp else 10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
-            items(selected.messages + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) listOf(ChatMessage(streamingText, false)) else emptyList()) { message ->
+            items((selected.messages + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) listOf(ChatMessage(streamingText, false)) else emptyList()).filter { !searchOpen || searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { message ->
                 Row(Modifier.fillMaxWidth(),
                     horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
                     Surface(color = if (message.fromUser) Color(0xFF493028) else Color(0xFF201511),
@@ -109,16 +153,26 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { showModes = true }) { Text("+", style = MaterialTheme.typography.headlineMedium) }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.weight(1f),
                 shape = IlmarFieldShape,
                 maxLines = 5,
-                placeholder = { Text("Сообщение") }
-            )
-            Button(enabled = draft.isNotBlank() && !sending, onClick = {
+                placeholder = {},
+                leadingIcon = { TextButton(onClick = { showModes = true }) { Text("+", style = MaterialTheme.typography.headlineMedium) } },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            try {
+                                speechLauncher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                })
+                            } catch (_: android.content.ActivityNotFoundException) {
+                                requestError = "Распознавание речи недоступно"
+                            }
+                        }) { Text("🎙") }
+                        IconButton(enabled = draft.isNotBlank() && !sending, onClick = {
                 val message = draft.trim()
                 if (message.isNotEmpty()) {
                     store.append(selectedId, ChatMessage(message, true),
@@ -144,8 +198,8 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                             try {
                                 val buffer = StringBuilder()
                                 provider.stream(
-                                    prefs.getString("api_endpoint", "https://api.openai.com/v1/chat/completions") ?: "",
-                                    prefs.getString("api_model", "gpt-4o-mini") ?: "",
+                                    chatModes.choice(targetChat, "api_endpoint").takeUnless { it == "Автоматически" } ?: (prefs.getString("api_endpoint", "https://api.openai.com/v1/chat/completions") ?: ""),
+                                    chatModes.choice(targetChat, "api_model").takeUnless { it == "Автоматически" } ?: (prefs.getString("api_model", "gpt-4o-mini") ?: ""),
                                     apiKey, history
                                 ) { delta ->
                                     buffer.append(delta)
@@ -172,7 +226,10 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                         }
                     }
                 }
-            }) { Text(if (sending) "…" else "➤") }
+                        }) { Text(if (sending) "…" else "➤") }
+                    }
+                }
+            )
         }
         if (sending) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -182,8 +239,6 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             Text(error, color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
         }
-        Text("OpenAI-compatible · HTTPS",
-            color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
     }
     }
 }
