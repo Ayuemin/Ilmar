@@ -64,3 +64,7 @@
 7. Сохранить память/план, перезапустить, проверить изоляцию другого чата. Ask user должен сохранить вопрос и завершить активную задачу.
 
 Реальный Brave/LLM API, Keystore и системный picker требуют проверки на устройстве; unit-тесты этого не заменяют.
+
+## Проверено 2026-10-20
+
+На коде `ac5f8fc`: JDK 17, Gradle 8.11.1, Android SDK 35; 89 unit/Robolectric tests, 0 failures/errors/skipped; `:app:lintDebug` и `:app:assembleDebug` — SUCCESS. APK версии `0.1.0-android-tools`, versionCode 9. В тестах Android 28 дополнительно проверена совместимость Closeable SQLite-хранилищ. Сборка проверена локально в рабочем окружении; облачный CI и телефонная приёмка учитываются отдельно.
