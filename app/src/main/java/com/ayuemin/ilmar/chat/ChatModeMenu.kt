@@ -99,7 +99,7 @@ private fun ToolSelectionPanel(
     preferences: ChatModePreferences,
     onDetails: (String) -> Unit
 ) {
-    val tools = listOf("SSH", "Shell", "Браузер")
+    val tools = ToolRegistry.catalogue().map { it.id }
     val available = ToolRegistry.availableIds()
     var chosen by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) }.toSet()) }
     var applied by remember(id) { mutableStateOf(chosen) }
