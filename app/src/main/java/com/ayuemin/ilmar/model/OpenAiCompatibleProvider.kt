@@ -1,109 +1,97 @@
 package com.ayuemin.ilmar.model
 
 import com.ayuemin.ilmar.chat.ChatMessage
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.coroutineContext
+import java.io.BufferedReader
+import java.io.EOFException
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
-/** Minimal OpenAI-compatible chat-completions adapter. Never logs credentials. */
-class OpenAiCompatibleProvider {
+interface ChatProvider {
+    suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String
+}
 
-    suspend fun stream(
-        endpoint: String, model: String, apiKey: String,
-        history: List<ChatMessage>, onDelta: (String) -> Unit
-    ) = withContext(Dispatchers.IO) {
-        val url = URL(endpoint)
-        require(url.protocol == "https" && url.userInfo == null && url.ref == null) {
-            "Требуется корректный HTTPS URL"
-        }
+class ProviderFailure(message: String) : IOException(message)
+
+/** No redirects, response-body logging, automatic retries, or implicit provider changes. */
+class OpenAiCompatibleProvider(
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS)
+        .callTimeout(5, TimeUnit.MINUTES).followRedirects(false).followSslRedirects(false)
+        .retryOnConnectionFailure(false).build()
+) : ChatProvider {
+    override suspend fun stream(endpoint: String, model: String, apiKey: String,
+        history: List<ChatMessage>, onDelta: (String) -> Unit): String {
+        require(ProviderRegistry.validEndpoint(endpoint)) { "Требуется корректный HTTPS URL" }
         require(model.isNotBlank()) { "Укажи модель" }
         val payload = JSONObject().put("model", model).put("stream", true)
-            .put("messages", JSONArray().apply {
-                history.forEach { message ->
-                    put(JSONObject().put("role", if (message.fromUser) "user" else "assistant")
-                        .put("content", message.text))
+            .put("messages", JSONArray().apply { history.forEach {
+                put(JSONObject().put("role", if (it.fromUser) "user" else "assistant").put("content", it.text))
+            } }).toString()
+        val request = Request.Builder().url(endpoint)
+            .header("Authorization", "Bearer $apiKey").header("Accept", "text/event-stream")
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        return suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    continuation.resumeWith(Result.failure(IOException("Нет соединения или истекло время ожидания")))
                 }
-            }).toString()
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 90000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Authorization", "Bearer $apiKey")
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("Accept", "text/event-stream")
-        }
-        val job = currentCoroutineContext()[Job]
-        val activeConnection = AtomicReference(connection)
-        val cancellation = job?.invokeOnCompletion {
-            activeConnection.getAndSet(null)?.disconnect()
-        }
-        try {
-            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
-            if (code !in 200..299) throw IllegalStateException("Ошибка API: HTTP $code")
-            var finished = false
-            connection.inputStream.bufferedReader().use { reader ->
-                while (true) {
-                    coroutineContext.ensureActive()
-                    val line = reader.readLine() ?: break
-                    if (!line.startsWith("data:")) continue
-                    val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]") { finished = true; break }
-                    if (data.isEmpty()) continue
-                    val choice = JSONObject(data).optJSONArray("choices")?.optJSONObject(0)
-                    val delta = choice?.optJSONObject("delta")?.optString("content").orEmpty()
-                    if (delta.isNotEmpty()) withContext(Dispatchers.Main) { onDelta(delta) }
+                override fun onResponse(call: Call, response: Response) {
+                    val result = try {
+                        Result.success(response.use {
+                            if (!it.isSuccessful) throw ProviderFailure("Ошибка API: HTTP ${it.code}")
+                            val body = it.body ?: throw IOException("Пустой ответ")
+                            body.charStream().buffered().use { reader ->
+                                SseReader.read(reader) { delta -> if (continuation.isActive) onDelta(delta) }
+                            }
+                        })
+                    } catch (e: Exception) {
+                        Result.failure(e as? ProviderFailure ?: ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат"))
+                    }
+                    continuation.resumeWith(result)
                 }
-            }
-            coroutineContext.ensureActive()
-            if (!finished) throw java.io.EOFException("Поток ответа прерван до завершения")
-        } finally {
-            cancellation?.dispose()
-            activeConnection.getAndSet(null)?.disconnect()
+            })
         }
     }
+}
 
-    suspend fun complete(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>): String =
-        withContext(Dispatchers.IO) {
-            val url = URL(endpoint)
-            require(url.protocol == "https") { "Для API требуется HTTPS" }
-            require(url.userInfo == null && url.ref == null) { "Недопустимый URL API" }
-            require(model.isNotBlank()) { "Укажи модель" }
-            val payload = JSONObject().put("model", model).put("stream", false)
-                .put("messages", JSONArray().apply {
-                    history.forEach { message ->
-                        put(JSONObject().put("role", if (message.fromUser) "user" else "assistant")
-                            .put("content", message.text))
-                    }
-                }).toString()
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 15000
-                readTimeout = 90000
-                doOutput = true
-                instanceFollowRedirects = false
-                setRequestProperty("Authorization", "Bearer $apiKey")
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-            try {
-                connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-                val code = connection.responseCode
-                if (code !in 200..299) throw IllegalStateException("Ошибка API: HTTP $code")
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                JSONObject(response).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").getString("content")
-            } finally {
-                connection.disconnect()
+internal object SseReader {
+    fun read(reader: BufferedReader, onDelta: (String) -> Unit): String {
+        val result = StringBuilder()
+        val event = mutableListOf<String>()
+        var done = false
+        fun dispatch() {
+            if (event.isEmpty()) return
+            val data = event.joinToString("\n").trim()
+            event.clear()
+            if (data == "[DONE]") { done = true; return }
+            val json = JSONObject(data)
+            if (json.has("error")) throw IOException("Ошибка потока")
+            val choice = json.optJSONArray("choices")?.optJSONObject(0)
+            val delta = choice?.optJSONObject("delta")?.opt("content") as? String
+            if (!delta.isNullOrEmpty()) { result.append(delta); onDelta(delta) }
+        }
+        while (!done) {
+            val line = reader.readLine() ?: break
+            when {
+                line.isEmpty() -> dispatch()
+                line.startsWith("data:") -> event.add(line.substring(5).trimStart())
             }
         }
+        if (!done) dispatch()
+        if (!done) throw EOFException("Нет окончания SSE")
+        if (result.isBlank()) throw IOException("Пустой ответ")
+        return result.toString()
+    }
 }

@@ -14,7 +14,14 @@ import javax.crypto.spec.GCMParameterSpec
  * Encrypts provider credentials with a non-exportable Android Keystore AES key.
  * No plaintext API key is written to SharedPreferences.
  */
-class CredentialStore(context: Context) {
+interface SecretStore {
+    fun saveApiKey(value: String, providerId: String = "legacy")
+    fun loadApiKey(providerId: String = "legacy"): String?
+    fun hasApiKey(providerId: String = "legacy"): Boolean
+    fun clearApiKey(providerId: String = "legacy")
+}
+
+class CredentialStore(context: Context) : SecretStore {
     private val prefs = context.applicationContext.getSharedPreferences(
         "ilmar_credentials", Context.MODE_PRIVATE
     )
@@ -33,23 +40,23 @@ class CredentialStore(context: Context) {
         }.generateKey()
     }
 
-    fun saveApiKey(value: String) {
+    override fun saveApiKey(value: String, providerId: String) {
         if (value.isBlank()) {
-            clearApiKey()
+            clearApiKey(providerId)
             return
         }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         prefs.edit()
-            .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .apply()
+            .putString(providerId + "_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString(providerId + "_ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .commit().also { check(it) { "Не удалось сохранить ключ" } }
     }
 
-    fun loadApiKey(): String? {
-        val iv = prefs.getString("iv", null) ?: return null
-        val encrypted = prefs.getString("ciphertext", null) ?: return null
+    override fun loadApiKey(providerId: String): String? {
+        val iv = (prefs.getString(providerId + "_iv", null) ?: if (providerId == "legacy") prefs.getString("iv", null) else null) ?: return null
+        val encrypted = (prefs.getString(providerId + "_ciphertext", null) ?: if (providerId == "legacy") prefs.getString("ciphertext", null) else null) ?: return null
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key(),
@@ -62,9 +69,11 @@ class CredentialStore(context: Context) {
         }
     }
 
-    fun hasApiKey(): Boolean = loadApiKey() != null
+    override fun hasApiKey(providerId: String): Boolean = loadApiKey(providerId) != null
 
-    fun clearApiKey() {
-        prefs.edit().remove("iv").remove("ciphertext").apply()
+    override fun clearApiKey(providerId: String) {
+        prefs.edit().remove(providerId + "_iv").remove(providerId + "_ciphertext").apply()
+        if (providerId == "legacy") prefs.edit().remove("iv").remove("ciphertext").apply()
     }
 }
+

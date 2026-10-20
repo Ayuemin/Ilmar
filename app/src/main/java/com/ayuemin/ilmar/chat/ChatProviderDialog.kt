@@ -1,78 +1,61 @@
 package com.ayuemin.ilmar.chat
 
-import android.content.SharedPreferences
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ayuemin.ilmar.model.ProviderRegistry
 
-/**
- * Quick selection only. Connection details and credentials are configured globally.
- * Until the multi-provider registry is implemented, only the saved global model is available.
- */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatProviderDialog(
-    chatId: Long,
-    modes: ChatModePreferences,
-    global: SharedPreferences,
-    onDismiss: () -> Unit
-) {
-    val configuredEndpoint = global.getString("api_endpoint", "").orEmpty()
-    val configuredModel = global.getString("api_model", "").orEmpty()
-    val configured = configuredEndpoint.startsWith("https://", ignoreCase = true) &&
-        configuredModel.isNotBlank()
-    val currentModel = modes.choice(chatId, "api_model")
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Выбрать модель") },
-        text = {
-            Column {
-                if (!configured) {
-                    Text("Нет настроенных моделей. Добавь подключение в общих настройках приложения.")
-                } else {
-                    Text("Настроенные модели", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(12.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                modes.setChoice(chatId, "api_endpoint", configuredEndpoint)
-                                modes.setChoice(chatId, "api_model", configuredModel)
-                                onDismiss()
-                            }.padding(16.dp)
-                        ) {
+internal fun ChatProviderDialog(chatId: Long, registry: ProviderRegistry,
+    onSettings: () -> Unit, onSelected: () -> Unit, onDismiss: () -> Unit) {
+    val data = registry.snapshot()
+    var query by remember { mutableStateOf("") }
+    val selected = registry.modelForChat(chatId)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).padding(horizontal = 20.dp)) {
+            Text("Выбрать модель", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(query, { query = it }, label = { Text("Поиск моделей и подключений") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+            if (data.models.isEmpty()) {
+                Text("Нет настроенных моделей")
+                TextButton(onClick = { onDismiss(); onSettings() }) { Text("Добавить подключение") }
+            } else {
+                TextButton(onClick = { registry.select(chatId, null); onSelected(); onDismiss() }) {
+                    Text("По умолчанию")
+                }
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    items(data.models.filter { model ->
+                        model.name.contains(query, true) || data.providers.any {
+                            it.id == model.providerId && it.name.contains(query, true)
+                        }
+                    }, key = { it.id }) { model ->
+                        val connection = data.providers.find { it.id == model.providerId }
+                        val ready = connection != null && registry.hasKey(model.providerId) && ProviderRegistry.validEndpoint(connection.endpoint)
+                        Row(Modifier.fillMaxWidth().clickable(enabled = ready) {
+                            registry.select(chatId, model.id); onSelected(); onDismiss()
+                        }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = selected?.id == model.id, enabled = ready, onClick = {
+                                registry.select(chatId, model.id); onSelected(); onDismiss()
+                            })
                             Column(Modifier.weight(1f)) {
-                                Text(configuredModel, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    configuredEndpoint.substringAfter("://").substringBefore("/"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (currentModel == configuredModel || currentModel == "Автоматически") {
-                                Text("✓")
+                                Text(model.name)
+                                Text((connection?.name ?: "Подключение недоступно") + if (ready) "" else " · требуется настройка",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                        HorizontalDivider()
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Пока доступна одна глобальная конфигурация. Реестр провайдеров и моделей появится в следующем этапе.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
-        dismissButton = {
-            TextButton(onClick = {
-                modes.setChoice(chatId, "api_endpoint", "Автоматически")
-                modes.setChoice(chatId, "api_model", "Автоматически")
-                onDismiss()
-            }) { Text("По умолчанию") }
+            TextButton(onClick = { onDismiss(); onSettings() }) { Text("Управление подключениями") }
+            Spacer(Modifier.height(20.dp))
         }
-    )
+    }
 }

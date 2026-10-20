@@ -1,6 +1,11 @@
 package com.ayuemin.ilmar
 
 import android.os.Bundle
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ayuemin.ilmar.chat.ChatViewModel
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.ayuemin.ilmar.chat.ChatScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,6 +32,8 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK))
         @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION")
@@ -35,7 +42,8 @@ class MainActivity : ComponentActivity() {
         window.decorView.systemUiVisibility = 0
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent {
-            var settings by remember { mutableStateOf(false) }
+            val controller: ChatViewModel = viewModel()
+            var settings by rememberSaveable { mutableStateOf(false) }
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Color(0xFF000000), surface = Color(0xFF181818),
                 surfaceContainerLow = Color(0xFF1B1B1B), surfaceContainer = Color(0xFF282828),
@@ -47,7 +55,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
                     color = Color(0xFF000000)) {
                     if (settings) SettingsScreen(onBack = { settings = false })
-                    else ChatScreen(onSettings = { settings = true })
+                    else ChatScreen(onSettings = { settings = true }, controller = controller)
                 }
             }
         }
@@ -71,3 +79,4 @@ fun IlmarApp() {
         }
     }
 }
+

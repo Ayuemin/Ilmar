@@ -1,6 +1,8 @@
 package com.ayuemin.ilmar.chat
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -44,7 +46,7 @@ fun ChatDrawer(
         text = { Text("История будет удалена без возможности восстановления.") },
         confirmButton = { TextButton(onClick = { deleteId?.let(onDelete); deleteId = null }) { Text("Удалить") } },
         dismissButton = { TextButton(onClick = { deleteId = null }) { Text("Отмена") } })
-    val filtered = remember(chats, query) {
+    val filtered = remember(chats, query, favoriteVersion) {
         if (query.isBlank()) chats.asReversed()
         else chats.asReversed().filter { chat ->
             chat.title.contains(query.trim(), ignoreCase = true) ||
@@ -57,7 +59,7 @@ fun ChatDrawer(
             verticalAlignment = Alignment.CenterVertically) {
             Text("Ilmar", color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { Text("⌕", style = MaterialTheme.typography.headlineMedium) }
+            IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Search, "Поиск по чатам") }
         }
         Spacer(Modifier.height(16.dp))
         NavigationDrawerItem(
@@ -123,3 +125,4 @@ fun ChatDrawer(
         )
     }
 }
+
