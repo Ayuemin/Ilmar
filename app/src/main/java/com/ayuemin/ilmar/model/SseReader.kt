@@ -75,7 +75,7 @@ internal object SseReader {
         return GenerationResult(text.toString(), usage, finish, tools)
     }
     private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder())
-    private fun merge(current: String, part: String) = if (current == part || current.endsWith(part)) current else current + part
+    private fun merge(current: String, part: String) = current + part
     private fun contentText(value: Any?): String = when (value) {
         is String -> value
         is JSONArray -> (0 until value.length()).joinToString("") { i ->

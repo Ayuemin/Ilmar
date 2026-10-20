@@ -23,18 +23,22 @@ class UsageMigrationTest {
             db.execSQL("INSERT INTO messages(chat_id,text,from_user) VALUES(42, 'Old message', 1)")
             db.version = 1
         }
-        ChatStore(context).use { store ->
+        val original = ChatStore(context)
+        try {
+            val store = original
             assertEquals("Old message", store.load().single().messages.single().text)
             store.recordUsage(42, "same", TokenUsage(10, 4, 14, 5, null, "0.1"), "completed")
             store.recordUsage(42, "same", TokenUsage(costUsd = "99"), "completed")
-        }
-        ChatStore(context).use { store ->
+        } finally { original.close() }
+        val reopened = ChatStore(context)
+        try {
+            val store = reopened
             assertEquals(1, store.usage(42).calls)
             assertEquals("0.1", store.usage(42).costUsd)
             assertEquals(5L, store.usage(42).cached)
             store.clearMessages(42)
             assertEquals(0, store.usage(42).calls)
-        }
+        } finally { reopened.close() }
     }
     @Test fun sumsExactDecimalsAndLabelsUnknownCosts() {
         val ledger = UsageLedger(listOf(UsageRecord(TokenUsage(costUsd = "0.1"), "completed"),

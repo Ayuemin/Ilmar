@@ -32,6 +32,12 @@ class GenerationFeaturesTest {
         assertEquals(listOf(ModelToolCall("call_1", "echo", "{\"a\":1}")), result.toolCalls)
         assertThrows(java.io.IOException::class.java) { parse(event(first.toString())) }
     }
+    @Test fun keepsRepeatedCharactersInToolNameAndIdFragments() {
+        val first = """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_","function":{"name":"echo","arguments":"{}"}}]}}]}"""
+        val second = """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"_","function":{"name":"o"}}]}}]}"""
+        val result = parse(event(first) + event(second) + "data: [DONE]\n\n")
+        assertEquals(ModelToolCall("call__", "echoo", "{}"), result.toolCalls.single())
+    }
     @Test fun unknownUsageRemainsUnknownAndCumulativeUsageIsNotAddedTwice() {
         val result = parse(event("""{"choices":[{"delta":{"content":"x"}}],"usage":{"prompt_tokens":10}}""") +
             event("""{"choices":[],"usage":{"prompt_tokens":10,"cost":"0"}}""") + "data: [DONE]\n\n")
