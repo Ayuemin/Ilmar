@@ -16,7 +16,7 @@ internal fun BrowserHost(onResumeTask: (Long) -> Unit) {
     var webView by remember { mutableStateOf<WebView?>(null) }
     BackHandler(state.visible) { BrowserRuntime.hide() }
     // Keep WebView laid out for agent snapshots; MainActivity layers it below opaque chat while hidden.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
                 Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
