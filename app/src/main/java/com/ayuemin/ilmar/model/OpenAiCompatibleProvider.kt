@@ -53,7 +53,7 @@ class OpenAiCompatibleProvider {
                     if (data.isEmpty()) continue
                     val choice = JSONObject(data).optJSONArray("choices")?.optJSONObject(0)
                     val delta = choice?.optJSONObject("delta")?.optString("content").orEmpty()
-                    if (delta.isNotEmpty()) onDelta(delta)
+                    if (delta.isNotEmpty()) withContext(Dispatchers.Main) { onDelta(delta) }
                 }
             }
         } finally {
