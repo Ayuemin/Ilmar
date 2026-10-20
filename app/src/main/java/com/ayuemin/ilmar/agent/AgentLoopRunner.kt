@@ -18,7 +18,8 @@ internal suspend fun <T> optionalTimeout(seconds: Int, action: suspend () -> T):
 
 internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds"), private val maxCalls: Int = Limits.get("calls"),
     private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> },
-    private val onCheckpoint: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {}) {
+    private val onCheckpoint: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {},
+    private val blockUnresolved: (String, String, String) -> Boolean = { _, _, _ -> false }) {
     suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
         val history = mutableListOf<JSONObject>()
         val repeatThreshold = Limits.get("repeat_threshold")
@@ -47,6 +48,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools. Его можно изменить в расширенных настройках.")
                 val tool = tools.find { it.schema.name == call.name }
                 if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
+                if (blockUnresolved(traceId, call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
                 onProgress("Раунд $round · выполняется ${call.name}")
                 val output = try {
                     if (tool == null) JSONObject().put("error", "UNKNOWN_TOOL").put("message", "Инструмент ${call.name} не доступен; используй только предоставленные schemas.").toString()
