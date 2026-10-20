@@ -21,6 +21,15 @@ import com.ayuemin.ilmar.ui.IlmarFieldShape
 fun ChatScreen(onSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val store = remember(context) { ChatStore(context.applicationContext) }
+    val prefs = remember(context) { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
+    var compactMessages by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
+    androidx.compose.runtime.DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "compact_messages") compactMessages = prefs.getBoolean(key, false)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     var chats by remember { mutableStateOf(store.load().ifEmpty {
         store.create(1L, "Новый чат")
         listOf(ChatSession(1L, "Новый чат"))
@@ -68,7 +77,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         if (selected.messages.isEmpty()) {
             IlmarWelcome(Modifier.align(Alignment.Center))
         } else LazyColumn(Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compactMessages) 4.dp else 10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
             items(selected.messages) { message ->
                 Row(Modifier.fillMaxWidth(),
@@ -76,7 +85,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                     Surface(color = if (message.fromUser) Color(0xFF38304D) else Color(0xFF242632),
                         shape = RoundedCornerShape(18.dp), modifier = Modifier.widthIn(max = 320.dp)) {
                         Text(message.text, color = Color.White,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = if (compactMessages) 7.dp else 12.dp))
                     }
                 }
             }
