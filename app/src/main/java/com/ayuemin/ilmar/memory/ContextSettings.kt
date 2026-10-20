@@ -44,8 +44,8 @@ internal fun ContextSettings(onConnections: () -> Unit = {}) {
         Text("Отдельная модель используется только для сжатия. Её API-ключ берётся из подключения; расходы входят в общий бюджет задачи.", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { window = "0"; output = "0"; tokens = "0"; automatic = true; message = "Автоматический режим подготовлен. Нажми «Сохранить»." }) { Text("Непрерывный контекст: автоматические настройки") }
         Row { Text("Циклический Compact при 80%", Modifier.weight(1f)); Switch(automatic, { automatic = it }) }
-        OutlinedTextField(window, { window = it }, label = { Text("Контекст: 0 — окно модели из каталога") }, singleLine = true)
-        Text("По умолчанию используется окно из каталога, а не 8192. Если каталог не сообщил окно, резервный предел — 32768. Явное значение ограничивается реальным окном API.", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(window, { window = it }, label = { Text("Контекст: 0 — авто, до 32768 токенов") }, singleLine = true)
+        Text("Автоматическое рабочее окно — до 32768 токенов, даже если модель поддерживает больше: это уменьшает повторную отправку длинной истории. Можно явно выбрать большее окно в пределах API. Оригиналы остаются локально.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(output, { output = it }, label = { Text("Резерв и предел ответа; 0 — автоматически") }, singleLine = true)
         Text("Лимит вывода отправляется только при поддержке API. В остальных случаях резерв остаётся оценкой.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(recent, { recent = it }, label = { Text("Предпочтительно последних сообщений дословно") }, singleLine = true)

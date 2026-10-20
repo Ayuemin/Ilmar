@@ -57,6 +57,7 @@ class ChatViewModel @JvmOverloads constructor(
         val chats = store.load().ifEmpty {
             store.create(1L, "Новый чат"); listOf(ChatSession(1L, "Новый чат"))
         }
+        com.ayuemin.ilmar.memory.EmbeddingLedger(store).interruptOpen()
         val interrupted = runtime.getLong("active_chat", -1)
         runtime.getString("active_request", null)?.let { pending ->
             if (interrupted >= 0) store.recordUsage(interrupted, pending, TokenUsage(), "interrupted", runtime.getString("active_purpose", "answer") ?: "answer")
@@ -77,6 +78,8 @@ class ChatViewModel @JvmOverloads constructor(
 
     internal fun indexArchive(chatId: Long) { archive.schedule(viewModelScope, chatId) { label -> mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to label)) } } }
     internal suspend fun semanticSearch(chatId: Long, query: String) = archive.search(chatId, query, Long.MAX_VALUE)
+    internal fun stopArchive(chatId: Long) { archive.cancel(chatId); mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to "Индексация остановлена. Сохранённые пакеты будут использованы при продолжении.")) } }
+    internal fun embeddingUsage(chatId: Long) = com.ayuemin.ilmar.memory.EmbeddingLedger(store).summary(chatId)
     internal fun memorySnapshot(chatId: Long) = memory.snapshot(chatId)
     internal fun memorySearch(chatId: Long, query: String) = memory.search(chatId, query)
     internal fun setRules(chatId: Long, text: String) { if (mutable.value.activeChatId == null) memory.setRules(chatId, text) }

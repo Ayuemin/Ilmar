@@ -66,11 +66,13 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         }
         var recent = history.filter { it.id > (capsule?.through ?: -1) }
         val stable = prefix(rules, capsule?.text) + agentInstructions + recovery
-        val query = history.lastOrNull { it.fromUser }?.text.orEmpty()
+        val latestQuery = history.lastOrNull { it.fromUser }?.text.orEmpty()
+        val controlOnly = ContinuationPolicy.isControl(latestQuery)
+        val query = history.lastOrNull { it.fromUser && !ContinuationPolicy.isControl(it.text) }?.text ?: latestQuery
         val retrievalBudget = minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("retrieval_tokens"), (limit - output - projected(capsule) - 128).coerceAtLeast(0))
         var retrieval = if (capsule == null || retrievalBudget < 64) "" else {
             val lexical = memory.search(chat, query, capsule.through)
-            val semantic = semanticSearch(query, capsule.through)
+            val semantic = if (controlOnly) "" else semanticSearch(query, capsule.through)
             listOf(semantic, lexical).filter { it.isNotBlank() }.joinToString("\n").take(retrievalBudget / 2)
         }
         var estimated = ContextEstimate.messages(recent) + ContextEstimate.text(stable) + toolSize + ContextEstimate.text(retrieval)

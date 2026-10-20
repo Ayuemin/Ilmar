@@ -86,7 +86,7 @@ class ContinuousContextTest {
         assertNull(db.readToolTrace(2, "round-1"))
     }
     @Test fun defaultWindowUsesCatalogueAndTokenBudgetCanBeUnlimited() {
-        assertEquals(200000, ContextPolicy().limit(caps.copy(contextLength = 200000)))
+        assertEquals(32768, ContextPolicy().limit(caps.copy(contextLength = 200000)))
         assertEquals(32768, ContextPolicy().limit(ModelCapabilities()))
         assertEquals(8192, ContextPolicy(window = 8192).limit(caps.copy(contextLength = 200000)))
         val budget = TaskBudget(ContextPolicy(taskTokens = 0), caps)

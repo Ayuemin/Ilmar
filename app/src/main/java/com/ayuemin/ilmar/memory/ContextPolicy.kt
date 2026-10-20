@@ -10,7 +10,7 @@ import java.security.MessageDigest
 internal class ContextFailure(message: String) : IllegalStateException(message)
 internal data class ContextPolicy(val window: Int = 0, val output: Int = 0, val recent: Int = 6,
     val taskTokens: Int = 0, val taskUsd: String? = null, val automatic: Boolean = true) {
-    fun limit(caps: ModelCapabilities) = (if (window == 0) caps.contextLength ?: 32768L else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
+    fun limit(caps: ModelCapabilities) = (if (window == 0) minOf(caps.contextLength ?: 32768L, 32768L) else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
     fun reserve(caps: ModelCapabilities) = (if (output == 0) minOf(caps.maxOutputTokens ?: 8192L, (limit(caps) / 4).toLong()) else minOf(output.toLong(), caps.maxOutputTokens ?: output.toLong())).coerceAtLeast(1).toInt()
     fun validate() {
         require((window == 0 || window in 2048..Int.MAX_VALUE) && (output == 0 || output in 256..1000000) && (window == 0 || output < window / 2)) { "Резерв ответа должен быть меньше половины контекста" }

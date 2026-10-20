@@ -44,7 +44,14 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
             Text("Карточка состояния", style = MaterialTheme.typography.titleMedium)
             Text("Цель, прогресс и следующий шаг — в активной сводке ниже. Утверждённые решения закрепляй в правилах отдельно. Исходные сообщения сохраняются полностью.", style = MaterialTheme.typography.bodySmall)
             chatState.archiveStatus[chat]?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            TextButton(onClick = { controller.indexArchive(chat) }) { Text("Обновить семантический индекс") }
+            Row {
+                TextButton(onClick = { controller.indexArchive(chat) }) { Text("Обновить индекс") }
+                TextButton(onClick = { controller.stopArchive(chat) }) { Text("Остановить индекс") }
+            }
+            val embeddingUsage = controller.embeddingUsage(chat)
+            val embeddingTokens = if (embeddingUsage.isNull("input_tokens")) "неизвестно" else embeddingUsage.optString("input_tokens")
+            val embeddingCost = if (embeddingUsage.isNull("known_cost_usd")) "неизвестна" else embeddingUsage.optString("known_cost_usd") + " USD"
+            Text("Эмбеддинги: запросов ${embeddingUsage.optInt("calls")}, входных токенов $embeddingTokens; известная стоимость $embeddingCost${if (embeddingUsage.optBoolean("incomplete_cost")) " · часть расходов неизвестна" else ""}", style = MaterialTheme.typography.bodySmall)
             if (snapshot?.capsules.isNullOrEmpty()) Text("Карточка ещё не создана: Compact сработает по мере заполнения окна или вручную.")
             Text("Версии сводки (последние 20)", style = MaterialTheme.typography.labelLarge)
             snapshot?.capsules.orEmpty().forEach { capsule ->

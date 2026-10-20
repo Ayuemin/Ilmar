@@ -37,8 +37,13 @@ internal class EmbeddingPreferences(context: Context) {
         check(prefs.edit().putBoolean("enabled", config.enabled).putString("provider", config.provider).putString("model", config.model.trim()).putString("endpoint", config.endpoint.trim()).commit())
     }
 }
+internal data class EmbeddingResponse(val vectors: List<FloatArray>, val usage: com.ayuemin.ilmar.model.TokenUsage)
+
 internal class EmbeddingClient(private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()) {
     suspend fun embed(endpoint: String, key: String, model: String, texts: List<String>): List<FloatArray> {
+        return embedResult(endpoint, key, model, texts).vectors
+    }
+    suspend fun embedResult(endpoint: String, key: String, model: String, texts: List<String>): EmbeddingResponse {
         require(ProviderRegistry.validEndpoint(endpoint)) { "Нужен HTTPS адрес эмбеддингов" }
         val payload = JSONObject().put("model", model).put("input", JSONArray(texts)).put("encoding_format", "float")
         val request = Request.Builder().url(endpoint).header("Authorization", "Bearer $key").post(payload.toString().toRequestBody("application/json".toMediaType())).build()
@@ -59,7 +64,8 @@ internal class EmbeddingClient(private val client: OkHttpClient = OkHttpClient.B
             })
         }
         try {
-        val data = JSONObject(raw).getJSONArray("data")
+        val root = JSONObject(raw)
+        val data = root.getJSONArray("data")
         require(data.length() == texts.size) { "API вернул не все эмбеддинги" }
         val vectors = arrayOfNulls<FloatArray>(texts.size)
         repeat(data.length()) { i ->
@@ -72,7 +78,15 @@ internal class EmbeddingClient(private val client: OkHttpClient = OkHttpClient.B
             vectors[index] = FloatArray(vector.size) { (vector[it] / norm).toFloat() }
         }
         require(vectors.filterNotNull().map { it.size }.distinct().size == 1) { "Размеры векторов различаются" }
-        return vectors.map { it!! }
+        val reported = root.optJSONObject("usage")
+        val exact = runCatching { com.google.gson.JsonParser.parseString(raw).asJsonObject.let { precise ->
+            (precise.getAsJsonObject("usage")?.get("cost")?.takeUnless { it.isJsonNull } ?: precise.get("cost")?.takeUnless { it.isJsonNull })?.asString } }.getOrNull()
+        val usage = com.ayuemin.ilmar.model.TokenUsage(
+            input = com.ayuemin.ilmar.model.nonNegativeLong(reported, "prompt_tokens") ?: com.ayuemin.ilmar.model.nonNegativeLong(reported, "input_tokens"),
+            total = com.ayuemin.ilmar.model.nonNegativeLong(reported, "total_tokens"),
+            cached = com.ayuemin.ilmar.model.nonNegativeLong(reported?.optJSONObject("prompt_tokens_details"), "cached_tokens"),
+            costUsd = com.ayuemin.ilmar.model.exactCost(exact))
+        return EmbeddingResponse(vectors.map { it!! }, usage)
         } catch (_: org.json.JSONException) { throw IllegalArgumentException("API эмбеддингов вернул неверный формат JSON") }
     }
 }

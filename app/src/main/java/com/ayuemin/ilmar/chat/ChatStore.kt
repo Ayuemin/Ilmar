@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 7), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 8), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -23,6 +23,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 5) createToolTraces(db)
         if (oldVersion < 6) com.ayuemin.ilmar.memory.SemanticArchive.create(db)
         if (oldVersion < 7) createTaskExecutions(db)
+        if (oldVersion < 8) com.ayuemin.ilmar.memory.SemanticArchive.createEconomyTables(db)
     }
 
     private fun createTaskExecutions(db: SQLiteDatabase) {
@@ -213,6 +214,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_queries WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_requests WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)
             writableDatabase.setTransactionSuccessful()
         } finally { writableDatabase.endTransaction() }
@@ -228,6 +231,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_queries WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_requests WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)
             writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM chats WHERE id = ?", arrayOf(chatId))
