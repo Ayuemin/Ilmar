@@ -26,8 +26,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     }
 
     private fun createTaskExecutions(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE task_executions (execution_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, trace_id TEXT NOT NULL, tool_name TEXT NOT NULL, arguments TEXT NOT NULL, status TEXT NOT NULL, result TEXT, updated_at INTEGER NOT NULL)")
-        db.execSQL("CREATE INDEX task_executions_chat ON task_executions(chat_id, trace_id)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS task_executions (execution_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, trace_id TEXT NOT NULL, tool_name TEXT NOT NULL, arguments TEXT NOT NULL, status TEXT NOT NULL, result TEXT, updated_at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS task_executions_chat ON task_executions(chat_id, trace_id)")
     }
 
     /** A checkpoint only confirms results actually received from an executor. Unfinished calls remain UNKNOWN. */
