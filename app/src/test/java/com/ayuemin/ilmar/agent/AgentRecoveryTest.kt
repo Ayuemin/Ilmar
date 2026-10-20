@@ -66,7 +66,7 @@ class AgentRecoveryTest {
             assertEquals("UNKNOWN", db.executionStatus(chat, "first:same-model-id"))
             db.checkpointExecutions(chat, "first", group("ok"))
             assertEquals("SUCCEEDED", db.executionStatus(chat, "first:same-model-id"))
-            db.checkpointExecutions(chat, "second", group("{\\"error\\":\\"TOOL_TIMEOUT\\"}"))
+            db.checkpointExecutions(chat, "second", group(JSONObject().put("error", "TOOL_TIMEOUT").toString()))
             assertEquals("FAILED", db.executionStatus(chat, "second:same-model-id"))
             assertEquals("SUCCEEDED", db.executionStatus(chat, "first:same-model-id"))
         } finally { db.delete(chat); db.close() }
