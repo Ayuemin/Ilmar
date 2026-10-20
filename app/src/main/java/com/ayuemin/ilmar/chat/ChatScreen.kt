@@ -50,12 +50,10 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                Text("☰", color = Color.White, style = MaterialTheme.typography.titleLarge)
-            }
+            IlmarCircleAction("☰", "Открыть диалоги", onClick = { scope.launch { drawerState.open() } })
             Text("Ilmar", color = Color.White, style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f))
-            IconButton(onClick = onSettings) { Text("⚙", color = Color.White) }
+            IlmarCircleAction("⚙", "Настройки", onClick = onSettings)
             IconButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
                 store.create(id, "Новый чат")
