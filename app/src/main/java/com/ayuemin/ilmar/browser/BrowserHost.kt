@@ -1,6 +1,7 @@
 package com.ayuemin.ilmar.browser
 
 import android.webkit.WebView
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -26,7 +27,13 @@ internal fun BrowserHost(onResumeTask: (Long) -> Unit) {
             AndroidView(factory = { context -> WebView(context).also { view ->
                 webView = view
                 adapter = AndroidBrowserPage(view).also { BrowserRuntime.attach(it) }
-            } }, modifier = Modifier.fillMaxWidth().weight(1f))
+            } }, update = { view ->
+                // Umnik: hide the Android view itself; Compose alpha/zIndex alone does not reliably hide WebView surfaces.
+                view.visibility = if (state.visible) View.VISIBLE else View.INVISIBLE
+                view.isEnabled = state.visible
+                view.importantForAccessibility = if (state.visible) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                if (state.visible) view.post { view.requestLayout(); view.invalidate() }
+            }, modifier = Modifier.fillMaxWidth().weight(1f))
         }
     }
     DisposableEffect(Unit) { onDispose {
