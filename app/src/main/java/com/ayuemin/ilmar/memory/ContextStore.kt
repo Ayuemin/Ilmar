@@ -9,6 +9,7 @@ internal data class Capsule(val id: Long, val through: Long, val text: String, v
     val before: Int, val after: Int, val active: Boolean)
 internal data class MemorySnapshot(val rules: String, val capsules: List<Capsule>, val checkpoint: String?)
 internal class ContextStore(private val store: ChatStore) {
+    fun recoveryNote(chat: Long): String = store.recoveryNote(chat)
     fun saveToolTrace(chat: Long, id: String, messages: List<JSONObject>) = store.saveToolTrace(chat, id, messages)
     fun checkpointToolExecutions(chat: Long, id: String, messages: List<JSONObject>) = store.checkpointExecutions(chat, id, messages)
     private val db get() = store.writableDatabase
