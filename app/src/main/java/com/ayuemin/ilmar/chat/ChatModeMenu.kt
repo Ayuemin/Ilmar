@@ -43,14 +43,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                             preferences.setEnabled(id, name, it)
                         })
                     }
-                }
-                TextButton(onClick = { toolsExpanded = !toolsExpanded; selected = "" }) {
-                    Text(if (toolsExpanded) "Инструменты ⌄" else "Инструменты ›")
-                }
-                if (toolsExpanded) {
-                    ToolSelectionPanel(id, preferences, onDetails = { selected = it })
-                }
-                if (selected.isNotEmpty()) {
+                if (selected == name) {
                     HorizontalDivider()
                     if (selected == "Размышление") {
                         Text("Предпочтительная глубина (пока не передаётся API)", style = MaterialTheme.typography.labelMedium)
@@ -89,6 +82,14 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                         else -> "Настройки агента появятся после реализации безопасного исполнения."
                     }, style = MaterialTheme.typography.bodySmall)
                 }
+                }
+                TextButton(onClick = { toolsExpanded = !toolsExpanded; selected = "" }) {
+                    Text(if (toolsExpanded) "Инструменты ⌄" else "Инструменты ›")
+                }
+                if (toolsExpanded) {
+                    ToolSelectionPanel(id, preferences, onDetails = { selected = it })
+                }
+
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
