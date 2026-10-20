@@ -42,15 +42,18 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
             if (db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { !it.moveToFirst() }) return
             for (i in 0 until calls.length()) {
                 val call = calls.getJSONObject(i)
-                val id = call.getString("id")
+                val id = "$traceId:${call.getString("id")}"
                 val function = call.getJSONObject("function")
-                val result = results[id]?.optString("content")
+                val result = results[call.getString("id")]?.optString("content")
                 // Never downgrade a previously confirmed success on a stale checkpoint.
                 db.execSQL("INSERT OR IGNORE INTO task_executions VALUES(?,?,?,?,?,?,?,?)",
                     arrayOf<Any?>(id, chatId, traceId, function.getString("name"), function.getString("arguments"),
                         "UNKNOWN", null, System.currentTimeMillis()))
-                if (result != null) db.execSQL("UPDATE task_executions SET status='SUCCEEDED', result=?, updated_at=? WHERE execution_id=? AND chat_id=?",
-                    arrayOf<Any>(result, System.currentTimeMillis(), id, chatId))
+                if (result != null) {
+                    val failed = runCatching { org.json.JSONObject(result).has("error") }.getOrDefault(false)
+                    db.execSQL("UPDATE task_executions SET status=?, result=?, updated_at=? WHERE execution_id=? AND chat_id=?",
+                        arrayOf<Any>(if (failed) "FAILED" else "SUCCEEDED", result, System.currentTimeMillis(), id, chatId))
+                }
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
