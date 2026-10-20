@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 import com.ayuemin.ilmar.ui.IlmarWelcome
 import com.ayuemin.ilmar.ui.IlmarCircleAction
 import com.ayuemin.ilmar.ui.IlmarFieldShape
+import com.ayuemin.ilmar.security.CredentialStore
+import com.ayuemin.ilmar.model.OpenAiCompatibleProvider
 
 @Composable
 fun ChatScreen(onSettings: () -> Unit = {}) {
@@ -38,6 +40,10 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     }) }
     var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var requestError by remember { mutableStateOf<String?>(null) }
+    val provider = remember { OpenAiCompatibleProvider() }
+    val credentials = remember(context) { CredentialStore(context) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
@@ -109,7 +115,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                 maxLines = 5,
                 placeholder = { Text("Сообщение") }
             )
-            Button(enabled = draft.isNotBlank(), onClick = {
+            Button(enabled = draft.isNotBlank() && !sending, onClick = {
                 val message = draft.trim()
                 if (message.isNotEmpty()) {
                     store.append(selectedId, ChatMessage(message, true),
@@ -121,10 +127,42 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                         ) else chat
                     }
                     draft = ""
+                    requestError = null
+                    val targetChat = selectedId
+                    val history = chats.first { it.id == targetChat }.messages
+                    val apiKey = credentials.loadApiKey()
+                    if (apiKey == null) {
+                        requestError = "Сохрани API-ключ в настройках"
+                    } else {
+                        sending = true
+                        scope.launch {
+                            try {
+                                val reply = provider.complete(
+                                    prefs.getString("api_endpoint", "https://api.openai.com/v1/chat/completions") ?: "",
+                                    prefs.getString("api_model", "gpt-4o-mini") ?: "",
+                                    apiKey, history
+                                )
+                                store.append(targetChat, ChatMessage(reply, false), null)
+                                chats = chats.map { chat ->
+                                    if (chat.id == targetChat) chat.copy(messages = chat.messages + ChatMessage(reply, false))
+                                    else chat
+                                }
+                            } catch (e: Exception) {
+                                requestError = e.message ?: "Не удалось получить ответ"
+                            } finally {
+                                sending = false
+                            }
+                        }
+                    }
                 }
-            }) { Text("➤") }
+            }) { Text(if (sending) "…" else "➤") }
         }
-        Text("Локальный чат · ИИ пока не подключён",
+        if (sending) LinearProgressIndicator(Modifier.fillMaxWidth())
+        requestError?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall)
+        }
+        Text("OpenAI-compatible · HTTPS",
             color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
     }
     }
