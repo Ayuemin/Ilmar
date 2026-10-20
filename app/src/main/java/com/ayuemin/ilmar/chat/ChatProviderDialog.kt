@@ -1,11 +1,18 @@
 package com.ayuemin.ilmar.chat
 
 import android.content.SharedPreferences
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
+/**
+ * Quick selection only. Connection details and credentials are configured globally.
+ * Until the multi-provider registry is implemented, only the saved global model is available.
+ */
 @Composable
 internal fun ChatProviderDialog(
     chatId: Long,
@@ -13,40 +20,59 @@ internal fun ChatProviderDialog(
     global: SharedPreferences,
     onDismiss: () -> Unit
 ) {
-    var endpoint by remember(chatId) {
-        mutableStateOf(modes.choice(chatId, "api_endpoint").takeUnless { it == "Автоматически" }
-            ?: global.getString("api_endpoint", "https://api.openai.com/v1/chat/completions").orEmpty())
-    }
-    var model by remember(chatId) {
-        mutableStateOf(modes.choice(chatId, "api_model").takeUnless { it == "Автоматически" }
-            ?: global.getString("api_model", "gpt-4o-mini").orEmpty())
-    }
-    val valid = endpoint.startsWith("https://", ignoreCase = true) && model.isNotBlank()
+    val configuredEndpoint = global.getString("api_endpoint", "").orEmpty()
+    val configuredModel = global.getString("api_model", "").orEmpty()
+    val configured = configuredEndpoint.startsWith("https://", ignoreCase = true) &&
+        configuredModel.isNotBlank()
+    val currentModel = modes.choice(chatId, "api_model")
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Провайдер и модель чата") },
+        title = { Text("Выбрать модель") },
         text = {
             Column {
-                Text("Параметры только текущего чата. API-ключ используется из общих защищённых настроек.")
-                OutlinedTextField(value = endpoint, onValueChange = { endpoint = it },
-                    label = { Text("HTTPS endpoint") }, singleLine = true)
-                OutlinedTextField(value = model, onValueChange = { model = it },
-                    label = { Text("Модель") }, singleLine = true)
+                if (!configured) {
+                    Text("Нет настроенных моделей. Добавь подключение в общих настройках приложения.")
+                } else {
+                    Text("Настроенные модели", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                modes.setChoice(chatId, "api_endpoint", configuredEndpoint)
+                                modes.setChoice(chatId, "api_model", configuredModel)
+                                onDismiss()
+                            }.padding(16.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(configuredModel, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    configuredEndpoint.substringAfter("://").substringBefore("/"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (currentModel == configuredModel || currentModel == "Автоматически") {
+                                Text("✓")
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Пока доступна одна глобальная конфигурация. Реестр провайдеров и моделей появится в следующем этапе.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         },
-        confirmButton = {
-            TextButton(enabled = valid, onClick = {
-                modes.setChoice(chatId, "api_endpoint", endpoint.trim())
-                modes.setChoice(chatId, "api_model", model.trim())
-                onDismiss()
-            }) { Text("Сохранить") }
-        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
         dismissButton = {
             TextButton(onClick = {
                 modes.setChoice(chatId, "api_endpoint", "Автоматически")
                 modes.setChoice(chatId, "api_model", "Автоматически")
                 onDismiss()
-            }) { Text("Общие настройки") }
+            }) { Text("По умолчанию") }
         }
     )
 }
