@@ -156,7 +156,7 @@ class ChatViewModelTest {
             override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String = error("typed")
             override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
                 calls++; assertNull(options.webSearch)
-                assertEquals(setOf("browser_search", "browser_open", "browser_read", "browser_scroll"), options.tools.map { it.name }.toSet())
+                assertEquals(setOf("browser_search", "browser_open", "browser_read", "browser_scroll", "browser_back", "browser_click", "browser_type", "browser_select", "browser_takeover"), options.tools.map { it.name }.toSet())
                 return if (calls == 1) GenerationResult("", finishReason = "tool_calls", toolCalls = listOf(ModelToolCall("browse", "browser_search", "{\"query\":\"test fact\"}")))
                 else { assertTrue(options.toolHistory.any { it.optString("content").contains("Verified test fact") }); GenerationResult("Source-backed answer", finishReason = "stop") }
             }
@@ -170,6 +170,45 @@ class ChatViewModelTest {
             assertEquals(2, calls); assertEquals(1, opens)
             assertEquals("Source-backed answer", vm.state.value.chats.single().messages.last().text)
             assertFalse(modes.enabled(chat, "Агент"))
+        } finally { com.ayuemin.ilmar.browser.BrowserRuntime.detach(page) }
+    }
+
+    @Test fun browserHandoffPersistsTaskAndUserReturnContinuesWithoutRepeatingOpen() = runTest(dispatcher) {
+        val connection = registry.snapshot().providers.single()
+        registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel("m", ModelCapabilities(setOf("tools"), known = true))))
+        var login = true; var opens = 0; var calls = 0
+        val page = object : com.ayuemin.ilmar.browser.BrowserPage {
+            override suspend fun open(url: String): org.json.JSONObject { opens++; return read() }
+            override suspend fun read() = org.json.JSONObject().put("url", "https://example.com/").put("text", "Page after user").put("requires_user", login)
+            override suspend fun scroll(down: Boolean) = read()
+            override fun stop() = Unit
+        }
+        com.ayuemin.ilmar.browser.BrowserRuntime.attach(page)
+        val model = object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String = error("typed")
+            override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
+                calls++
+                return when(calls) {
+                    1 -> GenerationResult("", toolCalls = listOf(ModelToolCall("open", "browser_open", "{\"url\":\"https://example.com/\"}")))
+                    2 -> GenerationResult("", toolCalls = listOf(ModelToolCall("read", "browser_read", "{}")))
+                    else -> GenerationResult("Continued after manual login")
+                }
+            }
+        }
+        try {
+            val vm = ChatViewModel(app, model, registry, dispatcher); val chat = vm.state.value.selectedId
+            val modes = ChatModePreferences(app); modes.setEnabled(chat, "Поиск", true); modes.setChoice(chat, "search_source", "browser")
+            vm.send("Open a page"); advanceUntilIdle()
+            assertEquals(1, calls); assertTrue(com.ayuemin.ilmar.browser.BrowserRuntime.state.value.waitingUser)
+            ChatStore(app).use { db -> db.readableDatabase.rawQuery("SELECT status FROM agent_tasks", null).use { assertTrue(it.moveToFirst()); assertEquals("AWAITING_USER", it.getString(0)) } }
+            login = false; vm.resumeBrowserTask(chat); advanceUntilIdle()
+            assertEquals(3, calls); assertEquals(1, opens); assertFalse(com.ayuemin.ilmar.browser.BrowserRuntime.state.value.waitingUser)
+            assertTrue(vm.state.value.errors.toString(), vm.state.value.errors.isEmpty())
+            assertEquals("Continued after manual login", vm.state.value.chats.single().messages.last().text)
+            ChatStore(app).use { db ->
+                db.readableDatabase.rawQuery("SELECT COUNT(*) FROM agent_tasks", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+                db.readableDatabase.rawQuery("SELECT COUNT(*) FROM agent_runs", null).use { it.moveToFirst(); assertEquals(2, it.getInt(0)) }
+            }
         } finally { com.ayuemin.ilmar.browser.BrowserRuntime.detach(page) }
     }
 
