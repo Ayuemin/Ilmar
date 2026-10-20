@@ -6,13 +6,15 @@ import com.ayuemin.ilmar.chat.ChatMessage
 import com.ayuemin.ilmar.model.*
 import org.json.JSONObject
 
-internal class ContextExecution(private val chat: Long, private val memory: ContextStore, files: AttachmentStore, private val policy: ContextPolicy,
+internal class ContextExecution(private val chat: Long, private val memory: ContextStore, private val files: AttachmentStore, private val policy: ContextPolicy,
     private val caps: ModelCapabilities, private val target: ModelTarget,
     private val status: (String) -> Unit,
     private val compactTarget: ModelTarget = target, private val compactCaps: ModelCapabilities = caps,
     private val event: (String, JSONObject) -> Unit = { _, _ -> },
     private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" },
     private val session: TaskSession? = null,
+    private val observation: () -> ChatMessage? = { null },
+    private val consumeObservation: () -> Unit = {},
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private var budget = TaskBudget(policy, caps)
     private lateinit var activeSession: TaskSession
@@ -23,7 +25,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
         semanticSearch = semanticSearch, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
         val modelCaps = if (purpose == "compact") compactCaps else caps
-        budget.before(input, options.maxOutput ?: policy.reserve(modelCaps), history.any { m -> m.attachments.any { it.images.isNotEmpty() } }, options.outputParameter != null, modelCaps)
+        budget.before(input, options.maxOutput ?: policy.reserve(modelCaps), options.observation != null || history.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } }, options.outputParameter != null, modelCaps)
         val id = java.util.UUID.randomUUID().toString()
         val priced = modelCaps.promptPrice != null && modelCaps.completionPrice != null && modelCaps.requestPrice != null
         memory.tasks.reserve(activeSession, id, budget.reservedTokens, budget.reservedCost.takeIf { priced }, purpose)
@@ -60,9 +62,12 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 blockUnresolved = { id, name, args -> memory.unresolvedExecution(chat, id, name, args) },
                 replayConfirmed = { name, args -> memory.tasks.confirmed(activeSession, name, args) }
             ).run(tools) { toolHistory, schemas ->
-                val projection = engine.prepare(history, schemas, toolHistory)
+                val frame = observation()
+                val extraTokens = frame?.let { ContextEstimate.messages(listOf(it)) } ?: 0
+                val projection = engine.prepare(history, schemas, toolHistory, extraInputTokens = extraTokens)
+                val image = frame?.let { com.ayuemin.ilmar.attachments.AttachmentPayload.build(listOf(it), caps, files)[it.id] }
                 status("Контекст ≈ ${projection.estimatedInput} + ${projection.output} / ${projection.limit} · сокращён на ≈ ${projection.saved}")
-                invoke(projection.history, projection.options.copy(reasoning = reasoning), "answer", projection.estimatedInput, projection.saved)
+                invoke(projection.history, projection.options.copy(reasoning = reasoning, observation = image), "answer", projection.estimatedInput, projection.saved).also { if (frame != null) consumeObservation() }
             }
             memory.tasks.finish(activeSession, "COMPLETED")
             return result

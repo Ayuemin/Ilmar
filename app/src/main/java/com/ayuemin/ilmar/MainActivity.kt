@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
                     else ChatScreen(onSettings = { settingsPage = null; settings = true }, controller = controller,
                         onConnectionSettings = { settingsPage = "Подключения"; settings = true },
                         onSettingsPage = { settingsPage = it; settings = true })
-                    com.ayuemin.ilmar.browser.BrowserHost()
+                    com.ayuemin.ilmar.browser.BrowserHost(onResumeTask = controller::resumeBrowserTask)
                     }
                 }
             }

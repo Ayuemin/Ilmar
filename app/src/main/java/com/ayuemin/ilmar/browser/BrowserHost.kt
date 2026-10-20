@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
-internal fun BrowserHost() {
+internal fun BrowserHost(onResumeTask: (Long) -> Unit) {
     val state by BrowserRuntime.state.collectAsState()
     var adapter by remember { mutableStateOf<AndroidBrowserPage?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -20,6 +20,7 @@ internal fun BrowserHost() {
         Column(if (state.visible) Modifier.fillMaxSize() else Modifier.width(maxWidth).height(maxHeight).offset(x = maxWidth + 16.dp)) {
             Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
                 Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                if (state.waitingUser) TextButton(onClick = { state.chat?.let(onResumeTask) }) { Text("Готово, вернуть модели") }
                 TextButton(onClick = { BrowserRuntime.hide() }) { Text("В чат") }
             } }
             AndroidView(factory = { context -> WebView(context).also { view ->

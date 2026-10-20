@@ -35,7 +35,7 @@ internal class ContextPreferences(context: Context) {
 internal object ContextEstimate {
     fun text(text: String): Int = ((text.toByteArray(Charsets.UTF_8).size.toLong() * 2 + 4) / 5).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     fun messages(messages: List<ChatMessage>, images: Boolean = true): Int = messages.sumOf { message ->
-        12 + text(message.text) + message.attachments.sumOf { text(it.name) + text(it.text.orEmpty()) + if (images) it.images.size * 4096 else 0 }
+        12 + text(message.text) + message.attachments.sumOf { text(it.name) + text(it.text.orEmpty()) + if (images && !it.browserObservation) it.images.size * 4096 else 0 }
     }
     fun hash(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
     fun source(messages: List<ChatMessage>, through: Long) = hash(messages.takeWhile { it.id <= through }.joinToString("\n") {

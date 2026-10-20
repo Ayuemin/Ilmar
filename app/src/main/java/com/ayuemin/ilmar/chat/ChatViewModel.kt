@@ -191,6 +191,13 @@ class ChatViewModel @JvmOverloads constructor(
         mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chat.id) c.copy(title = title ?: c.title, messages = c.messages + message) else c }, attachments = it.attachments - chat.id, drafts = it.drafts - chat.id) }
         generate(chat.id)
     }
+    fun resumeBrowserTask(chat: Long) {
+        if (mutable.value.activeChatId != null || mutable.value.chats.none { it.id == chat }) return
+        if (!com.ayuemin.ilmar.browser.BrowserRuntime.completeHandoff(chat)) return
+        val message = store.append(chat, ChatMessage("Я завершил действия в браузере и возвращаю управление. Сначала прочитай текущую страницу и продолжи задачу; не повторяй уже выполненные действия.", true), null)
+        mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chat) c.copy(messages = c.messages + message) else c }) }
+        generate(chat)
+    }
     fun retry() {
         val chat = mutable.value.chats.find { it.id == mutable.value.selectedId } ?: return
         if (mutable.value.activeChatId == null && (chat.messages.lastOrNull()?.fromUser == true || mutable.value.errors.containsKey(chat.id) && chat.messages.any { it.fromUser })) generate(chat.id)
@@ -224,7 +231,7 @@ class ChatViewModel @JvmOverloads constructor(
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
                 val tools = agentTools + if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
-                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools) else emptyList()
+                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId) else emptyList()
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
@@ -243,6 +250,8 @@ class ChatViewModel @JvmOverloads constructor(
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
+                        observation = { com.ayuemin.ilmar.browser.BrowserVision.peek(taskSession.runId) },
+                        consumeObservation = { com.ayuemin.ilmar.browser.BrowserVision.consume(taskSession.runId) },
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
                             if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
@@ -321,6 +330,7 @@ class ChatViewModel @JvmOverloads constructor(
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { com.ayuemin.ilmar.browser.BrowserRuntime.stop(chatId) }
+                cleanupSession?.let { com.ayuemin.ilmar.browser.BrowserVision.consume(it.runId) }
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }

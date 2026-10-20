@@ -11,12 +11,16 @@ internal interface BrowserPage {
     suspend fun open(url: String): JSONObject
     suspend fun read(): JSONObject
     suspend fun scroll(down: Boolean): JSONObject
+    suspend fun act(command: String, args: JSONObject): JSONObject = error("Действия браузера не подключены")
+    suspend fun back(): JSONObject = error("Назад недоступно")
+    suspend fun screenshot(): ByteArray = error("Снимок браузера недоступен")
     fun stop()
     fun resume() = Unit
+    fun saveSession() = Unit
 }
-internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false)
+internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false, val waitingUser: Boolean = false, val pageId: String = "")
 
-/** A foreground read-only browser. Commands cannot read another chat's page. */
+/** A foreground browser with an exclusive human-control gate. Commands cannot read another chat's page. */
 internal object BrowserRuntime {
     private var page: BrowserPage? = null
     private val lock = Mutex()
@@ -24,12 +28,28 @@ internal object BrowserRuntime {
     val state = mutable.asStateFlow()
     fun attach(value: BrowserPage) { page = value }
     fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi() } }
-    fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true) } }
+    fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
+    fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
-    suspend fun command(chat: Long, operation: String, argument: String = ""): String = lock.withLock {
+    fun completeHandoff(chat: Long): Boolean {
+        if (mutable.value.chat != chat || !mutable.value.waitingUser) return false
+        mutable.value = mutable.value.copy(waitingUser = false, visible = false, status = "Управление возвращено модели")
+        page?.saveSession()
+        return true
+    }
+    private fun awaitingUser() = JSONObject().put("error", "USER_REQUIRED").put("action_performed", false)
+        .put("_awaiting_user", true).put("message", "Продолжи в открытом браузере: CAPTCHA, пароль или подтверждение вводятся только на странице. Затем нажми «Готово, вернуть модели».")
+    suspend fun command(chat: Long, operation: String, argument: String = "", details: JSONObject = JSONObject()): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")
             if (operation != "open" && operation != "search") require(mutable.value.chat == chat) { "Сначала открой страницу для текущего чата" }
+            if (mutable.value.waitingUser) {
+                require(mutable.value.chat == chat) { "Браузером управляет пользователь другого чата" }
+                return@withContext awaitingUser().toString()
+            }
+            if (operation == "takeover") {
+                show(chat); return@withContext awaitingUser().toString()
+            }
             val url = when (operation) { "search" -> BrowserAddress.search(argument); "open" -> argument; else -> null }
             if (url != null) BrowserAddress.parse(url)
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
@@ -38,11 +58,17 @@ internal object BrowserRuntime {
                     when (operation) {
                         "open", "search" -> browser.open(url!!)
                         "read" -> browser.read()
+                        "back" -> browser.back()
+                        "click", "type", "select" -> browser.act(operation, details)
                         "scroll" -> { require(argument in setOf("up", "down")); browser.scroll(argument == "down") }
                         else -> error("Неизвестная команда браузера")
                     }
                 }
-                mutable.value = mutable.value.copy(url = result.getString("url"), status = result.optString("title").ifBlank { "Страница прочитана" })
+                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
+                    show(chat)
+                    return@withContext awaitingUser().toString()
+                }
+                mutable.value = mutable.value.copy(pageId = result.optString("page_id", mutable.value.pageId), url = result.optString("url", mutable.value.url), status = result.optString("title").ifBlank { "Страница прочитана" })
                 result.toString()
             } catch (e: Exception) {
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
@@ -50,7 +76,19 @@ internal object BrowserRuntime {
             }
         }
     }
+    suspend fun screenshot(chat: Long): ByteArray = lock.withLock {
+        withContext(Dispatchers.Main.immediate) {
+            require(mutable.value.chat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
+            val browser = page ?: error("Браузер не готов")
+            val state = browser.read()
+            mutable.value = mutable.value.copy(pageId = state.optString("page_id"))
+            require(!state.optBoolean("requires_user")) { "Нельзя снимать страницу ввода пароля или CAPTCHA; передай её пользователю" }
+            val bytes = withTimeout(5000) { browser.screenshot() }
+            require(!mutable.value.waitingUser && mutable.value.chat == chat) { "Снимок отменён: управление передано пользователю" }
+            bytes
+        }
+    }
     suspend fun stop(chat: Long) = withContext(Dispatchers.Main.immediate) {
-        if (mutable.value.chat == chat) page?.stop()
+        if (mutable.value.chat == chat && !mutable.value.waitingUser) page?.stop()
     }
 }

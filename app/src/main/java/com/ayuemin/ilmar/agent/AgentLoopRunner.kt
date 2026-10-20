@@ -77,6 +77,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output).apply { replay?.let { put("_reused_from", it.executionId) } }
                 // The result must survive a crash before the next tool starts.
                 onCheckpoint(traceId, history.drop(groupStart))
+                val control = runCatching { JSONObject(output) }.getOrNull()
+                if (control?.optBoolean("_awaiting_user") == true) throw com.ayuemin.ilmar.tools.ClarificationRequired(control.optString("message", "Нужно действие пользователя в браузере."))
                 if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, replay?.result ?: output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))

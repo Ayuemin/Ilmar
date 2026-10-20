@@ -24,6 +24,7 @@ internal fun SearchControls(chat: Long, preferences: ChatModePreferences, provid
         }
     }
     Text("Авто использует встроенный поиск текущего поставщика, если он подключён, иначе — браузер телефона. Агент включать не нужно. Поиск поставщика может оплачиваться отдельно; браузеру нужна модель с tools.", style = MaterialTheme.typography.bodySmall)
+    Text("Модель может нажимать элементы, заполнять обычные поля и смотреть снимок экрана при поддержке зрения. Пароли, CAPTCHA и подтверждения — в переданном вам браузере; после действий нажмите возврат модели.", style = MaterialTheme.typography.bodySmall)
     if (browser.chat == chat) {
         Text(browser.status, style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { BrowserRuntime.show(chat); onOpenBrowser() }) { Text("Открыть браузер") }

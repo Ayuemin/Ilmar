@@ -44,7 +44,9 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
                 }
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                if (pending != null) navigationUrl = url
+                if (pending == null) pending = CompletableDeferred()
+                navigationUrl = url
+                url?.let(BrowserRuntime::navigated)
             }
             override fun onPageFinished(view: WebView, url: String?) {
                 if (url == navigationUrl && url == view.url) pending?.complete(Unit)
@@ -86,6 +88,40 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         view.scrollBy(0, (view.height.coerceAtLeast(800) * if (down) 0.8 else -0.8).toInt())
         delay(200); return read()
     }
+    private suspend fun evaluate(script: String): String = suspendCancellableCoroutine { continuation ->
+        view.evaluateJavascript(script) { value -> if (continuation.isActive) continuation.resume(value) }
+    }
+    override suspend fun act(command: String, args: JSONObject): JSONObject {
+        resume()
+        if (pending?.isCompleted == true) pending = null
+        val action = JSONObject(org.json.JSONTokener(evaluate(BrowserActions.script(command, args))).nextValue() as String)
+        if (action.has("error")) return action
+        // A failed read after a click throws; the durable journal retains UNKNOWN instead of repeating the click.
+        delay(500)
+        pending?.await()
+        return read().put("browser_action", action)
+    }
+    override suspend fun back(): JSONObject {
+        require(view.canGoBack()) { "Нет предыдущей страницы" }
+        if (pending?.isCompleted == true) pending = null
+        resume(); view.goBack(); delay(500); pending?.await(); return read()
+    }
+    override suspend fun screenshot(): ByteArray {
+        require(view.width > 0 && view.height > 0) { "Браузер не получил размер экрана" }
+        suspendCancellableCoroutine<Unit> { continuation ->
+            view.postVisualStateCallback(android.os.SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) { if (continuation.isActive) continuation.resume(Unit) }
+            })
+        }
+        require(!read().optBoolean("requires_user")) { "На странице есть пароль или CAPTCHA; снимок отменён" }
+        val scale = minOf(1f, 1600f / maxOf(view.width, view.height))
+        val bitmap = android.graphics.Bitmap.createBitmap((view.width * scale).toInt().coerceAtLeast(1), (view.height * scale).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = android.graphics.Canvas(bitmap); canvas.scale(scale, scale); view.draw(canvas)
+            return java.io.ByteArrayOutputStream().also { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it)) }.toByteArray()
+        } finally { bitmap.recycle() }
+    }
+    override fun saveSession() { CookieManager.getInstance().flush() }
     override fun resume() { view.onResume(); view.resumeTimers() }
     override fun stop() { pending?.cancel(); pending = null; navigationUrl = null; view.stopLoading(); view.onPause(); view.pauseTimers() }
 }
