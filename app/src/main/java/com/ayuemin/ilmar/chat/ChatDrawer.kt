@@ -6,6 +6,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 
@@ -27,12 +30,12 @@ fun ChatDrawer(
     }
     ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Spacer(Modifier.height(20.dp))
-        Text("✦ Ilmar", color = MaterialTheme.colorScheme.primary,
+        Text("Ilmar", color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(16.dp))
         NavigationDrawerItem(
-            label = { Text("＋  Новый чат") },
+            label = { Text("⊞  Новый чат") },
             selected = false, onClick = { query = ""; onNew() },
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -62,13 +65,14 @@ fun ChatDrawer(
                     label = { Text(chat.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = chat.id == selectedId,
                     onClick = { query = ""; onSelect(chat.id) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
+                    shape = RoundedCornerShape(18.dp)
                 )
             }
         }
         HorizontalDivider()
         NavigationDrawerItem(
-            label = { Text("⚙  Настройки") }, selected = false,
+            label = { Text("⚙  Настройки", color = MaterialTheme.colorScheme.primary) }, selected = false,
             onClick = onSettings, modifier = Modifier.padding(12.dp)
         )
     }
