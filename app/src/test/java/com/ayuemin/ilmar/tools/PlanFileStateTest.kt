@@ -75,12 +75,18 @@ class PlanFileStateTest {
             assertEquals(3, attachments.size); assertEquals(listOf(1, 2, 3), attachments.map { it.version })
             assertEquals(second.getString("file_id"), attachments.last().previousId)
         }
+        val keyedArgs = args("original", "new_version").put("version_key", "intent-four")
+        val keyed = JSONObject(create.execute(keyedArgs))
+        val retried = JSONObject(create.execute(keyedArgs))
+        assertEquals(keyed.getString("file_id"), retried.getString("file_id")); assertTrue(retried.getBoolean("reused"))
+        assertTrue(JSONObject(create.execute(args("conflicting", "new_version").put("version_key", "intent-four"))).has("error"))
+        ChatStore(app).use { db -> assertEquals(4, db.load().single().messages.sumOf { it.attachments.size }) }
     }
     @Test fun attachmentMetadataRoundTripsWithoutChangingLegacySourceHashRepresentation() {
         val legacy = ChatAttachment("old", "Old.txt", "text/plain", 4, "text")
         assertFalse(legacy.json().has("version")); assertFalse(legacy.json().has("previous_file_id"))
         assertEquals(legacy, ChatAttachment.decode(ChatAttachment.encode(listOf(legacy))).single())
-        val version = legacy.copy(id = "new", version = 2, previousId = "old")
+        val version = legacy.copy(id = "new", version = 2, previousId = "old", versionKey = "intent-two")
         assertEquals(version, ChatAttachment.decode(ChatAttachment.encode(listOf(version))).single())
     }
     @Test fun livePlanAndConfirmedResultsAreAvailableBeforeCompactAndFitSmallWorkingWindow() = runTest {

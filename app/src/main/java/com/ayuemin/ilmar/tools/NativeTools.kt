@@ -101,16 +101,20 @@ internal object NativeTools {
                 }
             }
         }
-        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/html/xml/yaml/py/js/kt/svg), сохрани как вложение. По умолчанию одинаковое имя+содержимое возвращает прежний file_id. Для намеренной новой версии даже с тем же содержимым укажи mode=new_version. Старые файлы не перезаписываются; вернёт version и previous_file_id.",
-            field("name").put("content", JSONObject().put("type", "string")).put("mode", JSONObject().put("type", "string").put("enum", JSONArray(listOf("reuse", "new_version")))), listOf("name", "content")) { chat, args ->
+        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/html/xml/yaml/py/js/kt/svg), сохрани как вложение. По умолчанию одинаковое имя+содержимое возвращает прежний file_id. Для намеренной новой версии даже с тем же содержимым укажи mode=new_version. Старые файлы не перезаписываются; вернёт version и previous_file_id. Для нескольких намеренных версий в одной задаче используй разные version_key; при повторе той же версии сохраняй version_key.",
+            field("name").put("content", JSONObject().put("type", "string")).put("mode", JSONObject().put("type", "string").put("enum", JSONArray(listOf("reuse", "new_version")))).put("version_key", JSONObject().put("type", "string")), listOf("name", "content")) { chat, args ->
             val name = args.getString("name"); val content = args.getString("content")
             val mode = args.optString("mode", "reuse"); require(mode in setOf("reuse", "new_version")) { "mode: reuse или new_version" }
+            val versionKey = args.optString("version_key").takeIf { it.isNotBlank() }
+            require(versionKey == null || mode == "new_version" && versionKey.length <= 128) { "version_key до 128 символов используется только с new_version" }
             val mime = generatedMime(name)
             val bytes = content.toByteArray(Charsets.UTF_8); require(bytes.size <= Limits.bytes("create_kib")) { "Файл превышает глобальный лимит создания (${Limits.get("create_kib")} КиБ). Измени расширенные лимиты." }
             ChatStore(app).use { chats ->
                 val history = chats.load().find { it.id == chat } ?: error("Чат удалён")
                 val matching = history.messages.flatMap { it.attachments }.distinctBy { it.id }.filter { it.name == name }
-                val existing = if (mode == "new_version") null else matching.find { it.text == content }
+                val keyed = versionKey?.let { key -> matching.find { it.versionKey == key } }
+                require(keyed == null || keyed.text == content) { "Эта метка версии уже связана с другим содержимым; используй новую метку" }
+                val existing = if (mode == "new_version") keyed else matching.find { it.text == content }
                 val previous = matching.lastOrNull()
                 val version = (matching.mapNotNull { it.version }.maxOrNull() ?: if (matching.isEmpty()) 0 else 1) + 1
                 val item = existing ?: run {
@@ -120,13 +124,13 @@ internal object NativeTools {
                     val id = UUID.randomUUID().toString(); val file = files.file(id)
                     try {
                         file.writeBytes(bytes)
-                        val attachment = ChatAttachment(id, name, mime, bytes.size.toLong(), content, version = version, previousId = previous?.id)
+                        val attachment = ChatAttachment(id, name, mime, bytes.size.toLong(), content, version = version, previousId = previous?.id, versionKey = versionKey)
                         chats.append(chat, ChatMessage("Файл: $name", false, attachments = listOf(attachment)), null)
                         attachment
                     } catch (e: Exception) { file.delete(); throw e }
                 }
                 JSONObject().put("file_id", item.id).put("name", item.name).put("mime", item.mime).put("saved_in_chat", true).put("reused", existing != null).put("version", item.version ?: JSONObject.NULL)
-                    .put("previous_file_id", item.previousId ?: JSONObject.NULL).put("content_sha256", hash(content)).toString()
+                    .put("previous_file_id", item.previousId ?: JSONObject.NULL).put("version_key", item.versionKey ?: JSONObject.NULL).put("content_sha256", hash(content)).toString()
             }
         }
         val archive = com.ayuemin.ilmar.memory.ArchiveRetrieval(app, com.ayuemin.ilmar.model.ProviderRegistry(app))
