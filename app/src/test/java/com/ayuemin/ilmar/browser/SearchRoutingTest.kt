@@ -54,4 +54,22 @@ class SearchRoutingTest {
         listOf("file:///etc/passwd", "content://local", "javascript:alert(1)", "https://user:secret@example.com/").forEach { assertFalse(BrowserAddress.valid(it)) }
         assertTrue(BrowserAddress.search("a & b").contains("a+%26+b"))
     }
+    @Test fun providersWithoutCapabilityMetadataCanBeConfiguredPerModelWithoutChangingOthers() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        app.getSharedPreferences("ilmar_models", 0).edit().clear().commit()
+        val registry = ProviderRegistry(app, MemorySecrets())
+        registry.saveConnection(null, "Custom", "https://models.example/v1", listOf("vision", "text"), "key")
+        val model = registry.snapshot().models.first { it.name == "vision" }
+        val other = registry.snapshot().models.first { it.name == "text" }
+        assertFalse(registry.capabilities(model.id).tools)
+        registry.setCapabilityOverride(model.id, "tools", true); registry.setCapabilityOverride(model.id, "image", true)
+        assertTrue(registry.capabilities(model.id).tools); assertTrue("image" in registry.capabilities(model.id).inputModalities)
+        assertFalse(registry.capabilities(other.id).tools); assertTrue(registry.capabilities(other.id).inputModalities.isEmpty())
+        val provider = registry.snapshot().providers.single()
+        registry.applyCatalogDetails(provider.id, provider.endpoint, listOf(CatalogModel("vision"), CatalogModel("text")))
+        assertTrue(ProviderRegistry(app, MemorySecrets()).capabilities(model.id).tools)
+        registry.setCapabilityOverride(model.id, "tools", null); registry.setCapabilityOverride(model.id, "image", null)
+        assertFalse(registry.capabilities(model.id).tools); assertTrue(registry.capabilities(model.id).inputModalities.isEmpty())
+    }
+
 }

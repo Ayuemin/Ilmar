@@ -9,7 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.ayuemin.ilmar.chat.ChatModePreferences
 
 @Composable
-internal fun SearchControls(chat: Long, preferences: ChatModePreferences, providerId: String?, onOpenBrowser: () -> Unit) {
+internal fun SearchControls(chat: Long, preferences: ChatModePreferences, providerId: String?, modelId: String?, onOpenBrowser: () -> Unit) {
     var source by remember(chat) { mutableStateOf(SearchRouting.source(preferences.choice(chat, "search_source"))) }
     val context = LocalContext.current
     val providerPrefs = remember { ProviderSearchPreferences(context) }
@@ -30,6 +30,7 @@ internal fun SearchControls(chat: Long, preferences: ChatModePreferences, provid
         OutlinedButton(onClick = { BrowserRuntime.show(chat); onOpenBrowser() }) { Text("Открыть браузер") }
     }
     TextButton(onClick = { advanced = !advanced }) { Text("Веб-поиск текущего поставщика") }
+    if (advanced && modelId != null) BrowserCapabilitySettings(modelId)
     if (advanced && providerId != null) {
         Text("Для совместимого API выбери поддерживаемый им протокол. Настройка действует во всех чатах этого подключения. Смена поставщика не меняет его параметры автоматически.", style = MaterialTheme.typography.bodySmall)
         ProviderSearchProtocol.entries.forEach { option ->

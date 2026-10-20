@@ -72,7 +72,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                         agent = it; preferences.setEnabled(id, "Агент", it)
                     })
             }
-            if (searchSettings) com.ayuemin.ilmar.browser.SearchControls(id, preferences, connection?.id, onDismiss)
+            if (searchSettings) com.ayuemin.ilmar.browser.SearchControls(id, preferences, connection?.id, model?.id, onDismiss)
             if (reasoningSettings && canReason) {
                 Text("Глубина размышления", style = MaterialTheme.typography.labelLarge)
                 (listOf("auto") + capabilities.efforts).distinct().forEach { value ->
