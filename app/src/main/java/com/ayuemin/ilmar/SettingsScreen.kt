@@ -122,7 +122,7 @@ private fun SettingsSection(title: String, description: String) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(description, style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFBFC0CD))
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -134,7 +134,7 @@ private fun SettingsCategory(
     content: @Composable () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.background,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = IlmarPanelShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
