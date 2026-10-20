@@ -53,8 +53,9 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
     val messageListState = rememberLazyListState()
-    LaunchedEffect(selectedId, selected.messages.size) {
-        if (selected.messages.isNotEmpty()) messageListState.animateScrollToItem(selected.messages.lastIndex)
+    LaunchedEffect(selectedId, selected.messages.size, streamingText.length) {
+        val visibleCount = selected.messages.size + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) 1 else 0
+        if (visibleCount > 0) messageListState.scrollToItem(visibleCount - 1)
     }
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -137,7 +138,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                     val history = chats.first { it.id == targetChat }.messages
                     val apiKey = credentials.loadApiKey()
                     if (apiKey == null) {
-                        requestError = "Сохрани API-ключ в настройках"
+                        requestError = "Сообщение сохранено. Сохрани API-ключ в настройках, чтобы получить ответ"
                     } else {
                         sending = true
                         streamingChatId = targetChat
