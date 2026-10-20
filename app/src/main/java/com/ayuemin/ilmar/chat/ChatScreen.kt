@@ -81,14 +81,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             Text(selected.title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
             IlmarCircleAction("⋮", "Настройки", onClick = onSettings)
-            /* Quick new chat is also available in the drawer. */
-            /*IconButton(onClick = {
-                val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
-                store.create(id, "Новый чат")
-                chats = chats + ChatSession(id, "Новый чат")
-                selectedId = id
-                draft = ""
-            }) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall) }*/
+
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
         if (selected.messages.isEmpty() && !(sending && streamingChatId == selectedId)) {
