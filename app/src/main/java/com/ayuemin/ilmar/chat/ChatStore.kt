@@ -63,6 +63,13 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         readableDatabase.rawQuery("SELECT status FROM task_executions WHERE chat_id=? AND execution_id=?",
             arrayOf(chatId.toString(), executionId)).use { if (it.moveToFirst()) it.getString(0) else null }
 
+    /** Fail closed for a matching unresolved operation from an earlier trace. */
+    fun unresolvedExecution(chatId: Long, traceId: String, toolName: String, arguments: String): Boolean =
+        readableDatabase.rawQuery(
+            "SELECT 1 FROM task_executions WHERE chat_id=? AND trace_id<>? AND tool_name=? AND arguments=? AND status='UNKNOWN' LIMIT 1",
+            arrayOf(chatId.toString(), traceId, toolName, arguments)
+        ).use { it.moveToFirst() }
+
     /** Durable, factual recovery note. UNKNOWN calls must never be assumed safe to repeat. */
     fun recoveryNote(chatId: Long): String {
         val lines = mutableListOf<String>()
