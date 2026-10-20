@@ -12,8 +12,8 @@ android {
         applicationId = "com.ayuemin.ilmar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.1.0-messages-attachments"
+        versionCode = 8
+        versionName = "0.1.0-context-compact"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

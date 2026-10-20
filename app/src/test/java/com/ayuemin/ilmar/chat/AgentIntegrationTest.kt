@@ -60,7 +60,7 @@ class AgentIntegrationTest {
                 return GenerationResult("", TokenUsage(10, 1, 11, costUsd = "0.1"), "tool_calls", listOf(ModelToolCall("call_$calls", "echo", "{}")))
             }
         }
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("test"); advanceUntilIdle()
         assertEquals(6, calls); assertEquals(6, executions)
         assertEquals(1, vm.state.value.chats.single().messages.size)

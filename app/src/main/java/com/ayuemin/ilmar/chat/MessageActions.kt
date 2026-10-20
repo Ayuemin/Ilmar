@@ -21,15 +21,17 @@ import java.util.Date
 internal fun MessageActions(message: ChatMessage, busy: Boolean, onAskAgain: () -> Unit,
     onBranch: () -> Unit, onSpeak: () -> Unit) {
     val context = LocalContext.current
+    val muted = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     var info by remember(message.id) { mutableStateOf(false) }
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)) {
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         IconButton(onClick = {
             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText("Сообщение", message.text))
-        }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ContentCopy, "Скопировать", Modifier.size(18.dp)) }
+        }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ContentCopy, "Скопировать", Modifier.size(18.dp), tint = muted) }
         if (message.fromUser) {
             IconButton(enabled = !busy, onClick = onAskAgain, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Outlined.Refresh, "Спросить снова", Modifier.size(18.dp))
+                Icon(Icons.Outlined.Refresh, "Спросить снова", Modifier.size(18.dp), tint = muted)
             }
         } else {
             IconButton(onClick = {
@@ -38,11 +40,12 @@ internal fun MessageActions(message: ChatMessage, busy: Boolean, onAskAgain: () 
                 }, "Поделиться ответом")) } catch (_: android.content.ActivityNotFoundException) {
                     android.widget.Toast.makeText(context, "Нет приложения для отправки", android.widget.Toast.LENGTH_SHORT).show()
                 }
-            }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Share, "Поделиться", Modifier.size(18.dp)) }
-            IconButton(onClick = onSpeak, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.VolumeUp, "Озвучить", Modifier.size(18.dp)) }
-            IconButton(enabled = !busy, onClick = onBranch, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.CallSplit, "Ответвление", Modifier.size(18.dp)) }
-            IconButton(onClick = { info = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Info, "Об ответе", Modifier.size(18.dp)) }
+            }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Share, "Поделиться", Modifier.size(18.dp), tint = muted) }
+            IconButton(onClick = onSpeak, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.VolumeUp, "Озвучить", Modifier.size(18.dp), tint = muted) }
+            IconButton(enabled = !busy, onClick = onBranch, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.CallSplit, "Ответвление", Modifier.size(18.dp), tint = muted) }
+            IconButton(onClick = { info = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Info, "Об ответе", Modifier.size(18.dp), tint = muted) }
         }
+    }
     }
     if (info) AlertDialog(onDismissRequest = { info = false }, title = { Text("Об ответе") }, text = {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

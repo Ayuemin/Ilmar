@@ -68,8 +68,9 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
             null -> {
                 SettingsCard("Подключения", "Провайдеры, адреса API и ключи") { page = "Подключения" }
                 SettingsCard("Модели", "Каталоги провайдеров, избранное и модель по умолчанию") { page = "Модели" }
+                SettingsCard("Озвучка", "Системный голос или модель провайдера") { page = "Озвучка" }
                 SettingsCard("Интерфейс", "Компактность сообщений") { page = "Интерфейс" }
-                SettingsCard("Память и контекст", "Локальная история") { page = "Память и контекст" }
+                SettingsCard("Память и контекст", "История, Compact, кэш и бюджеты") { page = "Память и контекст" }
                 SettingsCard("Инструменты", "Состояние подключений") { page = "Инструменты" }
                 SettingsCard("Диагностика", "Версия и события запросов") { events = diagnostics.read(); page = "Диагностика" }
             }
@@ -82,11 +83,12 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 }
                 Button(onClick = { editing = null; editorOpen = true }) { Text("Добавить подключение") }
             }
+            "Озвучка" -> com.ayuemin.ilmar.speech.SpeechSettings()
             "Интерфейс" -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Компактные сообщения", Modifier.weight(1f))
                 Switch(compact, { compact = it; prefs.edit().putBoolean("compact_messages", it).apply() })
             }
-            "Память и контекст" -> Text("Полная история и вложения хранятся на устройстве. При каждом запросе модели отправляется вся история выбранного чата. Автоматическое и ручное сжатие, резерв ответа и общий бюджет контекста ещё не реализованы. Кэшированные токены учитываются только по usage провайдера; управление prompt caching не настроено. Ветвление не заменяет сжатие.")
+            "Память и контекст" -> com.ayuemin.ilmar.memory.ContextSettings()
             "Инструменты" -> {
                 val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
                 val tools = com.ayuemin.ilmar.chat.ToolRegistry.catalogue().filter { it.executorRegistered }

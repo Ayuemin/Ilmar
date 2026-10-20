@@ -54,6 +54,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
         }
     }
     var overflow by remember { mutableStateOf(false) }
+    var showMemory by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var searchOpen by remember(selected.id) { mutableStateOf(false) }
@@ -76,9 +77,6 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     }
     val speech = remember { com.ayuemin.ilmar.speech.SpeechController(context.applicationContext, scope) }
     DisposableEffect(speech) { onDispose { speech.close() } }
-    var speakMessage by remember { mutableStateOf<ChatMessage?>(null) }
-    speakMessage?.let { message -> com.ayuemin.ilmar.speech.SpeechSettings(
-        onDismiss = { speakMessage = null }, onSpeak = { speech.speak(message.text) }) }
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -131,6 +129,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
         }, onDismiss = { showModes = false })
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
+    if (showMemory) ChatMemoryPanel(selected.id, controller, sending, onDismiss = { showMemory = false })
     if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },
         text = { Text(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), text = "Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\n\n${controller.usage(selected.id).describe()}") },
         confirmButton = { TextButton(onClick = { showStats = false }) { Text("Закрыть") } })
@@ -154,6 +153,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 Box {
                     IconButton(onClick = { overflow = true }) { Icon(Icons.Default.MoreVert, "Действия с чатом") }
                     DropdownMenu(overflow, { overflow = false }) {
+                        DropdownMenuItem(text = { Text("Память и сжатие") }, onClick = { overflow = false; showMemory = true })
                         DropdownMenuItem(text = { Text("Статистика чата") }, onClick = { overflow = false; showStats = true })
                         DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { overflow = false; searchOpen = true })
                         DropdownMenuItem(text = { Text("Выбрать модель") }, onClick = { overflow = false; showModels = true })
@@ -171,17 +171,18 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     contentPadding = PaddingValues(vertical = 12.dp)) {
                     items(messages) { message ->
                         Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = if (compact) 4.dp else 8.dp)) {
-                            if (message.fromUser) SelectionContainer { Text(message.text) }
+                            if (message.fromUser) SelectionContainer(Modifier.fillMaxWidth()) { Text(message.text, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End) }
                             else com.ayuemin.ilmar.ui.markdown.RichMessageContent(message.text, MaterialTheme.colorScheme.onSurface)
                             com.ayuemin.ilmar.attachments.AttachmentList(message.attachments)
-                            if (message.id != 0L) MessageActions(message, sending,
+                            if (message.id != 0L) Box(Modifier.fillMaxWidth(), contentAlignment = if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart) { MessageActions(message, sending,
                                 onAskAgain = { controller.branch(selected.id, message.id, true); following.value = true },
                                 onBranch = { controller.branch(selected.id, message.id); following.value = true },
-                                onSpeak = { speakMessage = message })
+                                onSpeak = { speech.speak(message.text) }) }
                         }
                     }
                 }
             }
+            state.contextStatus[selected.id]?.let { label -> TextButton(onClick = { showMemory = true }) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             if (inThisChat) LinearProgressIndicator(Modifier.fillMaxWidth())
             else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
                 Text("Перейти к активному ответу")

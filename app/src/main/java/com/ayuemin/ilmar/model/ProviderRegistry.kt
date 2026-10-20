@@ -25,7 +25,14 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
 
     init { migrateLegacy() }
 
-    fun snapshot(): RegistrySnapshot = decode(prefs.getString("registry", null))
+    private var snapshotRaw: String? = null
+    private var snapshotCache = RegistrySnapshot()
+    private val capabilityCache = mutableMapOf<String, Pair<String, Map<String, ModelCapabilities>>>()
+    @Synchronized fun snapshot(): RegistrySnapshot {
+        val raw = prefs.getString("registry", null)
+        if (raw != snapshotRaw) { snapshotCache = decode(raw); snapshotRaw = raw }
+        return snapshotCache
+    }
 
     private fun write(value: RegistrySnapshot) {
         check(prefs.edit().putString("registry", encode(value)).commit()) { "Не удалось сохранить модели" }
@@ -107,10 +114,20 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
         check(prefs.edit().putString("capabilities_$providerId", data.toString()).commit())
     }
 
-    fun capabilities(modelId: String): ModelCapabilities {
+    @Synchronized fun capabilities(modelId: String): ModelCapabilities {
         val model = snapshot().models.find { it.id == modelId } ?: return ModelCapabilities()
-        val raw = prefs.getString("capabilities_${model.providerId}", null) ?: return ModelCapabilities()
-        return runCatching { ModelCapabilities.fromJson(JSONObject(raw).optJSONObject(modelId)) }.getOrDefault(ModelCapabilities())
+        return providerCapabilities(model.providerId)[modelId] ?: ModelCapabilities()
+    }
+    @Synchronized fun providerCapabilities(providerId: String): Map<String, ModelCapabilities> {
+        val raw = prefs.getString("capabilities_$providerId", null) ?: return emptyMap()
+        val cached = capabilityCache[providerId]
+        if (cached?.first == raw) return cached.second
+        val parsed = runCatching {
+            val data = JSONObject(raw)
+            data.keys().asSequence().associateWith { ModelCapabilities.fromJson(data.optJSONObject(it)) }
+        }.getOrDefault(emptyMap())
+        capabilityCache[providerId] = raw to parsed
+        return parsed
     }
 
     fun isAvailable(modelId: String) = modelId !in prefs.getStringSet("unavailable", emptySet()).orEmpty()

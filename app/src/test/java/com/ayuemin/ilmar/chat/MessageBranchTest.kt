@@ -75,7 +75,7 @@ class MessageBranchTest {
                 captured = history.map { it.text }; return "reply"
             }
         }
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("first"); advanceUntilIdle()
         vm.send("second"); advanceUntilIdle()
         val source = vm.state.value.chats.single()

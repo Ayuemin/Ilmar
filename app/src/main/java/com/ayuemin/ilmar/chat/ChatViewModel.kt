@@ -25,6 +25,7 @@ data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
     val activeChatId: Long? = null, val streamingText: String = "",
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
+    val contextStatus: Map<Long, String> = emptyMap(),
     val errors: Map<Long, String> = emptyMap(), val drafts: Map<Long, String> = emptyMap()
 )
 
@@ -32,9 +33,12 @@ data class ChatState(
 class ChatViewModel @JvmOverloads constructor(
     application: Application,
     private val provider: ChatProvider = OpenAiCompatibleProvider(),
-    val registry: ProviderRegistry = ProviderRegistry(application)
+    val registry: ProviderRegistry = ProviderRegistry(application),
+    private val contextDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
 ) : AndroidViewModel(application) {
     private val store = ChatStore(application)
+    private val memory = com.ayuemin.ilmar.memory.ContextStore(store)
+    private val contextPreferences = com.ayuemin.ilmar.memory.ContextPreferences(application)
     private val attachmentStore = com.ayuemin.ilmar.attachments.AttachmentStore(application)
     private val modes = ChatModePreferences(application)
     private val permissions = ToolPermissionBroker(application)
@@ -43,7 +47,7 @@ class ChatViewModel @JvmOverloads constructor(
     private val mutable = MutableStateFlow(ChatState())
     val state = mutable.asStateFlow()
     private var request: Job? = null
-    private var closed = false
+    @Volatile private var closed = false
 
     init {
         val chats = store.load().ifEmpty {
@@ -51,9 +55,10 @@ class ChatViewModel @JvmOverloads constructor(
         }
         val interrupted = runtime.getLong("active_chat", -1)
         runtime.getString("active_request", null)?.let { pending ->
-            if (interrupted >= 0) store.recordUsage(interrupted, pending, TokenUsage(), "interrupted")
+            if (interrupted >= 0) store.recordUsage(interrupted, pending, TokenUsage(), "interrupted", runtime.getString("active_purpose", "answer") ?: "answer")
         }
         runtime.edit().remove("active_request").commit()
+        if (interrupted >= 0) memory.interrupt(interrupted)
         val errors = if (chats.any { it.id == interrupted && it.messages.lastOrNull()?.fromUser == true }) {
             diagnostics.record("INTERRUPTED", interrupted)
             mapOf(interrupted to "Ответ прерван при закрытии приложения. Можно повторить запрос.")
@@ -65,6 +70,12 @@ class ChatViewModel @JvmOverloads constructor(
         java.io.File(application.filesDir, "attachments").listFiles()?.filter { it.name !in referenced }?.forEach { it.delete() }
     }
 
+    internal fun memorySnapshot(chatId: Long) = memory.snapshot(chatId)
+    internal fun memorySearch(chatId: Long, query: String) = memory.search(chatId, query)
+    internal fun setRules(chatId: Long, text: String) { if (mutable.value.activeChatId == null) memory.setRules(chatId, text) }
+    internal fun deleteCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) memory.delete(chatId, id) }
+    internal fun activateCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) memory.activate(chatId, id) }
+    fun compact(chatId: Long) { if (mutable.value.activeChatId == null) generate(chatId, true) }
     fun usage(chatId: Long) = store.usage(chatId)
     fun importAttachment(chatId: Long, uri: android.net.Uri, cleanup: java.io.File? = null) {
         if (chatId in mutable.value.importing || mutable.value.chats.none { it.id == chatId }) { cleanup?.delete(); return }
@@ -107,6 +118,7 @@ class ChatViewModel @JvmOverloads constructor(
         if (askAgain && source.messages.last().id == messageId) { select(chatId); generate(chatId); return }
         val newId = maxOf(System.currentTimeMillis(), (mutable.value.chats.maxOfOrNull { it.id } ?: 0) + 1)
         store.branch(chatId, newId, messageId, source.title.take(32) + " · ветка")
+        memory.setRules(newId, memory.rules(chatId))
         val preferences = getApplication<Application>().getSharedPreferences("ilmar_chat_modes", Context.MODE_PRIVATE)
         val editor = preferences.edit()
         preferences.all.filterKeys { it.startsWith("${chatId}_") }.forEach { (key, value) ->
@@ -140,7 +152,7 @@ class ChatViewModel @JvmOverloads constructor(
         if (mutable.value.activeChatId == id) stop()
         store.delete(id)
         val remaining = mutable.value.chats.filterNot { it.id == id }
-        mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id, drafts = it.drafts - id, attachments = it.attachments - id) }
+        mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id, drafts = it.drafts - id, attachments = it.attachments - id, contextStatus = it.contextStatus - id) }
         releaseAttachments(removed)
         if (remaining.isEmpty()) create()
     }
@@ -157,7 +169,7 @@ class ChatViewModel @JvmOverloads constructor(
         val chat = mutable.value.chats.find { it.id == mutable.value.selectedId } ?: return
         if (mutable.value.activeChatId == null && chat.messages.lastOrNull()?.fromUser == true) generate(chat.id)
     }
-    private fun generate(chatId: Long) {
+    private fun generate(chatId: Long, compactOnly: Boolean = false) {
         val target = try { registry.target(chatId) } catch (e: IllegalStateException) {
             mutable.update { it.copy(errors = it.errors + (chatId to (e.message ?: "Настрой подключение"))) }; return
         } catch (e: IllegalArgumentException) {
@@ -172,31 +184,32 @@ class ChatViewModel @JvmOverloads constructor(
                 val started = System.currentTimeMillis()
                 val roundUsage = mutableListOf<UsageRecord>()
                 val capabilities = registry.capabilities(target.model.id)
-                val content = if (history.none { it.attachments.isNotEmpty() }) emptyMap() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.ayuemin.ilmar.attachments.AttachmentPayload.build(history, capabilities, attachmentStore)
-                }
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val tools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val result = AgentLoopRunner().run(tools) { toolHistory, schemas ->
-                    mutable.update { it.copy(streamingText = "") }
-                    val requestId = java.util.UUID.randomUUID().toString()
-                    check(runtime.edit().putString("active_request", requestId).commit())
-                    try {
-                        val completion = provider.generate(target.connection.endpoint, target.model.name, target.apiKey, history,
-                            GenerationOptions(reasoning, schemas, toolHistory, capabilities.includeUsage(target.connection.endpoint), content)) { delta ->
-                            mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
-                        }
-                        recordCall(chatId, requestId, completion.usage, "completed")
-                        roundUsage += UsageRecord(completion.usage, "completed")
-                        completion
-                    } catch (e: CancellationException) {
-                        recordCall(chatId, requestId, TokenUsage(), "cancelled"); throw e
-                    } catch (e: Exception) {
-                        recordCall(chatId, requestId, TokenUsage(), "failed"); throw e
-                    }
+                val result = kotlinx.coroutines.withContext(contextDispatcher) {
+                    com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPreferences.load(), capabilities, target,
+                        status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
+                        request = { projectedHistory, options, purpose, estimatedInput, saved ->
+                            if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
+                            val requestId = java.util.UUID.randomUUID().toString()
+                            check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
+                            try {
+                                val completion = provider.generate(target.connection.endpoint, target.model.name, target.apiKey, projectedHistory, options) { delta ->
+                                    if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
+                                }
+                                recordCall(chatId, requestId, completion.usage, "completed", purpose, saved)
+                                if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
+                                completion
+                            } catch (e: CancellationException) {
+                                recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
+                            } catch (e: Exception) {
+                                recordCall(chatId, requestId, TokenUsage(), "failed", purpose); throw e
+                            }
+                        }).run(history, compactOnly, reasoning, tools)
                 }
+                if (result == null) return@launch
                 val reply = result.text
                 if (mutable.value.activeChatId == chatId && mutable.value.chats.any { it.id == chatId }) {
                     val ledger = UsageLedger(roundUsage)
@@ -212,10 +225,11 @@ class ChatViewModel @JvmOverloads constructor(
                 throw e
             } catch (e: Exception) {
                 diagnostics.record("NETWORK_ERROR", chatId)
-                mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is IllegalStateException || e is IllegalArgumentException)
+                mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.memory.ContextFailure) e.message ?: "Не удалось подготовить контекст" else if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is IllegalStateException || e is IllegalArgumentException)
                     "Агент остановлен: лимит, повторяющиеся вызовы или недоступный инструмент. Проверь режим и разрешения."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
+                if (!closed) memory.interrupt(chatId)
                 runtime.edit().remove("active_chat").commit()
                 mutable.update { it.copy(activeChatId = null, streamingText = "") }
                 request = null
@@ -229,15 +243,19 @@ class ChatViewModel @JvmOverloads constructor(
         diagnostics.record("CANCELLED", id)
         mutable.update { it.copy(errors = it.errors + (id to "Ответ остановлен. Можно повторить запрос.")) }
     }
-    private fun recordCall(chatId: Long, requestId: String, usage: TokenUsage, status: String) {
+    private fun recordCall(chatId: Long, requestId: String, usage: TokenUsage, status: String, purpose: String = "answer", saved: Int = 0) {
         if (closed) return
-        store.recordUsage(chatId, requestId, usage, status)
+        store.recordUsage(chatId, requestId, usage, status, purpose, saved)
         runtime.edit().remove("active_request").commit()
     }
     override fun onCleared() {
         runtime.getString("active_request", null)?.let { id ->
-            mutable.value.activeChatId?.let { store.recordUsage(it, id, TokenUsage(), "cancelled") }
+            mutable.value.activeChatId?.let { store.recordUsage(it, id, TokenUsage(), "cancelled", runtime.getString("active_purpose", "answer") ?: "answer") }
         }
-        closed = true; store.close(); super.onCleared()
+        closed = true
+        val active = request
+        active?.cancel()
+        if (active?.isCompleted == false) active.invokeOnCompletion { store.close() } else store.close()
+        super.onCleared()
     }
 }

@@ -4,9 +4,12 @@ import com.ayuemin.ilmar.model.TokenUsage
 import java.math.BigDecimal
 
 /** Adapted from Umnik RequestCostLedger: exact decimal addition, unknown never means zero. */
-data class UsageRecord(val usage: TokenUsage, val status: String)
+data class UsageRecord(val usage: TokenUsage, val status: String, val purpose: String = "answer", val estimatedSaved: Int = 0)
 class UsageLedger(private val records: List<UsageRecord>) {
     val calls = records.size
+    val compactCalls = records.count { it.purpose == "compact" }
+    val estimatedSaved = records.sumOf { it.estimatedSaved.toLong() }
+    val compactCost = records.filter { it.purpose == "compact" }.mapNotNull { it.usage.costUsd?.toBigDecimal() }.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO, BigDecimal::add)?.stripTrailingZeros()?.toPlainString()
     val incompleteCost = records.any { it.usage.costUsd == null }
     val failed = records.count { it.status != "completed" }
     private fun sum(field: (TokenUsage) -> Long?): Long? = records.mapNotNull { field(it.usage) }.takeIf { it.isNotEmpty() }?.sum()
@@ -17,6 +20,8 @@ class UsageLedger(private val records: List<UsageRecord>) {
     private val partialTokens = records.any { it.usage.input == null || it.usage.output == null }
     fun describe(): String = buildString {
         append("Учтено запросов: $calls; прерванных/ошибок: $failed\n")
+        append("Compact: $compactCalls запросов; стоимость: ${compactCost ?: "нет данных"} USD\n")
+        append("Сокращение входа по оценке: $estimatedSaved токенов (не денежная экономия)\n")
         append("Вход: ${input ?: "нет данных"}; выход: ${output ?: "нет данных"}\n")
         append("Всего токенов: ${total ?: "нет данных"}\nКэшированные входные: ${cached ?: "нет данных"}\n")
         append("Токены reasoning: ${reasoning ?: "нет данных"}\n")

@@ -43,7 +43,7 @@ class ChatViewModelTest {
     }
     @Test fun replyRemainsInOriginalChatWhenSelectionChanges() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         val original = vm.state.value.selectedId
         vm.send("hello"); runCurrent(); vm.create()
         provider.gate.complete("answer"); advanceUntilIdle()
@@ -52,7 +52,7 @@ class ChatViewModelTest {
     }
     @Test fun stopDiscardsPartialAndRetryDoesNotDuplicateUserMessage() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("hello"); runCurrent(); vm.stop(); advanceUntilIdle()
         assertEquals(1, vm.state.value.chats.single().messages.size)
         assertEquals("", vm.state.value.streamingText)
@@ -62,7 +62,7 @@ class ChatViewModelTest {
     }
     @Test fun failureIsNotRetriedAutomaticallyAndUserMessageSurvives() = runTest(dispatcher) {
         val provider = FakeProvider().apply { fail = true }
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("hello"); advanceUntilIdle()
         assertEquals(1, provider.calls)
         assertEquals(1, vm.state.value.chats.single().messages.size)
@@ -73,14 +73,14 @@ class ChatViewModelTest {
         store.create(42, "Existing"); store.append(42, ChatMessage("hello", true), null); store.close()
         app.getSharedPreferences("ilmar_requests", 0).edit().putLong("active_chat", 42).commit()
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         assertEquals(0, provider.calls)
         assertTrue(vm.state.value.errors.containsKey(42))
         assertEquals("hello", vm.state.value.chats.single().messages.single().text)
     }
     @Test fun clearingActiveChatCannotResurrectDeletedMessages() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry)
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("hello"); runCurrent(); vm.clear(vm.state.value.selectedId)
         provider.gate.complete("late answer"); advanceUntilIdle()
         assertTrue(vm.state.value.chats.single().messages.isEmpty())
