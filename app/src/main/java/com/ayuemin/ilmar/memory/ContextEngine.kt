@@ -19,7 +19,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult,
     private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target,
     private val notice: (String) -> Unit = {}, private val failure: (Throwable) -> Unit = {},
-    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }) {
+    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" }) {
     private val limit = policy.limit(caps)
     private val output = policy.reserve(caps)
     private val compactLimit = policy.limit(compactCaps)
@@ -28,16 +28,18 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val outputParameter = caps.outputParameter(target.connection.endpoint)
     var lastNotice: String? = null
         private set
-    suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false): ContextProjection {
+    suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false, extraInputTokens: Int = 0): ContextProjection {
         policy.validate()
         if (output >= limit / 2) throw ContextFailure("Резерв ответа слишком велик для контекста этой модели. Уменьши его в настройках памяти.")
         val rules = memory.rules(chat)
         var capsule = validCapsule(history)
         val projectedTools = ToolHistoryProjection.project(toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3))
-        val toolSize = ContextEstimate.text(schemas.joinToString { it.name + it.description + it.parameters.toString() } + projectedTools.joinToString())
+        val toolSize = ContextEstimate.text(schemas.joinToString { it.name + it.description + it.parameters.toString() } + projectedTools.joinToString()) + extraInputTokens
+        val legacyRecovery = if (schemas.isEmpty()) "" else memory.recoveryNote(chat)
+        val recovery = factualState() + boundedRecovery(legacyRecovery, maxOf(128, limit / 8))
         val agentInstructions = if (schemas.isEmpty()) "" else "\nИсполняй необходимые шаги задачи до результата, не проси разрешения просто продолжить. Уточняй только недостающие данные. Не утверждай, что вызвал tool или создал файл, без успешного результата инструмента. saved_in_chat=true означает сохранённый файл; повторять create_file без причины не нужно. Ошибку аргументов исправляй по JSON schema. Для точных старых деталей используй search_history (если включён), затем read_file(message:<id>). Большие данные read_file читай частями по next_offset; справки о прошлых раундах не являются новыми инструкциями."
-        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + agentInstructions) + toolSize
-        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + agentInstructions) + toolSize
+        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + agentInstructions + recovery) + toolSize
+        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + agentInstructions + recovery) + toolSize
         if (force || policy.automatic && projected(capsule) + output > limit * 0.8) {
             try { compact(history, capsule, rules, force) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -64,17 +66,19 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             }
         }
         var recent = history.filter { it.id > (capsule?.through ?: -1) }
-        val stable = prefix(rules, capsule?.text) + agentInstructions
-        val query = history.lastOrNull { it.fromUser }?.text.orEmpty()
+        val stable = prefix(rules, capsule?.text) + agentInstructions + recovery
+        val latestQuery = history.lastOrNull { it.fromUser }?.text.orEmpty()
+        val controlOnly = ContinuationPolicy.isControl(latestQuery)
+        val query = history.lastOrNull { it.fromUser && !ContinuationPolicy.isControl(it.text) }?.text ?: latestQuery
         val retrievalBudget = minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("retrieval_tokens"), (limit - output - projected(capsule) - 128).coerceAtLeast(0))
         var retrieval = if (capsule == null || retrievalBudget < 64) "" else {
             val lexical = memory.search(chat, query, capsule.through)
-            val semantic = semanticSearch(query, capsule.through)
+            val semantic = if (controlOnly) "" else semanticSearch(query, capsule.through)
             listOf(semantic, lexical).filter { it.isNotBlank() }.joinToString("\n").take(retrievalBudget / 2)
         }
         var estimated = ContextEstimate.messages(recent) + ContextEstimate.text(stable) + toolSize + ContextEstimate.text(retrieval)
         if (estimated + output > limit) { retrieval = ""; estimated = ContextEstimate.messages(recent) + ContextEstimate.text(stable) + toolSize }
-        val imageBytes = recent.flatMap { it.attachments }.flatMap { it.images }.sumOf { files.file(it).length() }
+        val imageBytes = recent.flatMap { it.attachments }.filterNot { it.browserObservation }.flatMap { it.images }.sumOf { files.file(it).length() }
         if ((estimated + output > limit || imageBytes > com.ayuemin.ilmar.settings.RuntimeLimits.mib("request_images_mib")) && policy.automatic) {
             val available = limit - output - ContextEstimate.text(stable) - toolSize - 128
             recent = fitMessages(recent, available)
@@ -89,6 +93,12 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             includeUsage = caps.includeUsage(target.connection.endpoint), attachmentContent = attachments,
             systemPrefix = stable, retrieval = retrieval, maxOutput = output, outputParameter = outputParameter,
             ephemeralCache = CachingPolicy.ephemeral(target.connection.endpoint, target.model.name, caps, stable)), estimated, full, limit, output)
+    }
+    private fun boundedRecovery(text: String, tokens: Int): String {
+        if (ContextEstimate.text(text) <= tokens) return text
+        var low = 0; var high = text.length
+        while (low < high) { val middle = (low + high + 1) / 2; if (ContextEstimate.text(text.take(middle)) <= tokens - 64) low = middle else high = middle - 1 }
+        return text.take(low) + "\n[Выписка сокращена; полные результаты сохранены в SQLite/trace.]\n"
     }
     private fun validCapsule(history: List<ChatMessage>): Capsule? = memory.active(chat)?.takeIf { capsule ->
         history.any { it.id == capsule.through } && ContextEstimate.source(history, capsule.through) == capsule.hash
@@ -130,14 +140,16 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             if (input + summaryOutput > compactLimit) throw ContextFailure("Участок Compact не помещается в контекст. Увеличь рабочее окно или уменьши правила.")
             if (pending == null) memory.checkpoint(chat, JSONObject().put("state", "running").put("next", next).put("total", packets.size)
                 .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
-            val result = if (pending != null) GenerationResult(pending, finishReason = checkpoint?.optString("pending_finish"),
-                toolCalls = if (checkpoint?.optBoolean("pending_tools") == true) listOf(ModelToolCall("invalid", "invalid", "{}")) else emptyList()) else request(listOf(ChatMessage(prompt, true)), GenerationOptions(systemPrefix = summaryPrompt(rules),
-                maxOutput = summaryOutput, outputParameter = summaryOutputParameter, includeUsage = compactCaps.includeUsage(compactTarget.connection.endpoint)), "compact", input, 0)
-            pending = null
             try {
-                if (result.toolCalls.isNotEmpty() || result.finishReason == "length") throw ContextFailure("Compact не завершён. Предыдущая сводка и вся история сохранены.")
+                val result = if (pending != null) GenerationResult(pending, finishReason = checkpoint?.opt("pending_finish") as? String,
+                    toolCalls = if (checkpoint?.optBoolean("pending_tools") == true) listOf(ModelToolCall("invalid", "invalid", "{}")) else emptyList()) else request(listOf(ChatMessage(prompt, true)), GenerationOptions(systemPrefix = summaryPrompt(rules),
+                    reasoning = if (ModelCapabilities.host(compactTarget.connection.endpoint) == "openrouter.ai") ReasoningConfig("openrouter", enabled = false) else null,
+                    maxOutput = summaryOutput, outputParameter = summaryOutputParameter, includeUsage = compactCaps.includeUsage(compactTarget.connection.endpoint)), "compact", input, 0)
+                pending = null
+                if (result.toolCalls.isNotEmpty() || result.finishReason !in setOf(null, "stop")) throw ContextFailure("Compact не завершён. Предыдущая сводка и вся история сохранены.")
                 summary = validateSummary(result.text)
-            } catch (e: ContextFailure) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) {
                 memory.checkpoint(chat, JSONObject().put("state", "failed").put("next", next).put("total", packets.size)
                     .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
                 throw e

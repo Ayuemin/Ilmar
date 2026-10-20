@@ -12,6 +12,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: android-checks-${{ github.ref }}
   cancel-in-progress: true
@@ -45,11 +46,32 @@ jobs:
         with:
           gradle-version: '8.11.1'
           cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Test browser DOM snapshots
+        run: node scripts/test_browser_snapshot.cjs
       - name: Compile Kotlin and unit tests
         run: gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
 
       - name: Build installable debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Download phone-tested reference APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ilmar-debug-apk
+          path: /tmp/ilmar-phone-reference
+          run-id: 39479866305
+          github-token: ${{ github.token }}
+      - name: Inspect APK signatures and in-place update compatibility
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          python3 scripts/check_apk_update.py --candidate app/build/outputs/apk/debug/app-debug.apk --reference /tmp/ilmar-phone-reference/app-debug.apk --build-tools "$SDK_ROOT/build-tools/35.0.0" --output app/build/reports/apk-update.json
+      - name: Publish APK update compatibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-update-report
+          path: app/build/reports/apk-update.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Publish debug APK
         uses: actions/upload-artifact@v4
         with:

@@ -17,7 +17,7 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
     val chatState by controller.state.collectAsState()
     LaunchedEffect(chat) { controller.indexArchive(chat) }
     var revision by remember { mutableIntStateOf(0) }
-    val snapshot by produceState<MemorySnapshot?>(null, chat, revision, busy) { value = withContext(Dispatchers.IO) { controller.memorySnapshot(chat) } }
+    val snapshot by produceState<MemorySnapshot?>(null, chat, revision, busy, chatState.taskRevision[chat]) { value = withContext(Dispatchers.IO) { controller.memorySnapshot(chat) } }
     var rules by remember(chat) { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var query by remember(chat) { mutableStateOf("") }
@@ -42,10 +42,18 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
                 Text("Контрольная точка: ${checkpoint.optInt("next")} из ${checkpoint.optInt("total")} участков. Явное повторение продолжит с сохранённого места, если исходники и настройки не изменились.", style = MaterialTheme.typography.bodySmall)
             }
             Text("Карточка состояния", style = MaterialTheme.typography.titleMedium)
-            Text("Цель, прогресс и следующий шаг — в активной сводке ниже. Утверждённые решения закрепляй в правилах отдельно. Исходные сообщения сохраняются полностью.", style = MaterialTheme.typography.bodySmall)
+            Text("План и результаты ниже читаются из SQLite независимо от Compact. Сводки модели показаны отдельно как справка.", style = MaterialTheme.typography.bodySmall)
+            TaskStateCard(snapshot)
             chatState.archiveStatus[chat]?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            TextButton(onClick = { controller.indexArchive(chat) }) { Text("Обновить семантический индекс") }
-            if (snapshot?.capsules.isNullOrEmpty()) Text("Карточка ещё не создана: Compact сработает по мере заполнения окна или вручную.")
+            Row {
+                TextButton(onClick = { controller.indexArchive(chat, force = true) }) { Text("Индексировать сейчас") }
+                TextButton(onClick = { controller.stopArchive(chat) }) { Text("Остановить индекс") }
+            }
+            val embeddingUsage = controller.embeddingUsage(chat)
+            val embeddingTokens = if (embeddingUsage.isNull("input_tokens")) "неизвестно" else embeddingUsage.optString("input_tokens")
+            val embeddingCost = if (embeddingUsage.isNull("known_cost_usd")) "неизвестна" else embeddingUsage.optString("known_cost_usd") + " USD"
+            Text("Эмбеддинги: запросов ${embeddingUsage.optInt("calls")}, входных токенов $embeddingTokens; известная стоимость $embeddingCost${if (embeddingUsage.optBoolean("incomplete_cost")) " · часть расходов неизвестна" else ""}", style = MaterialTheme.typography.bodySmall)
+
             Text("Версии сводки (последние 20)", style = MaterialTheme.typography.labelLarge)
             snapshot?.capsules.orEmpty().forEach { capsule ->
                 Text("#${capsule.id}${if (capsule.active) " · активна" else ""} · ≈ ${capsule.before} → ${capsule.after} токенов")

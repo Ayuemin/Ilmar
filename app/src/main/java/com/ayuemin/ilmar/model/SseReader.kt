@@ -8,6 +8,8 @@ import java.io.EOFException
 import java.io.IOException
 
 /** Adapted from Umnik's stream parser. Ilmar still requires [DONE] before accepting a result. */
+internal class StreamInterruption(val reportedUsage: TokenUsage) : EOFException("Поток прерван до завершения")
+
 internal object SseReader {
     fun read(reader: BufferedReader, onDelta: (String) -> Unit): String = readResult(reader, onDelta).text
     fun readResult(reader: BufferedReader, onDelta: (String) -> Unit): GenerationResult {
@@ -71,12 +73,15 @@ internal object SseReader {
             when { line.isEmpty() -> dispatch(); line.startsWith("data:") -> event.add(line.substring(5).trimStart()) }
         }
         if (!done) dispatch()
-        if (!done) throw EOFException("Поток прерван до завершения")
+        if (!done) throw StreamInterruption(usage)
         val tools = calls.values.map {
             if (it.id.isBlank() || it.name.isBlank()) throw IOException("Неполный вызов инструмента")
             ModelToolCall(it.id, it.name, it.arguments.toString())
         }
-        if (text.isBlank() && tools.isEmpty()) throw IOException("Пустой ответ")
+        if (text.isBlank() && tools.isEmpty()) throw ProviderFailure(
+            if (finish == "length") "Модель исчерпала лимит вывода без текста. Увеличь лимит или выбери другую модель Compact."
+            else "Модель завершила поток без текста ответа",
+            details = "empty_response; finish_reason=${finish ?: "unknown"}; output_tokens=${usage.output}; reasoning_tokens=${usage.reasoning}", reportedUsage = usage)
         return GenerationResult(text.toString(), usage, finish, tools)
     }
     private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder(), var bytes: Int = 0)

@@ -33,6 +33,7 @@ class CompactModelTest {
         val connection = registry.snapshot().providers.first { it.id == compact.providerId }
         registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel(compact.name,
             ModelCapabilities(setOf("max_completion_tokens"), contextLength = 4096, maxOutputTokens = 512))))
+        com.ayuemin.ilmar.browser.ProviderSearchPreferences(app).save(answer.providerId, com.ayuemin.ilmar.browser.ProviderSearchProtocol.CHAT_COMPLETIONS)
         val preferences = ContextPreferences(app)
         preferences.save(ContextPolicy(recent = 2, automatic = false)); preferences.compactModelId = compact.id
         val calls = mutableListOf<Triple<String, String, String>>()
@@ -41,13 +42,16 @@ class CompactModelTest {
             override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
                 calls += Triple(endpoint, model, apiKey)
                 if (model == "compact-model") {
+                    assertNull(options.webSearch)
                     assertEquals("max_completion_tokens", options.outputParameter); assertEquals(512, options.maxOutput)
                     return GenerationResult("""{"goal":["Continue"],"facts":[],"decisions":[],"progress":[],"files":[],"tests":[],"errors":[],"next":[],"uncertain":[]}""")
                 }
+                assertEquals("CHAT_COMPLETIONS", options.webSearch)
                 return GenerationResult("answer")
             }
         }
         val vm = ChatViewModel(app, provider, registry, dispatcher)
+        ChatModePreferences(app).setEnabled(vm.state.value.selectedId, "Поиск", true)
         repeat(3) { vm.send("Question $it " + "x".repeat(400)); advanceUntilIdle() }
         vm.compact(vm.state.value.selectedId); advanceUntilIdle()
         assertTrue(calls.any { it == Triple(connection.endpoint, compact.name, "compact-key") })

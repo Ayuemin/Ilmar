@@ -23,7 +23,7 @@ interface ChatProvider {
         GenerationResult(stream(endpoint, model, apiKey, history, onDelta))
 }
 
-class ProviderFailure(message: String, val httpStatus: Int? = null, val details: String? = null) : IOException(message) {
+class ProviderFailure(message: String, val httpStatus: Int? = null, val details: String? = null, val reportedUsage: TokenUsage? = null) : IOException(message) {
     companion object {
         fun http(status: Int, details: String? = null) = ProviderFailure(when (status) {
             401 -> "Ошибка API: HTTP 401. Проверь API-ключ подключения."
@@ -73,7 +73,7 @@ class OpenAiCompatibleProvider(
                             }
                         })
                     } catch (e: Exception) {
-                        Result.failure(e as? ProviderFailure ?: ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат", details = com.ayuemin.ilmar.diagnostics.Redaction.text(e.message.orEmpty().let { detail -> if (apiKey.isBlank()) detail else detail.replace(apiKey, "[REDACTED]") })))
+                        Result.failure(e as? ProviderFailure ?: ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат", details = com.ayuemin.ilmar.diagnostics.Redaction.text(e.message.orEmpty().let { detail -> if (apiKey.isBlank()) detail else detail.replace(apiKey, "[REDACTED]") }), reportedUsage = (e as? StreamInterruption)?.reportedUsage))
                     }
                     continuation.resumeWith(result)
                 }

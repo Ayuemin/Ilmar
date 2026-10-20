@@ -86,10 +86,39 @@ class ContinuousContextTest {
         assertNull(db.readToolTrace(2, "round-1"))
     }
     @Test fun defaultWindowUsesCatalogueAndTokenBudgetCanBeUnlimited() {
-        assertEquals(200000, ContextPolicy().limit(caps.copy(contextLength = 200000)))
+        assertEquals(32768, ContextPolicy().limit(caps.copy(contextLength = 200000)))
         assertEquals(32768, ContextPolicy().limit(ModelCapabilities()))
         assertEquals(8192, ContextPolicy(window = 8192).limit(caps.copy(contextLength = 200000)))
         val budget = TaskBudget(ContextPolicy(taskTokens = 0), caps)
         repeat(1000) { budget.before(10000, 1000, false, true) }
+    }
+
+    @Test fun failedCompactTransportNeverReplacesCapsuleOrOriginalHistoryAndCanResume() = runTest {
+        repeat(6) { db.append(1, ChatMessage("message $it " + "x".repeat(700), it % 2 == 0), null) }
+        val original = db.load().single().messages
+        val policy = ContextPolicy(output = 512, recent = 2, automatic = false)
+        engine(policy).prepare(original, emptyList(), emptyList(), force = true)
+        val active = memory.active(1)!!
+        repeat(2) { db.append(1, ChatMessage("new $it " + "y".repeat(700), it % 2 == 0), null) }
+        val history = db.load().single().messages
+        val fixtures = listOf(
+            "data: [DONE]\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n",
+            "data: {broken}\n\ndata: [DONE]\n\n",
+            "data: {\"error\":{\"message\":\"provider failed\"}}\n\ndata: [DONE]\n\n")
+        for (fixture in fixtures) {
+            val error = runCatching {
+                engine(policy) { com.ayuemin.ilmar.model.SseReader.readResult(fixture.reader().buffered()) {} }
+                    .prepare(history, emptyList(), emptyList(), force = true)
+            }.exceptionOrNull()
+            assertNotNull(fixture, error)
+            assertEquals(active, memory.active(1))
+            assertEquals(history, db.load().single().messages)
+            assertEquals("failed", JSONObject(memory.snapshot(1).checkpoint!!).optString("state"))
+        }
+        engine(policy) { GenerationResult(summary.replace("version 42", "version 43")) }
+            .prepare(history, emptyList(), emptyList(), force = true)
+        assertTrue(memory.active(1)!!.text.contains("version 43"))
+        assertEquals(history, db.load().single().messages)
     }
 }

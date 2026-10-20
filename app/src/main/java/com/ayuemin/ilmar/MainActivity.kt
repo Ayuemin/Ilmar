@@ -40,10 +40,13 @@ class MainActivity : ComponentActivity() {
             )) {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
                     color = Color(0xFF000000)) {
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                     if (settings) SettingsScreen(onBack = { settings = false }, initialPage = settingsPage)
                     else ChatScreen(onSettings = { settingsPage = null; settings = true }, controller = controller,
                         onConnectionSettings = { settingsPage = "Подключения"; settings = true },
                         onSettingsPage = { settingsPage = it; settings = true })
+                    com.ayuemin.ilmar.browser.BrowserHost(onResumeTask = controller::resumeBrowserTask)
+                    }
                 }
             }
         }

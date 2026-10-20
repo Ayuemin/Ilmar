@@ -31,7 +31,7 @@ internal fun EmbeddingSettings() {
         if (registry.snapshot().providers.isEmpty()) Text("Сначала добавь API-подключение в настройках.")
         OutlinedTextField(model, { model = it }, label = { Text("ID модели эмбеддингов") }, singleLine = true)
         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Полный HTTPS URL /embeddings; пусто — автоматически") })
-        Text("Нужен OpenAI-совместимый API эмбеддингов, например text-embedding-3-small. Ключ берётся из выбранного подключения. Индексация архива запускается в фоне при открытии чата и после ответа; прогресс виден в карточке памяти. Изменение модели создаёт отдельный индекс.", style = MaterialTheme.typography.bodySmall)
+        Text("Нужен OpenAI-совместимый API эмбеддингов, например text-embedding-3-small. Ключ берётся из выбранного подключения. Индексация архива запускается в фоне при открытии чата и после ответа; прогресс виден в карточке памяти. Изменение модели создаёт отдельный индекс. Фон накапливает новые фрагменты в общий пакет (сейчас до ${com.ayuemin.ilmar.settings.RuntimeLimits.get("embedding_batch")}); неполный пакет можно отправить кнопкой «Индексировать сейчас». Исходники и SQLite FTS доступны сразу.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = {
             try {
                 val config = EmbeddingConfig(enabled, provider, model.trim(), endpoint.trim())

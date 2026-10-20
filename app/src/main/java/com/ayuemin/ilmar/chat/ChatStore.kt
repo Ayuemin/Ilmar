@@ -4,7 +4,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 6), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 10), java.io.Closeable {
+    internal val appContext: Context = context.applicationContext
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -12,6 +13,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         createDetails(db)
         createContext(db)
         createToolTraces(db)
+        createTaskExecutions(db)
+        com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
         com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
 
@@ -21,14 +24,108 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 4) createContext(db)
         if (oldVersion < 5) createToolTraces(db)
         if (oldVersion < 6) com.ayuemin.ilmar.memory.SemanticArchive.create(db)
+        if (oldVersion < 7) createTaskExecutions(db)
+        if (oldVersion < 8) com.ayuemin.ilmar.memory.SemanticArchive.createEconomyTables(db)
+        if (oldVersion < 9) com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
+        if (oldVersion < 10) com.ayuemin.ilmar.agent.DurableTaskStore.createIndexes(db)
+    }
+
+    private fun createTaskExecutions(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS task_executions (execution_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, trace_id TEXT NOT NULL, tool_name TEXT NOT NULL, arguments TEXT NOT NULL, status TEXT NOT NULL, result TEXT, updated_at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS task_executions_chat ON task_executions(chat_id, trace_id)")
+    }
+
+    /** A checkpoint only confirms results actually received from an executor. Unfinished calls remain UNKNOWN. */
+    fun checkpointExecutions(chatId: Long, traceId: String, messages: List<org.json.JSONObject>) {
+        val assistant = messages.firstOrNull() ?: return
+        val calls = assistant.optJSONArray("tool_calls") ?: return
+        val results = messages.drop(1).filter { it.optString("role") == "tool" }
+            .associateBy { it.optString("tool_call_id") }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { !it.moveToFirst() }) return
+            if (!saveToolTrace(chatId, traceId, messages)) return
+            val started = assistant.optJSONArray("_started_calls")
+            for (i in 0 until calls.length()) {
+                val call = calls.getJSONObject(i)
+                val id = "$traceId:${call.getString("id")}"
+                val function = call.getJSONObject("function")
+                val result = results[call.getString("id")]?.optString("content")
+                // Old checkpoints had no started marker: keep their conservative UNKNOWN semantics.
+                if (result == null && started != null && (0 until started.length()).none { started.optString(it) == call.getString("id") }) continue
+                // Never downgrade a confirmed result on a stale checkpoint.
+                db.execSQL("INSERT OR IGNORE INTO task_executions VALUES(?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(id, chatId, traceId, function.getString("name"), function.getString("arguments"),
+                        "UNKNOWN", null, System.currentTimeMillis()))
+                if (result != null) {
+                    val error = runCatching { org.json.JSONObject(result).opt("error") }.getOrNull()
+                    // Timeout says nothing about whether an external effect committed.
+                    val status = when (error) { "TOOL_TIMEOUT" -> "UNKNOWN"; null -> "SUCCEEDED"; else -> "FAILED" }
+                    db.execSQL("UPDATE task_executions SET status=?, result=?, updated_at=? WHERE execution_id=? AND chat_id=? AND status='UNKNOWN'",
+                        arrayOf<Any>(status, result, System.currentTimeMillis(), id, chatId))
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun executionStatus(chatId: Long, executionId: String): String? =
+        readableDatabase.rawQuery("SELECT status FROM task_executions WHERE chat_id=? AND execution_id=?",
+            arrayOf(chatId.toString(), executionId)).use { if (it.moveToFirst()) it.getString(0) else null }
+
+    /** Compare legacy and new argument encodings alike; exclude only the current execution, not its whole trace. */
+    fun unresolvedExecution(chatId: Long, executionId: String, toolName: String, arguments: String): Boolean {
+        val policy = com.ayuemin.ilmar.agent.ToolOperationPolicy
+        if (policy.safeToRepeat(toolName, arguments)) return false
+        // Browser page/ref IDs change on reload. A fresh snapshot cannot bypass an uncertain write.
+        if (toolName in setOf("browser_click", "browser_type", "browser_select") && readableDatabase.rawQuery(
+            "SELECT 1 FROM task_executions WHERE chat_id=? AND execution_id<>? AND tool_name IN ('browser_click','browser_type','browser_select') AND status='UNKNOWN' LIMIT 1",
+            arrayOf(chatId.toString(), executionId)).use { it.moveToFirst() }) return true
+        val canonical = policy.canonical(arguments)
+        return readableDatabase.rawQuery(
+            "SELECT arguments FROM task_executions WHERE chat_id=? AND execution_id<>? AND tool_name=? AND status='UNKNOWN'",
+            arrayOf(chatId.toString(), executionId, toolName)
+        ).use { rows ->
+            var found = false
+            while (!found && rows.moveToNext()) found = policy.canonical(rows.getString(0)) == canonical
+            found
+        }
+    }
+
+    /** Durable, factual recovery note. UNKNOWN calls must never be assumed safe to repeat. */
+    fun recoveryNote(chatId: Long): String {
+        val lines = mutableListOf<String>()
+        readableDatabase.rawQuery(
+            "SELECT trace_id, tool_name, status, result FROM task_executions WHERE chat_id=? ORDER BY updated_at DESC LIMIT 16",
+            arrayOf(chatId.toString())
+        ).use { rows ->
+            while (rows.moveToNext()) {
+                val status = rows.getString(2)
+                val result = if (status == "SUCCEEDED") rows.getString(3)?.take(160) else null
+                lines += "${rows.getString(0).take(12)} / ${rows.getString(1)}: $status" +
+                    if (result != null) " · подтверждённый результат: $result" else ""
+            }
+        }
+        return if (lines.isEmpty()) "" else "Состояние инструментов, сохранённое на устройстве (не сводка модели):\n" +
+            lines.joinToString("\n") +
+            "\nUNKNOWN означает неопределённый исход: НЕ повторяй побочные действия автоматически. Сначала проверь результат через безопасное чтение. SUCCEEDED не выполняй повторно."
     }
 
     private fun createToolTraces(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE tool_traces(id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, payload TEXT NOT NULL)")
     }
-    fun saveToolTrace(chatId: Long, id: String, messages: List<org.json.JSONObject>) {
-        writableDatabase.execSQL("INSERT OR REPLACE INTO tool_traces SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM chats WHERE id=?)",
+    fun saveToolTrace(chatId: Long, id: String, messages: List<org.json.JSONObject>): Boolean {
+        val db = writableDatabase
+        val previous = readToolTrace(chatId, id)?.let { org.json.JSONArray(it) }
+        if (previous != null) {
+            if (previous.optJSONObject(0)?.optJSONArray("tool_calls")?.toString() != messages.firstOrNull()?.optJSONArray("tool_calls")?.toString()) return false
+            val confirmed = (0 until previous.length()).map { previous.getJSONObject(it) }.filter { it.optString("role") == "tool" }
+            if (confirmed.any { old -> messages.none { it.optString("role") == "tool" && it.optString("tool_call_id") == old.optString("tool_call_id") && it.optString("content") == old.optString("content") } }) return false
+        }
+        db.execSQL("INSERT OR REPLACE INTO tool_traces SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM chats WHERE id=?)",
             arrayOf<Any>(id, chatId, org.json.JSONArray(messages).toString(), chatId))
+        return true
     }
     fun readToolTrace(chatId: Long, id: String): String? = readableDatabase.rawQuery("SELECT payload FROM tool_traces WHERE chat_id=? AND id=?", arrayOf(chatId.toString(), id)).use { if (it.moveToFirst()) it.getString(0) else null }
     private fun createContext(db: SQLiteDatabase) {
@@ -121,9 +218,13 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun clearMessages(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id = ?", arrayOf(chatId))
+            com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_queries WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_requests WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)
             writableDatabase.setTransactionSuccessful()
         } finally { writableDatabase.endTransaction() }
@@ -136,9 +237,13 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun delete(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id=?", arrayOf(chatId))
+            com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_queries WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM embedding_requests WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)
             writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM chats WHERE id = ?", arrayOf(chatId))
@@ -168,4 +273,3 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         }
     }
 }
-

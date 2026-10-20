@@ -10,8 +10,11 @@ import java.security.MessageDigest
 internal class ContextFailure(message: String) : IllegalStateException(message)
 internal data class ContextPolicy(val window: Int = 0, val output: Int = 0, val recent: Int = 6,
     val taskTokens: Int = 0, val taskUsd: String? = null, val automatic: Boolean = true) {
-    fun limit(caps: ModelCapabilities) = (if (window == 0) caps.contextLength ?: 32768L else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
+    fun limit(caps: ModelCapabilities) = (if (window == 0) minOf(caps.contextLength ?: 32768L, 32768L) else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
     fun reserve(caps: ModelCapabilities) = (if (output == 0) minOf(caps.maxOutputTokens ?: 8192L, (limit(caps) / 4).toLong()) else minOf(output.toLong(), caps.maxOutputTokens ?: output.toLong())).coerceAtLeast(1).toInt()
+    fun diagnosticJson() = JSONObject().put("window_setting_tokens", window).put("window_zero_meaning", "automatic_up_to_32768")
+        .put("output_setting_tokens", output).put("output_zero_meaning", "automatic").put("recent_messages", recent).put("automatic_compact", automatic)
+        .put("task_token_budget", taskTokens).put("task_token_zero_meaning", "limit_disabled").put("task_usd_budget", taskUsd ?: JSONObject.NULL).put("usd_null_meaning", "limit_disabled")
     fun validate() {
         require((window == 0 || window in 2048..Int.MAX_VALUE) && (output == 0 || output in 256..1000000) && (window == 0 || output < window / 2)) { "Резерв ответа должен быть меньше половины контекста" }
         require(recent in 0..10000 && (taskTokens == 0 || taskTokens in 2048..Int.MAX_VALUE)) { "Проверь число последних сообщений и бюджет задачи" }
@@ -32,7 +35,7 @@ internal class ContextPreferences(context: Context) {
 internal object ContextEstimate {
     fun text(text: String): Int = ((text.toByteArray(Charsets.UTF_8).size.toLong() * 2 + 4) / 5).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     fun messages(messages: List<ChatMessage>, images: Boolean = true): Int = messages.sumOf { message ->
-        12 + text(message.text) + message.attachments.sumOf { text(it.name) + text(it.text.orEmpty()) + if (images) it.images.size * 4096 else 0 }
+        12 + text(message.text) + message.attachments.sumOf { text(it.name) + text(it.text.orEmpty()) + if (images && !it.browserObservation) it.images.size * 4096 else 0 }
     }
     fun hash(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
     fun source(messages: List<ChatMessage>, through: Long) = hash(messages.takeWhile { it.id <= through }.joinToString("\n") {
@@ -40,11 +43,13 @@ internal object ContextEstimate {
             .put("attachments", com.ayuemin.ilmar.attachments.ChatAttachment.encode(it.attachments)).toString()
     })
 }
-internal class TaskBudget(private val policy: ContextPolicy, private val caps: ModelCapabilities) {
-    private var tokens = 0L
-    private var cost = BigDecimal.ZERO
-    private var reservedTokens = 0L
-    private var reservedCost = BigDecimal.ZERO
+internal class TaskBudget(private val policy: ContextPolicy, private val caps: ModelCapabilities, initialTokens: Long = 0, initialCost: BigDecimal = BigDecimal.ZERO) {
+    private var tokens = initialTokens
+    private var cost = initialCost
+    var reservedTokens = 0L
+        private set
+    var reservedCost = BigDecimal.ZERO
+        private set
     fun before(input: Int, output: Int, images: Boolean, boundedOutput: Boolean, modelCaps: ModelCapabilities = caps) {
         val caps = modelCaps
         reservedTokens = input.toLong() + output

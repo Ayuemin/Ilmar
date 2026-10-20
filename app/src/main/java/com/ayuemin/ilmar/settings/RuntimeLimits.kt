@@ -9,7 +9,7 @@ internal object RuntimeLimits {
     val fields = listOf(
         LimitField("rounds", "Агент", "Модельных раундов; 0 — без лимита", 64, 100000, true),
         LimitField("calls", "Агент", "Вызовов tools; 0 — без лимита", 256, 1000000, true),
-        LimitField("task_seconds", "Агент", "Время задачи, секунд; 0 — без лимита", 0, 604800, true),
+        LimitField("task_seconds", "Агент", "Время одного запуска задачи, секунд; 0 — без лимита", 0, 604800, true),
         LimitField("model_seconds", "Агент", "Время запроса модели, секунд; 0 — без лимита", 0, 604800, true),
         LimitField("tool_seconds", "Агент", "Время одного tool, секунд; 0 — без лимита", 120, 86400, true),
         LimitField("repeat_threshold", "Агент", "Повторений без прогресса; 0 — отключить защиту", 3, 1000, true),
@@ -63,5 +63,26 @@ internal object RuntimeLimits {
         fields.forEach { field -> require(values.getValue(field.key) in (if (field.zero) 0 else 1)..field.maximum) { "${field.label}: недопустимое значение" } }
         val editor = checkNotNull(prefs).edit(); values.forEach { (key, value) -> editor.putInt(key, value) }; check(editor.commit())
     }
+    fun definitions() = org.json.JSONArray().apply { fields.forEach { field ->
+        val unit = when {
+            field.key.endsWith("_kib") -> "KiB"; field.key.endsWith("_mib") -> "MiB"
+            field.key.endsWith("_seconds") -> "seconds"; field.key.endsWith("_minutes") -> "minutes"
+            field.key == "summary_tokens" -> "tokens"; field.key.endsWith("_tokens") -> "tokens_estimate"; field.key.endsWith("_chars") -> "characters"
+            else -> "count"
+        }
+        val applies = when (field.key) {
+            "rounds", "calls", "task_seconds", "repeat_threshold" -> "one_agent_run"
+            "model_seconds" -> "one_model_request"; "tool_seconds", "argument_kib", "result_kib" -> "one_tool_call"
+            "embedding_batch", "embedding_response_kib", "embedding_seconds" -> "one_embedding_request"
+            "embedding_chars" -> "one_embedding_fragment"; "log_chars" -> "one_diagnostic_field"
+            "log_events" -> "diagnostic_journal"; "storage_mib" -> "installation_attachment_storage"
+            "import_mib", "create_kib", "text_kib", "pdf_pages", "zip_mib", "zip_entries", "sheets", "cells", "xml_mib" -> "one_file"
+            "rules_chars", "memory_records", "memory_chars", "plan_steps" -> "one_chat"
+            else -> "working_context_or_cache"
+        }
+        val zero = when { !field.zero -> "not_allowed"; field.key == "cache_minutes" -> "cache_disabled"; field.key == "repeat_threshold" -> "repeat_guard_disabled"; else -> "limit_disabled" }
+        put(org.json.JSONObject().put("key", field.key).put("value", get(field.key)).put("unit", unit)
+            .put("scope", "global_all_chats").put("applies_to", applies).put("zero_meaning", zero).put("label", field.label))
+    } }
     fun reset() { checkNotNull(prefs).edit().clear().commit() }
 }

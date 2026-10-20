@@ -116,7 +116,16 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
 
     @Synchronized fun capabilities(modelId: String): ModelCapabilities {
         val model = snapshot().models.find { it.id == modelId } ?: return ModelCapabilities()
-        return providerCapabilities(model.providerId)[modelId] ?: ModelCapabilities()
+        val base = providerCapabilities(model.providerId)[modelId] ?: ModelCapabilities()
+        val toolsKey = "override_tools_$modelId"; val imageKey = "override_image_$modelId"
+        return base.copy(
+            parameters = if (!prefs.contains(toolsKey)) base.parameters else if (prefs.getBoolean(toolsKey, false)) base.parameters + "tools" else base.parameters - "tools",
+            inputModalities = if (!prefs.contains(imageKey)) base.inputModalities else if (prefs.getBoolean(imageKey, false)) base.inputModalities + "image" else base.inputModalities - "image")
+    }
+    fun setCapabilityOverride(modelId: String, capability: String, enabled: Boolean?) {
+        require(capability in setOf("tools", "image") && snapshot().models.any { it.id == modelId })
+        val key = "override_${capability}_$modelId"
+        check(prefs.edit().apply { if (enabled == null) remove(key) else putBoolean(key, enabled) }.commit())
     }
     @Synchronized fun providerCapabilities(providerId: String): Map<String, ModelCapabilities> {
         val raw = prefs.getString("capabilities_$providerId", null) ?: return emptyMap()

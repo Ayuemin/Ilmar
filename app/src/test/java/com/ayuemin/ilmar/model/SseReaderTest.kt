@@ -29,4 +29,10 @@ class SseReaderTest {
         assertThrows(java.io.IOException::class.java) { read("data: [DONE]\n\n") }
         assertThrows(java.io.IOException::class.java) { read("data: {\"error\":{\"message\":\"private details\"}}\n\n") }
     }
+    @Test fun interruptedUsageIsPreservedWithoutAcceptingPartialText() {
+        val error = assertThrows(StreamInterruption::class.java) { read("""data: {"choices":[{"delta":{"content":"partial"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12,"cost":"0.01"}}
+
+""") }
+        assertEquals(12L, error.reportedUsage.total); assertEquals("0.01", error.reportedUsage.costUsd)
+    }
 }

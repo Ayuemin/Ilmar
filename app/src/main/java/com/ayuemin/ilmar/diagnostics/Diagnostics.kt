@@ -18,7 +18,10 @@ class Diagnostics(context: Context) {
     }
     fun failure(code: String, chat: Long, error: Throwable, details: JSONObject = JSONObject()) {
         details.put("exception", error.javaClass.simpleName).put("message", error.message).put("stack", error.stackTraceToString())
-        if (error is com.ayuemin.ilmar.model.ProviderFailure) details.put("http_status", error.httpStatus).put("provider_error", error.details)
+        if (error is com.ayuemin.ilmar.model.ProviderFailure) {
+            details.put("http_status", error.httpStatus).put("provider_error", error.details)
+            error.reportedUsage?.let { details.put("reported_usage", com.ayuemin.ilmar.model.usageJson(it)) }
+        }
         record(code, chat, details)
     }
     fun read(errorsOnly: Boolean = false): String = synchronized(lock) {
@@ -38,11 +41,14 @@ class Diagnostics(context: Context) {
         output.bufferedWriter(Charsets.UTF_8).use { writer ->
             writer.appendLine(JSONObject().put("type", "ilmar_diagnostics").put("version", com.ayuemin.ilmar.BuildConfig.VERSION_NAME)
                 .put("sha", com.ayuemin.ilmar.BuildConfig.BUILD_SHA).put("sdk", android.os.Build.VERSION.SDK_INT)
-                .put("limits", JSONObject(Limits.fields.associate { it.key to Limits.get(it.key) })).toString())
+                .put("limits", JSONObject(Limits.fields.associate { it.key to Limits.get(it.key) })).put("limit_definitions", Limits.definitions()).put("limits_snapshot", "at_export")
+                .put("context_preferences", com.ayuemin.ilmar.memory.ContextPreferences(app).load().diagnosticJson())
+                .put("auto_working_window_ceiling_tokens", 32768).put("model_budget_scope", "persistent_task_across_retries").put("embedding_budget_scope", "separate_from_generation_budget").toString())
             val legacy = app.getSharedPreferences("ilmar_diagnostics", Context.MODE_PRIVATE).getString("events", "").orEmpty()
             if (legacy.isNotBlank()) writer.appendLine(JSONObject().put("event", "LEGACY_LOG").put("text", Redaction.text(legacy)).toString())
             helper.readableDatabase.rawQuery("SELECT payload FROM events ORDER BY id", null).use { while (it.moveToNext()) writer.appendLine(it.getString(0)) }
             com.ayuemin.ilmar.tools.ToolDataStore(app).use { it.exportCalls(writer) }
+            com.ayuemin.ilmar.chat.ChatStore(app).use { StateJournalExport.write(it, writer) }
         }
     }
     fun clear() = synchronized(lock) {

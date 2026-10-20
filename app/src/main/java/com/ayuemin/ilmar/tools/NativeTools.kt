@@ -96,19 +96,28 @@ internal object NativeTools {
                     require(offset <= text.length) { "offset за пределами текста (${text.length})" }
                     val end = (offset.toLong() + limit).coerceAtMost(text.length.toLong()).toInt()
                     JSONObject().put("file_id", id).put("name", item?.name).put("text", text.substring(offset, end))
-                        .put("total_chars", text.length).put("next_offset", if (end < text.length) end else JSONObject.NULL)
+                        .put("version", item?.version).put("previous_file_id", item?.previousId).put("total_chars", text.length).put("next_offset", if (end < text.length) end else JSONObject.NULL)
                         .put("truncated", end < text.length).put("vision_required", item?.images?.isNotEmpty() == true).toString()
                 }
             }
         }
-        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/html/xml/yaml/py/js/kt/svg), с настраиваемым глобальным размером; сохрани его как вложение текущего чата. Вернёт file_id.",
-            field("name").put("content", JSONObject().put("type", "string")), listOf("name", "content")) { chat, args ->
+        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/jsonl/html/xml/yaml/py/js/kt/svg), сохрани как вложение. По умолчанию одинаковое имя+содержимое возвращает прежний file_id. Для намеренной новой версии даже с тем же содержимым укажи mode=new_version. Старые файлы не перезаписываются; вернёт version и previous_file_id. Для нескольких намеренных версий в одной задаче используй разные version_key; при повторе той же версии сохраняй version_key.",
+            field("name").put("content", JSONObject().put("type", "string")).put("mode", JSONObject().put("type", "string").put("enum", JSONArray(listOf("reuse", "new_version")))).put("version_key", JSONObject().put("type", "string")), listOf("name", "content")) { chat, args ->
             val name = args.getString("name"); val content = args.getString("content")
+            val mode = args.optString("mode", "reuse"); require(mode in setOf("reuse", "new_version")) { "mode: reuse или new_version" }
+            val versionKey = args.optString("version_key").takeIf { it.isNotBlank() }
+            require(!args.has("version_key") || versionKey != null) { "version_key не должен быть пустым" }
+            require(versionKey == null || mode == "new_version" && versionKey.length <= 128) { "version_key до 128 символов используется только с new_version" }
             val mime = generatedMime(name)
             val bytes = content.toByteArray(Charsets.UTF_8); require(bytes.size <= Limits.bytes("create_kib")) { "Файл превышает глобальный лимит создания (${Limits.get("create_kib")} КиБ). Измени расширенные лимиты." }
             ChatStore(app).use { chats ->
                 val history = chats.load().find { it.id == chat } ?: error("Чат удалён")
-                val existing = history.messages.flatMap { it.attachments }.find { it.name == name && it.text == content }
+                val matching = history.messages.flatMap { it.attachments }.distinctBy { it.id }.filter { it.name == name }
+                val keyed = versionKey?.let { key -> matching.find { it.versionKey == key } }
+                require(keyed == null || keyed.text == content) { "Эта метка версии уже связана с другим содержимым; используй новую метку" }
+                val existing = if (mode == "new_version") keyed else matching.find { it.text == content }
+                val previous = matching.lastOrNull()
+                val version = (matching.mapNotNull { it.version }.maxOrNull() ?: if (matching.isEmpty()) 0 else 1) + 1
                 val item = existing ?: run {
                     val files = AttachmentStore(app)
                     val root = java.io.File(app.filesDir, "attachments")
@@ -116,12 +125,13 @@ internal object NativeTools {
                     val id = UUID.randomUUID().toString(); val file = files.file(id)
                     try {
                         file.writeBytes(bytes)
-                        val attachment = ChatAttachment(id, name, mime, bytes.size.toLong(), content)
+                        val attachment = ChatAttachment(id, name, mime, bytes.size.toLong(), content, version = version, previousId = previous?.id, versionKey = versionKey)
                         chats.append(chat, ChatMessage("Файл: $name", false, attachments = listOf(attachment)), null)
                         attachment
                     } catch (e: Exception) { file.delete(); throw e }
                 }
-                JSONObject().put("file_id", item.id).put("name", item.name).put("mime", item.mime).put("saved_in_chat", true).toString()
+                JSONObject().put("file_id", item.id).put("name", item.name).put("mime", item.mime).put("saved_in_chat", true).put("reused", existing != null).put("version", item.version ?: JSONObject.NULL)
+                    .put("previous_file_id", item.previousId ?: JSONObject.NULL).put("version_key", item.versionKey ?: JSONObject.NULL).put("content_sha256", hash(content)).toString()
             }
         }
         val archive = com.ayuemin.ilmar.memory.ArchiveRetrieval(app, com.ayuemin.ilmar.model.ProviderRegistry(app))
@@ -140,11 +150,11 @@ internal object NativeTools {
         }
         register("recall_memory", "Найти в памяти", "Локальный полнотекстовый поиск фактов, сохранённых в этом чате (без эмбеддингов).", field("query"), listOf("query")) { chat, args -> data.recall(chat, args.getString("query")) }
         val stepSchema = JSONObject().put("type", "object").put("additionalProperties", false)
-            .put("required", JSONArray(listOf("text", "status")))
-            .put("properties", field("text").put("status", JSONObject().put("type", "string")
+            .put("required", JSONArray(listOf("text")))
+            .put("properties", field("text").put("id", JSONObject().put("type", "string")).put("status", JSONObject().put("type", "string")
                 .put("enum", JSONArray(listOf("pending", "in_progress", "completed")))))
         val stepsSchema = JSONObject().put("steps", JSONObject().put("type", "array").put("items", stepSchema))
-        register("todo", "План задачи", "Сохрани или прочитай план задачи текущего чата. Шаг: text и status (pending/in_progress/completed). Без steps вернётся текущий план.",
+        register("todo", "План задачи", "Сохрани или прочитай фактический план чата. Каждый шаг имеет постоянный id. Новый шаг: text и необязательный status (по умолчанию pending). Для перестановки/редактирования передавай существующий id; без status прежний статус сохраняется. Без steps вернётся весь план с ID. Не заменяй этот план модельной сводкой.",
             stepsSchema, emptyList()) { chat, args -> data.plan(chat, args.optJSONArray("steps")) }
         register("ask_user", "Уточнить у пользователя", "Останови задачу и задай пользователю один вопрос. Продолжение после его ответа, без выдумывания данных.", field("question"), listOf("question")) { _, args ->
             val question = args.getString("question").trim(); require(question.length in 1..2000)
@@ -157,7 +167,7 @@ internal object NativeTools {
         return when (name.substringAfterLast('.', "").lowercase()) {
             "md" -> "text/markdown"
             "py" -> "text/x-python"; "js" -> "text/javascript"; "kt" -> "text/x-kotlin"; "yaml", "yml" -> "application/yaml"; "txt" -> "text/plain"
-            "csv" -> "text/csv"; "json" -> "application/json"; "html", "htm" -> "text/html"; "xml" -> "application/xml"; "svg" -> "image/svg+xml"
+            "csv" -> "text/csv"; "json" -> "application/json"; "jsonl", "ndjson" -> "application/x-ndjson"; "html", "htm" -> "text/html"; "xml" -> "application/xml"; "svg" -> "image/svg+xml"
             else -> error("Создание этого формата не поддерживается")
         }
     }
