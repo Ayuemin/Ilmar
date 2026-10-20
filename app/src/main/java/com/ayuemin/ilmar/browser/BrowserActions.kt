@@ -26,16 +26,17 @@ internal object BrowserActions {
       const credentialForm=el.form && Array.from(el.form.querySelectorAll('input')).some(sensitive);
       if(sensitive(el) || risky || (credentialForm && (command==='click' || args.submit)) || el.type==='file')
         return JSON.stringify({error:'USER_REQUIRED',action_performed:false,_awaiting_user:true,message:'Нужен ввод или подтверждение пользователя в браузере.'});
-      el.scrollIntoView({block:'center'});
+      if(!coordinate)el.scrollIntoView({block:'center'});
       if(command==='click'){
         if(el.tagName==='A' && el.href && !el.href.startsWith('https://'))return JSON.stringify({error:'UNSUPPORTED_LINK',action_performed:false});
         if(coordinate){
-          const options={bubbles:true,cancelable:true,clientX:cx,clientY:cy,view:window};
+          const options={bubbles:true,cancelable:true,clientX:cx,clientY:cy,button:0,view:window,pointerId:1,pointerType:'mouse',isPrimary:true};
           if(window.PointerEvent){el.dispatchEvent(new PointerEvent('pointerdown',options));el.dispatchEvent(new PointerEvent('pointerup',options));}
           for(const name of ['mousedown','mouseup','click'])el.dispatchEvent(new MouseEvent(name,options));
         }else el.click();
       } else if(command==='type'){
         if(!el.matches('input,textarea,[contenteditable="true"]'))return JSON.stringify({error:'NOT_EDITABLE',action_performed:false});
+        if(args.submit && !el.form)return JSON.stringify({error:'NO_FORM',action_performed:false});
         el.focus();
         if(el.isContentEditable)el.textContent=args.text;
         else {
@@ -44,7 +45,6 @@ internal object BrowserActions {
         }
         el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
         if(args.submit){
-          if(!el.form)return JSON.stringify({error:'NO_FORM',action_performed:true});
           el.form.requestSubmit?el.form.requestSubmit():el.form.submit();
         }
       } else {
