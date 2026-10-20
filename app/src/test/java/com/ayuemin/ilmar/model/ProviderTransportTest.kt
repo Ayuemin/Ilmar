@@ -64,7 +64,7 @@ class ProviderTransportTest {
         assertTrue(error.message!!.contains("ID модели"))
         val request = server.takeRequest(2, TimeUnit.SECONDS)!!
         assertEquals("/api/v1/chat/completions", request.path)
-        assertTrue(request.body.readUtf8().contains("deepseek/deepseek-v4.1-flash"))
+        assertEquals("deepseek/deepseek-v4.1-flash", org.json.JSONObject(request.body.readUtf8()).getString("model"))
         assertEquals(1, server.requestCount)
     }
     @Test fun cancelsActualCallWhileResponseBodyReadIsBlocked() = runBlocking {
