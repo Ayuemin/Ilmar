@@ -2,6 +2,8 @@ package com.ayuemin.ilmar.chat
 
 import android.content.Context
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +33,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
         onDismissRequest = onDismiss,
         title = { Text("Режимы чата") },
         text = {
-            Column {
+            Column(Modifier.heightIn(max = 510.dp).verticalScroll(rememberScrollState())) {
                 listOf("Агент", "Поиск", "Размышление").forEach { name ->
                     var checked by remember(id, name) { mutableStateOf(preferences.enabled(id, name)) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -124,6 +126,7 @@ private fun ToolSelectionPanel(
                 }
             ) { Text(if (applied.isNotEmpty()) "Выключить" else "Включить") }
         }
+        Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
         tools.forEach { name ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
@@ -141,6 +144,7 @@ private fun ToolSelectionPanel(
                 }
                 if (name in applied) Text("✓", color = MaterialTheme.colorScheme.primary)
             }
+        }
         }
         Text("Доступных к исполнению инструментов: " + available.size + ". Выбор не предоставляет разрешения: их проверяет исполнитель перед каждым действием.",
             style = MaterialTheme.typography.bodySmall,
