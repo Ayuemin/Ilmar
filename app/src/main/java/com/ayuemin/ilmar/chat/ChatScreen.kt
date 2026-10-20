@@ -48,6 +48,8 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     var activeRequest by remember { mutableStateOf<Job?>(null) }
     var requestError by remember { mutableStateOf<String?>(null) }
     val provider = remember { OpenAiCompatibleProvider() }
+    val chatModes = remember(context) { ChatModePreferences(context) }
+    var showModes by remember { mutableStateOf(false) }
     val credentials = remember(context) { CredentialStore(context) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -57,6 +59,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         val visibleCount = selected.messages.size + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) 1 else 0
         if (visibleCount > 0) messageListState.scrollToItem(visibleCount - 1)
     }
+    if (showModes) ChatModeMenu(selectedId, chatModes) { showModes = false }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -104,7 +107,9 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             }
         }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { showModes = true }) { Text("+", style = MaterialTheme.typography.headlineMedium) }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
