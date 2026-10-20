@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import com.ayuemin.ilmar.ui.IlmarPanelShape
+import com.ayuemin.ilmar.security.CredentialStore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -17,6 +18,9 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
+    val credentials = remember(context) { CredentialStore(context) }
+    var apiKeyDraft by remember { mutableStateOf("") }
+    var keySaved by remember { mutableStateOf(credentials.hasApiKey()) }
     var compactMessages by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -35,7 +39,31 @@ fun SettingsScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(12.dp))
         SettingsSection("Модель и провайдер",
-            "Подключение API ещё не реализовано. Выбор модели станет доступен после настройки безопасного хранения ключей.")
+            "OpenAI-compatible API · сетевой адаптер пока не подключён.")
+        OutlinedTextField(
+            value = apiKeyDraft, onValueChange = { apiKeyDraft = it },
+            label = { Text("API-ключ провайдера") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            singleLine = true, modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(if (keySaved) "Ключ сохранён в защищённом хранилище"
+            else "Ключ пока не сохранён",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(enabled = apiKeyDraft.isNotBlank(), onClick = {
+                credentials.saveApiKey(apiKeyDraft.trim())
+                apiKeyDraft = ""
+                keySaved = credentials.hasApiKey()
+            }) { Text("Сохранить") }
+            OutlinedButton(enabled = keySaved, onClick = {
+                credentials.clearApiKey()
+                apiKeyDraft = ""
+                keySaved = false
+            }) { Text("Удалить ключ") }
+        }
+        Spacer(Modifier.height(16.dp))
         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
             shape = IlmarPanelShape,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
