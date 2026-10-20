@@ -29,6 +29,26 @@ class AgentRecoveryTest {
         assertEquals("4", result.text); assertEquals(1, executions); assertEquals(2, archived.size)
         assertTrue(archived.all { it.first().getString("role") == "assistant" && it.last().getString("role") == "tool" })
     }
+    @Test fun checkpointsPersistEachCompletedToolBeforeNextExecution() = runTest {
+        val checkpoints = mutableListOf<List<JSONObject>>()
+        val tool = BoundTool(ToolSchema("write", "test", JSONObject())) {
+            if (checkpoints.last().size != 2) error("First tool result not checkpointed")
+            "saved"
+        }
+        var round = 0
+        val result = AgentLoopRunner(onCheckpoint = { _, messages ->
+            checkpoints += messages.map { JSONObject(it.toString()) }
+        }).run(listOf(tool)) { _, _ ->
+            if (round++ == 0) GenerationResult("", toolCalls = listOf(ModelToolCall("one", "write", "{}")))
+            else GenerationResult("done")
+        }
+        assertEquals("done", result.text)
+        assertEquals(2, checkpoints.size)
+        assertEquals("assistant", checkpoints[0].single().getString("role"))
+        assertEquals("tool", checkpoints[1].last().getString("role"))
+        assertEquals("saved", checkpoints[1].last().getString("content"))
+    }
+
     @Test fun longTaskCanProceedPastOldEightRoundLimitAndOptionalBudgetsCanBeDisabled() = runTest {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         RuntimeLimits.install(context); RuntimeLimits.reset()
