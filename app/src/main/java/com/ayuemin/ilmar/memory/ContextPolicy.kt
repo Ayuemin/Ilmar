@@ -22,6 +22,9 @@ internal class ContextPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_context", Context.MODE_PRIVATE)
     fun load() = ContextPolicy(prefs.getInt("window", 8192), prefs.getInt("output", 1536), prefs.getInt("recent", 6),
         prefs.getInt("task_tokens", 100000), prefs.getString("task_usd", null), prefs.getBoolean("automatic", true))
+    var compactModelId: String?
+        get() = prefs.getString("compact_model_id", null)
+        set(value) { check(prefs.edit().putString("compact_model_id", value).commit()) }
     fun save(policy: ContextPolicy) { policy.validate(); check(prefs.edit().putInt("window", policy.window).putInt("output", policy.output)
         .putInt("recent", policy.recent).putInt("task_tokens", policy.taskTokens).putString("task_usd", policy.taskUsd)
         .putBoolean("automatic", policy.automatic).commit()) }
@@ -42,7 +45,8 @@ internal class TaskBudget(private val policy: ContextPolicy, private val caps: M
     private var cost = BigDecimal.ZERO
     private var reservedTokens = 0L
     private var reservedCost = BigDecimal.ZERO
-    fun before(input: Int, output: Int, images: Boolean, boundedOutput: Boolean) {
+    fun before(input: Int, output: Int, images: Boolean, boundedOutput: Boolean, modelCaps: ModelCapabilities = caps) {
+        val caps = modelCaps
         reservedTokens = input.toLong() + output
         if (tokens + reservedTokens > policy.taskTokens) throw ContextFailure("Достигнут токеновый бюджет задачи. Измени лимит в настройках памяти.")
         val limit = policy.taskUsd?.toBigDecimal()

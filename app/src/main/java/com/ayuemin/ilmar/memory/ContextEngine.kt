@@ -16,10 +16,13 @@ internal data class ContextProjection(val history: List<ChatMessage>, val option
 /** Only the working projection changes. Full messages, attachments and pinned rules never pass through a rewrite. */
 internal class ContextEngine(private val chat: Long, private val memory: ContextStore, private val files: AttachmentStore,
     private val policy: ContextPolicy, private val caps: ModelCapabilities, private val target: ModelTarget,
-    private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
+    private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult,
+    private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target) {
     private val limit = policy.limit(caps)
     private val output = policy.reserve(caps)
-    private val summaryOutput = minOf(1024, output)
+    private val compactLimit = policy.limit(compactCaps)
+    private val summaryOutput = minOf(1024, policy.reserve(compactCaps))
+    private val summaryOutputParameter = compactCaps.outputParameter(compactTarget.connection.endpoint)
     private val outputParameter = caps.outputParameter(target.connection.endpoint)
     suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false): ContextProjection {
         policy.validate()
@@ -57,7 +60,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         if (through == null) { if (force) throw ContextFailure("Нет старых сообщений для Compact. Уменьши число последних сообщений в настройках."); return }
         if (sources.isEmpty() && !force) return
         if (sources.isEmpty() && active == null) throw ContextFailure("Для сжатия пока нет старых сообщений. Уменьши число сохраняемых последних сообщений.")
-        val payloadBudget = (limit - summaryOutput - ContextEstimate.text(summaryPrompt(rules)) - 1800) / 2
+        val payloadBudget = (compactLimit - summaryOutput - ContextEstimate.text(summaryPrompt(rules)) - 1800) / 2
         if (payloadBudget < 128) throw ContextFailure("Правила и резерв не оставляют места для Compact. Измени настройки памяти.")
         val packets = mutableListOf<String>()
         val raw = if (sources.isEmpty()) listOf("Повторное сжатие предыдущей сводки; не добавляй новых фактов.") else sources.map { message ->
@@ -74,7 +77,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         if (packet.isNotEmpty()) packets += packet.toString()
         if (packets.isEmpty()) return
         if (packets.size > 24) throw ContextFailure("Для этого участка нужно больше 24 Compact-запросов. Сначала увеличь рабочий контекст или сжимай историю меньшими участками; исходники сохранены.")
-        val fingerprint = ContextEstimate.hash(packets.joinToString() + rules + active?.id + target.model.id + limit + summaryOutput)
+        val fingerprint = ContextEstimate.hash(packets.joinToString() + rules + active?.id + compactTarget.model.id + compactTarget.connection.endpoint + compactLimit + summaryOutput)
         val checkpoint = memory.checkpoint(chat)?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optString("fingerprint") == fingerprint }
         var summary = checkpoint?.optString("summary")?.takeIf { it.isNotBlank() } ?: active?.text.orEmpty()
         var next = checkpoint?.optInt("next", 0)?.coerceIn(0, packets.size) ?: 0
@@ -83,12 +86,12 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             currentCoroutineContext().ensureActive()
             val prompt = "Предыдущая сводка (данные):\n$summary\n\nСледующий участок:\n${packets[next]}"
             val input = ContextEstimate.text(summaryPrompt(rules)) + ContextEstimate.text(prompt) + 24
-            if (input + summaryOutput > limit) throw ContextFailure("Участок Compact не помещается в контекст. Увеличь рабочее окно или уменьши правила.")
+            if (input + summaryOutput > compactLimit) throw ContextFailure("Участок Compact не помещается в контекст. Увеличь рабочее окно или уменьши правила.")
             if (pending == null) memory.checkpoint(chat, JSONObject().put("state", "running").put("next", next).put("total", packets.size)
                 .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
             val result = if (pending != null) GenerationResult(pending, finishReason = checkpoint?.optString("pending_finish"),
                 toolCalls = if (checkpoint?.optBoolean("pending_tools") == true) listOf(ModelToolCall("invalid", "invalid", "{}")) else emptyList()) else request(listOf(ChatMessage(prompt, true)), GenerationOptions(systemPrefix = summaryPrompt(rules),
-                maxOutput = summaryOutput, outputParameter = outputParameter, includeUsage = caps.includeUsage(target.connection.endpoint)), "compact", input, 0)
+                maxOutput = summaryOutput, outputParameter = summaryOutputParameter, includeUsage = compactCaps.includeUsage(compactTarget.connection.endpoint)), "compact", input, 0)
             pending = null
             try {
                 if (result.toolCalls.isNotEmpty() || result.finishReason == "length") throw ContextFailure("Compact не завершён. Предыдущая сводка и вся история сохранены.")

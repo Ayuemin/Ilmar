@@ -88,8 +88,9 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 Text("Компактные сообщения", Modifier.weight(1f))
                 Switch(compact, { compact = it; prefs.edit().putBoolean("compact_messages", it).apply() })
             }
-            "Память и контекст" -> com.ayuemin.ilmar.memory.ContextSettings()
+            "Память и контекст" -> com.ayuemin.ilmar.memory.ContextSettings(onConnections = { page = "Подключения" })
             "Инструменты" -> {
+                com.ayuemin.ilmar.tools.ToolSettings()
                 val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
                 val tools = com.ayuemin.ilmar.chat.ToolRegistry.catalogue().filter { it.executorRegistered }
                 if (tools.isEmpty()) Text("Исполнители пока не установлены. SSH, Shell и браузер недоступны.")

@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 4) {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 4), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -134,15 +134,16 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         }
     }
 
-    fun append(chatId: Long, message: ChatMessage, newTitle: String?): ChatMessage {
+    fun append(chatId: Long, message: ChatMessage, newTitle: String?, clearDraft: Boolean = true): ChatMessage {
         writableDatabase.beginTransaction()
         try {
+            check(writableDatabase.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { it.moveToFirst() }) { "Чат удалён" }
             val values = android.content.ContentValues().apply {
                 put("chat_id", chatId); put("text", message.text); put("from_user", if (message.fromUser) 1 else 0)
                 put("attachments", com.ayuemin.ilmar.attachments.ChatAttachment.encode(message.attachments)); put("reply_info", message.info?.json())
             }
             val messageId = writableDatabase.insertOrThrow("messages", null, values)
-            if (message.fromUser) writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
+            if (message.fromUser && clearDraft) writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
             if (newTitle != null) writableDatabase.execSQL(
                 "UPDATE chats SET title = ? WHERE id = ?", arrayOf(newTitle, chatId)
             )

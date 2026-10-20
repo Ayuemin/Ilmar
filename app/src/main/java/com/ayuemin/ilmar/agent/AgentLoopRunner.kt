@@ -28,10 +28,10 @@ internal class AgentLoopRunner(private val maxRounds: Int = 8, private val maxCa
             for (call in result.toolCalls) {
                 check(++calls <= maxCalls) { "Достигнут лимит вызовов инструментов" }
                 val tool = tools.find { it.schema.name == call.name } ?: error("Инструмент не разрешён для этого чата")
-                require(call.arguments.length <= 64 * 1024) { "Слишком большие аргументы инструмента" }
+                require(call.arguments.toByteArray(Charsets.UTF_8).size <= 64 * 1024) { "Слишком большие аргументы инструмента" }
                 val arguments = JSONObject(call.arguments)
                 val output = withTimeout(20_000) { tool.execute(arguments) }
-                require(output.length <= 64 * 1024) { "Результат инструмента слишком большой" }
+                require(output.toByteArray(Charsets.UTF_8).size <= 64 * 1024) { "Результат инструмента слишком большой" }
                 check(!guard.observe(call.name, call.arguments, output)) { "Агент остановлен: повторяющиеся вызовы без прогресса" }
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output)
             }

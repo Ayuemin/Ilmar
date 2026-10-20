@@ -50,6 +50,7 @@ class ChatViewModel @JvmOverloads constructor(
     @Volatile private var closed = false
 
     init {
+        com.ayuemin.ilmar.tools.NativeTools.install(application)
         val chats = store.load().ifEmpty {
             store.create(1L, "Новый чат"); listOf(ChatSession(1L, "Новый чат"))
         }
@@ -114,8 +115,7 @@ class ChatViewModel @JvmOverloads constructor(
         if (mutable.value.activeChatId != null) return
         val source = mutable.value.chats.firstOrNull { it.id == chatId } ?: return
         val message = source.messages.firstOrNull { it.id == messageId } ?: return
-        if (askAgain && !message.fromUser) return
-        if (askAgain && source.messages.last().id == messageId) { select(chatId); generate(chatId); return }
+        if (askAgain) { askAgain(chatId, messageId); return }
         val newId = maxOf(System.currentTimeMillis(), (mutable.value.chats.maxOfOrNull { it.id } ?: 0) + 1)
         store.branch(chatId, newId, messageId, source.title.take(32) + " · ветка")
         memory.setRules(newId, memory.rules(chatId))
@@ -126,7 +126,19 @@ class ChatViewModel @JvmOverloads constructor(
             when (value) { is String -> editor.putString(newKey, value); is Boolean -> editor.putBoolean(newKey, value) }
         }; check(editor.commit())
         mutable.update { it.copy(chats = store.load(), selectedId = newId) }
-        if (askAgain) generate(newId)
+    }
+    /** Repeat an earlier question at the end of the same conversation; keep all existing replies. */
+    fun askAgain(chatId: Long, messageId: Long) {
+        if (mutable.value.activeChatId != null || chatId in mutable.value.importing) return
+        val chat = mutable.value.chats.firstOrNull { it.id == chatId } ?: return
+        val original = chat.messages.firstOrNull { it.id == messageId && it.fromUser } ?: return
+        select(chatId)
+        // An unanswered tail already represents this request: retry it without duplicating it.
+        if (chat.messages.last().id != messageId) {
+            val repeated = store.append(chatId, ChatMessage(original.text, true, attachments = original.attachments), null, clearDraft = false)
+            mutable.update { state -> state.copy(chats = state.chats.map { if (it.id == chatId) it.copy(messages = it.messages + repeated) else it }) }
+        }
+        generate(chatId)
     }
     fun setDraft(id: Long, text: String) { mutable.update { it.copy(drafts = it.drafts + (id to text)) } }
     fun select(id: Long) { if (mutable.value.chats.any { it.id == id }) mutable.update { it.copy(selectedId = id) } }
@@ -151,6 +163,7 @@ class ChatViewModel @JvmOverloads constructor(
         val removed = mutable.value.chats.firstOrNull { it.id == id }?.messages.orEmpty().flatMap { it.attachments } + mutable.value.attachments[id].orEmpty()
         if (mutable.value.activeChatId == id) stop()
         store.delete(id)
+        com.ayuemin.ilmar.tools.ToolDataStore(getApplication()).use { it.clear(id) }
         val remaining = mutable.value.chats.filterNot { it.id == id }
         mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id, drafts = it.drafts - id, attachments = it.attachments - id, contextStatus = it.contextStatus - id) }
         releaseAttachments(removed)
@@ -188,15 +201,28 @@ class ChatViewModel @JvmOverloads constructor(
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val tools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
+                val compactId = contextPreferences.compactModelId
+                val compactModel = registry.snapshot().models.find { it.id == compactId }
+                val compactConnection = registry.snapshot().providers.find { it.id == compactModel?.providerId }
+                // Metadata is enough to plan Compact. Resolve its secret only when a Compact call is needed.
+                val compactTarget = if (compactModel != null && compactConnection != null)
+                    com.ayuemin.ilmar.model.ModelTarget(compactConnection, compactModel, "") else target
+                val compactCaps = registry.capabilities(compactTarget.model.id)
                 val result = kotlinx.coroutines.withContext(contextDispatcher) {
                     com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPreferences.load(), capabilities, target,
                         status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
+                        compactTarget = compactTarget, compactCaps = compactCaps,
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
                             if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
                             val requestId = java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
                             try {
-                                val completion = provider.generate(target.connection.endpoint, target.model.name, target.apiKey, projectedHistory, options) { delta ->
+                                val callTarget = if (purpose == "compact" && compactId != null) {
+                                    try { registry.targetModel(compactId) } catch (_: Exception) {
+                                        throw com.ayuemin.ilmar.memory.ContextFailure("Модель Compact недоступна. Проверь её провайдера и ключ в настройках памяти.")
+                                    }
+                                } else target
+                                val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory, options) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
@@ -215,14 +241,19 @@ class ChatViewModel @JvmOverloads constructor(
                     val ledger = UsageLedger(roundUsage)
                     val info = ReplyInfo(target.model.name, target.connection.name, System.currentTimeMillis(), System.currentTimeMillis() - started,
                         TokenUsage(ledger.input, ledger.output, ledger.total, ledger.cached, ledger.reasoning, ledger.costUsd), ledger.calls, roundUsage.any { it.usage.input == null || it.usage.output == null || it.usage.costUsd == null })
-                    val saved = store.append(chatId, ChatMessage(reply, false, info = info), null)
-                    mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = c.messages + saved) else c }) }
+                    store.append(chatId, ChatMessage(reply, false, info = info), null)
+                    mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = store.load().first { it.id == chatId }.messages) else c }) }
                     diagnostics.record("SUCCESS", chatId)
                 }
             } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
                 mutable.update { it.copy(errors = it.errors + (chatId to "Достигнут лимит времени задачи. Автоматический повтор не выполняется.")) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: com.ayuemin.ilmar.tools.ClarificationRequired) {
+                if (mutable.value.chats.any { it.id == chatId }) {
+                    store.append(chatId, ChatMessage(e.question, false), null)
+                    mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to "Ожидается ответ пользователя")) }
+                }
             } catch (e: Exception) {
                 diagnostics.record("NETWORK_ERROR", chatId)
                 mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.memory.ContextFailure) e.message ?: "Не удалось подготовить контекст" else if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is IllegalStateException || e is IllegalArgumentException)
@@ -231,7 +262,7 @@ class ChatViewModel @JvmOverloads constructor(
             } finally {
                 if (!closed) memory.interrupt(chatId)
                 runtime.edit().remove("active_chat").commit()
-                mutable.update { it.copy(activeChatId = null, streamingText = "") }
+                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
                 request = null
             }
         }

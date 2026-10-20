@@ -9,28 +9,31 @@ import java.util.concurrent.ConcurrentHashMap
 /** Only application-owned executors can register; downloaded plugins remain out of scope. */
 internal object ToolRegistry {
     data class Descriptor(val id: String, val title: String, val configured: Boolean, val executorRegistered: Boolean)
-    private data class Entry(val descriptor: Descriptor, val schema: ToolSchema, val executor: suspend (JSONObject) -> String)
+    private data class Entry(val descriptor: Descriptor, val schema: ToolSchema, val ready: () -> Boolean, val executor: suspend (Long, JSONObject) -> String)
     private val installed = ConcurrentHashMap<String, Entry>()
     fun register(id: String, title: String, schema: ToolSchema, executor: suspend (JSONObject) -> String) {
+        registerForChat(id, title, schema) { _, args -> executor(args) }
+    }
+    fun registerForChat(id: String, title: String, schema: ToolSchema, ready: () -> Boolean = { true }, executor: suspend (Long, JSONObject) -> String) {
         require(schema.name.matches(Regex("[a-zA-Z0-9_-]{1,64}")))
         require(installed.values.none { it.schema.name == schema.name && it.descriptor.id != id })
-        installed[id] = Entry(Descriptor(id, title, true, true), schema, executor)
+        installed[id] = Entry(Descriptor(id, title, true, true), schema, ready, executor)
     }
     fun unregister(id: String) { installed.remove(id) }
     fun catalogue(): List<Descriptor> {
         val base = listOf("SSH", "Shell", "Браузер").map { Descriptor(it, it, false, false) }
-        return base.filterNot { installed.containsKey(it.id) } + installed.values.map { it.descriptor }.sortedBy { it.id }
+        return base.filterNot { installed.containsKey(it.id) } + installed.values.map { it.descriptor.copy(configured = it.ready()) }.sortedBy { it.id }
     }
     fun canExecute(id: String, enabledForChat: Boolean, permissionGranted: Boolean): Boolean =
-        enabledForChat && permissionGranted && installed.containsKey(id)
-    fun availableIds(): Set<String> = installed.keys.toSet()
+        enabledForChat && permissionGranted && installed[id]?.ready?.invoke() == true
+    fun availableIds(): Set<String> = installed.filterValues { it.ready() }.keys.toSet()
     fun authorized(chatId: Long, modes: ChatModePreferences, broker: ToolPermissionBroker): List<BoundTool> =
         installed.values.filter { canExecute(it.descriptor.id, modes.enabled(chatId, "tool_${it.descriptor.id}"), broker.granted(it.descriptor.id)) }.map { entry ->
             BoundTool(entry.schema) { arguments ->
                 val id = entry.descriptor.id
                 check(canExecute(id, modes.enabled(chatId, "tool_$id"), broker.granted(id))) { "Разрешение инструмента отозвано" }
                 check(installed[id] === entry) { "Исполнитель изменился" }
-                entry.executor(arguments)
+                entry.executor(chatId, arguments)
             }
         }
 }

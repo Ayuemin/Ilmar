@@ -171,11 +171,15 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     contentPadding = PaddingValues(vertical = 12.dp)) {
                     items(messages) { message ->
                         Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = if (compact) 4.dp else 8.dp)) {
-                            if (message.fromUser) SelectionContainer(Modifier.fillMaxWidth()) { Text(message.text, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+                            if (message.fromUser) Surface(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                                shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()
+                            ) { SelectionContainer { Text(message.text, modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Start) } }
                             else com.ayuemin.ilmar.ui.markdown.RichMessageContent(message.text, MaterialTheme.colorScheme.onSurface)
                             com.ayuemin.ilmar.attachments.AttachmentList(message.attachments)
                             if (message.id != 0L) Box(Modifier.fillMaxWidth(), contentAlignment = if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart) { MessageActions(message, sending,
-                                onAskAgain = { controller.branch(selected.id, message.id, true); following.value = true },
+                                onAskAgain = { controller.askAgain(selected.id, message.id); following.value = true },
                                 onBranch = { controller.branch(selected.id, message.id); following.value = true },
                                 onSpeak = { speech.speak(message.text) }) }
                         }
