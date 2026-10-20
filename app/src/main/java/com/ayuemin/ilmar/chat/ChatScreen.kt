@@ -18,6 +18,11 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -126,11 +131,11 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IlmarCircleAction("☰", "Открыть диалоги", onClick = { scope.launch { drawerState.open() } })
+            IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, contentDescription = "Открыть диалоги") }
             Text(selected.title, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
             Box {
-                IlmarCircleAction("⋮", "Действия с чатом", onClick = { overflow = true })
+                IconButton(onClick = { overflow = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Действия с чатом") }
                 DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
                     DropdownMenuItem(text = { Text("Статистика токенов") }, onClick = { overflow = false; statsOpen = true })
                     DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { overflow = false; searchOpen = true })
@@ -186,7 +191,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                             } catch (_: android.content.ActivityNotFoundException) {
                                 requestError = "Распознавание речи недоступно"
                             }
-                        }) { Text("🎙") }
+                        }) { Icon(Icons.Filled.Mic, contentDescription = "Распознать речь") }
                         IconButton(enabled = draft.isNotBlank() && !sending, onClick = {
                 val message = draft.trim()
                 if (message.isNotEmpty()) {
@@ -241,7 +246,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                         }
                     }
                 }
-                        }) { Text(if (sending) "…" else "➤") }
+                        }) { Icon(Icons.Filled.Send, contentDescription = "Отправить сообщение") }
                     }
                 }
             )
