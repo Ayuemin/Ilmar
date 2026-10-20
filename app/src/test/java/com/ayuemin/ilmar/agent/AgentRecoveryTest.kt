@@ -32,7 +32,7 @@ class AgentRecoveryTest {
     @Test fun checkpointsPersistEachCompletedToolBeforeNextExecution() = runTest {
         val checkpoints = mutableListOf<List<JSONObject>>()
         val tool = BoundTool(ToolSchema("write", "test", JSONObject())) {
-            if (checkpoints.last().size != 2) error("First tool result not checkpointed")
+            if (checkpoints.last().size != 1) error("Tool group was not checkpointed before execution")
             "saved"
         }
         var round = 0
