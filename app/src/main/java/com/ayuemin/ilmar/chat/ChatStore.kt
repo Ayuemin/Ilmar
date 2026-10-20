@@ -77,9 +77,9 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
                     if (result != null) " · подтверждённый результат: $result" else ""
             }
         }
-        return if (lines.isEmpty()) "" else "Состояние инструментов, сохранённое на устройстве (не сводка модели):\\n" +
-            lines.joinToString("\\n") +
-            "\\nUNKNOWN означает неопределённый исход: НЕ повторяй побочные действия автоматически. Сначала проверь результат через безопасное чтение. SUCCEEDED не выполняй повторно."
+        return if (lines.isEmpty()) "" else "Состояние инструментов, сохранённое на устройстве (не сводка модели):\n" +
+            lines.joinToString("\n") +
+            "\nUNKNOWN означает неопределённый исход: НЕ повторяй побочные действия автоматически. Сначала проверь результат через безопасное чтение. SUCCEEDED не выполняй повторно."
     }
 
     private fun createToolTraces(db: SQLiteDatabase) {
