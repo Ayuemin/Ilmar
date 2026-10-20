@@ -27,6 +27,13 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.rgb(5, 4, 4)
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.rgb(5, 4, 4)
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = 0
+        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent {
             var settings by remember { mutableStateOf(false) }
             MaterialTheme(colorScheme = darkColorScheme(
