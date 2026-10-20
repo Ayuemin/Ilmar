@@ -14,7 +14,10 @@ import java.util.PriorityQueue
 internal class SemanticArchive(private val store: ChatStore) {
     private val db get() = store.writableDatabase
     fun count(chat: Long, space: String): Int = db.rawQuery("SELECT count(*) FROM semantic_chunks WHERE chat_id=? AND space=?", arrayOf(chat.toString(), space)).use { it.moveToFirst(); it.getInt(0) }
-    suspend fun index(chat: Long, history: List<ChatMessage>, space: String, embed: suspend (List<String>) -> List<FloatArray>, progress: (Int) -> Unit = {}) {
+    suspend fun index(chat: Long, history: List<ChatMessage>, space: String, embed: suspend (List<String>) -> List<FloatArray>, progress: (Int) -> Unit = {}) =
+        indexBatched(chat, history, space, embed, true, {}, progress)
+    suspend fun indexBatched(chat: Long, history: List<ChatMessage>, space: String, embed: suspend (List<String>) -> List<FloatArray>,
+        flushPartial: Boolean, deferred: (Int) -> Unit = {}, progress: (Int) -> Unit = {}) {
         data class Part(val message: Long, val hash: String, val index: Int, val text: String)
         val pending = mutableListOf<Part>()
         val sources = mutableListOf<Pair<Long, String>>()
@@ -59,9 +62,11 @@ internal class SemanticArchive(private val store: ChatStore) {
                 if (pending.size >= Limits.get("embedding_batch")) flush()
             }
         }
-        flush()
+        if (flushPartial) flush()
+        val unfinished = pending.map { it.message }.toSet()
+        deferred(pending.size)
         sources.forEach { (message, hash) ->
-            if (currentHash(message) == hash) db.execSQL("INSERT OR REPLACE INTO semantic_sources VALUES(?,?,?,?)", arrayOf(chat, message, space, hash))
+            if (message !in unfinished && currentHash(message) == hash) db.execSQL("INSERT OR REPLACE INTO semantic_sources VALUES(?,?,?,?)", arrayOf(chat, message, space, hash))
         }
         progress(count(chat, space))
     }

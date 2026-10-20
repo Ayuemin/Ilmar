@@ -77,7 +77,7 @@ class ChatViewModel @JvmOverloads constructor(
         indexArchive(chats.first().id)
     }
 
-    internal fun indexArchive(chatId: Long) { archive.schedule(viewModelScope, chatId) { label -> mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to label)) } } }
+    internal fun indexArchive(chatId: Long, force: Boolean = false) { archive.schedule(viewModelScope, chatId, { label -> mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to label)) } }, force) }
     internal suspend fun semanticSearch(chatId: Long, query: String) = archive.search(chatId, query, Long.MAX_VALUE)
     internal fun stopArchive(chatId: Long) { archive.cancel(chatId); mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to "Индексация остановлена. Сохранённые пакеты будут использованы при продолжении.")) } }
     internal fun embeddingUsage(chatId: Long) = com.ayuemin.ilmar.memory.EmbeddingLedger(store).summary(chatId)

@@ -28,7 +28,7 @@ internal class ArchiveRetrieval(private val context: Context, private val regist
         } catch (e: CancellationException) { ledger.finish(id, "cancelled"); throw e }
         catch (e: Exception) { ledger.finish(id, "failed"); diagnostics.failure("EMBEDDING_REQUEST_ERROR", chat, e, details); throw e }
     }
-    fun schedule(scope: CoroutineScope, chat: Long, progress: (String) -> Unit) {
+    fun schedule(scope: CoroutineScope, chat: Long, progress: (String) -> Unit, force: Boolean = false) {
         if (!preferences.load().enabled || jobs[chat]?.isCompleted == false) return
         jobs[chat] = scope.launch(Dispatchers.IO) {
             try {
@@ -38,10 +38,11 @@ internal class ArchiveRetrieval(private val context: Context, private val regist
                 ChatStore(context).use { store ->
                     val history = store.load().find { it.id == chat }?.messages.orEmpty().dropLast(maxOf(1, ContextPreferences(context).load().recent))
                     progress("Индексируется архив…")
-                    SemanticArchive(store).index(chat, history, space, { texts ->
+                    var deferred = 0
+                    SemanticArchive(store).indexBatched(chat, history, space, { texts ->
                         embed(store, chat, config, config.endpoint(connection.endpoint), key, texts, "index")
-                    }, { progress("Семантический архив: $it фрагментов") })
-                    progress("Семантический архив: ${SemanticArchive(store).count(chat, space)} фрагментов")
+                    }, flushPartial = force, deferred = { deferred = it }, progress = { progress("Семантический архив: $it фрагментов") })
+                    progress("Семантический архив: ${SemanticArchive(store).count(chat, space)} фрагментов" + if (deferred > 0) " · $deferred ожидают общего пакета; локальный поиск доступен сразу" else "")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { diagnostics.failure("EMBEDDING_ERROR", chat, e); progress("Индексирование недоступно: ${e.message}. Локальный поиск работает.") }

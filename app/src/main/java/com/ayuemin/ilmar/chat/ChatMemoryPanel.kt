@@ -46,7 +46,7 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
             TaskStateCard(snapshot)
             chatState.archiveStatus[chat]?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Row {
-                TextButton(onClick = { controller.indexArchive(chat) }) { Text("Обновить индекс") }
+                TextButton(onClick = { controller.indexArchive(chat, force = true) }) { Text("Индексировать сейчас") }
                 TextButton(onClick = { controller.stopArchive(chat) }) { Text("Остановить индекс") }
             }
             val embeddingUsage = controller.embeddingUsage(chat)

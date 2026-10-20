@@ -134,4 +134,19 @@ class TokenEconomyTest {
         assertEquals(1, SemanticArchive(db).count(1, "space"))
         assertEquals(0, EmbeddingLedger(db).summary(1).getInt("calls"))
     }
+    @Test fun backgroundAccumulatesSixteenContinuedAnswersIntoOneRequestAndManualFlushRemainsAvailable() = runTest {
+        var paidRequests = 0; var embedded = 0
+        suspend fun background() = SemanticArchive(db).indexBatched(1, db.load().single().messages, "space", { texts -> paidRequests++; embedded += texts.size; texts.map { floatArrayOf(1f) } }, flushPartial = false)
+        repeat(15) { i ->
+            db.append(1, ChatMessage("далее", true), null); db.append(1, ChatMessage("Important answer $i", false), null)
+            background(); assertEquals(0, paidRequests)
+        }
+        db.close(); db = ChatStore(app)
+        db.append(1, ChatMessage("далее", true), null); db.append(1, ChatMessage("Important answer 15", false), null)
+        background(); assertEquals(1, paidRequests); assertEquals(16, embedded)
+        db.append(1, ChatMessage("Version 42", true), null); background(); assertEquals(1, paidRequests)
+        SemanticArchive(db).index(1, db.load().single().messages, "space", { texts -> paidRequests++; assertEquals(listOf("Version 42"), texts); texts.map { floatArrayOf(1f) } })
+        assertEquals(2, paidRequests); assertEquals(33, db.load().single().messages.size)
+        assertTrue(ContextStore(db).search(1, "Version 42").contains("Version 42"))
+    }
 }
