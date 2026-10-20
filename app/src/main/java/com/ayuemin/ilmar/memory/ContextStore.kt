@@ -57,7 +57,7 @@ internal class ContextStore(private val store: ChatStore) {
         val words = Regex("[\\p{L}\\p{N}_]{2,}").findAll(query).map { it.value }.distinct().take(6).toList()
         if (words.isEmpty()) return ""
         db.execSQL("INSERT INTO message_search(rowid,chat_id,body) SELECT id,chat_id,text || ' ' || coalesce(attachments,'') FROM messages WHERE id NOT IN (SELECT rowid FROM message_search)")
-        return db.rawQuery("SELECT rowid,snippet(message_search,'','', ' … ', -1, 30) FROM message_search WHERE message_search MATCH ? AND chat_id=? AND rowid<=? ORDER BY rowid DESC LIMIT 3",
+        return db.rawQuery("SELECT rowid,snippet(message_search,'','', ' … ', -1, 30) FROM message_search WHERE message_search MATCH ? AND CAST(chat_id AS INTEGER)=CAST(? AS INTEGER) AND rowid<=? ORDER BY rowid DESC LIMIT 3",
             arrayOf(words.joinToString(" OR ") { "\"$it\"" }, chat.toString(), through.toString())).use { rows ->
             buildString { while (rows.moveToNext()) append("Сообщение ${rows.getLong(0)}: ${rows.getString(1).take(600)}\n") }.take(1800)
         }

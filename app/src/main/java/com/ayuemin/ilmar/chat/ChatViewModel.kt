@@ -199,7 +199,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 val completion = provider.generate(target.connection.endpoint, target.model.name, target.apiKey, projectedHistory, options) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
-                                recordCall(chatId, requestId, completion.usage, "completed", purpose, saved)
+                                recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
                                 if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
                                 completion
                             } catch (e: CancellationException) {
@@ -243,9 +243,9 @@ class ChatViewModel @JvmOverloads constructor(
         diagnostics.record("CANCELLED", id)
         mutable.update { it.copy(errors = it.errors + (id to "Ответ остановлен. Можно повторить запрос.")) }
     }
-    private fun recordCall(chatId: Long, requestId: String, usage: TokenUsage, status: String, purpose: String = "answer", saved: Int = 0) {
+    private fun recordCall(chatId: Long, requestId: String, usage: TokenUsage, status: String, purpose: String = "answer", saved: Int = 0, completion: com.ayuemin.ilmar.model.GenerationResult? = null) {
         if (closed) return
-        store.recordUsage(chatId, requestId, usage, status, purpose, saved)
+        store.recordUsage(chatId, requestId, usage, status, purpose, saved, completion)
         runtime.edit().remove("active_request").commit()
     }
     override fun onCleared() {

@@ -55,9 +55,23 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         db.execSQL("CREATE TABLE IF NOT EXISTS request_usage (id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, status TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cached_tokens INTEGER, reasoning_tokens INTEGER, cost_usd TEXT)")
     }
 
-    fun recordUsage(chatId: Long, requestId: String, usage: com.ayuemin.ilmar.model.TokenUsage, status: String, purpose: String = "answer", estimatedSaved: Int = 0) {
-        writableDatabase.execSQL("INSERT OR IGNORE INTO request_usage SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM messages WHERE chat_id = ?)",
-            arrayOf<Any?>(requestId, chatId, status, usage.input, usage.output, usage.total, usage.cached, usage.reasoning, usage.costUsd, purpose, estimatedSaved, chatId))
+    fun recordUsage(chatId: Long, requestId: String, usage: com.ayuemin.ilmar.model.TokenUsage, status: String, purpose: String = "answer", estimatedSaved: Int = 0,
+        completion: com.ayuemin.ilmar.model.GenerationResult? = null) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("INSERT OR IGNORE INTO request_usage SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM messages WHERE chat_id = ?)",
+                arrayOf<Any?>(requestId, chatId, status, usage.input, usage.output, usage.total, usage.cached, usage.reasoning, usage.costUsd, purpose, estimatedSaved, chatId))
+            // The paid Compact result and its usage become durable together. A restart can validate it without buying the same packet again.
+            if (purpose == "compact" && completion != null) {
+                val memory = com.ayuemin.ilmar.memory.ContextStore(this)
+                memory.checkpoint(chatId)?.let { raw ->
+                    memory.checkpoint(chatId, org.json.JSONObject(raw).put("pending_result", completion.text.take(20000))
+                        .put("pending_finish", completion.finishReason).put("pending_tools", completion.toolCalls.isNotEmpty()))
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     fun usage(chatId: Long): UsageLedger {

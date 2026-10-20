@@ -35,11 +35,22 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
             Text("Правила передаются дословно и не переписываются моделью при сжатии.", style = MaterialTheme.typography.bodySmall)
             TextButton(enabled = !busy && !working && snapshot != null, onClick = { val text = rules ?: snapshot!!.rules; mutate { controller.setRules(chat, text) } }) { Text("Сохранить правила") }
             Button(enabled = !busy && !working, onClick = { controller.compact(chat) }) { Text("Сжать сейчас / повторно") }
-            snapshot?.checkpoint?.let { Text("Контрольная точка Compact:\n$it", style = MaterialTheme.typography.bodySmall) }
+            snapshot?.checkpoint?.let { raw ->
+                val checkpoint = remember(raw) { org.json.JSONObject(raw) }
+                Text("Контрольная точка: ${checkpoint.optInt("next")} из ${checkpoint.optInt("total")} участков. Явное повторение продолжит с сохранённого места, если исходники и настройки не изменились.", style = MaterialTheme.typography.bodySmall)
+            }
             Text("Версии сводки (последние 20)", style = MaterialTheme.typography.labelLarge)
             snapshot?.capsules.orEmpty().forEach { capsule ->
                 Text("#${capsule.id}${if (capsule.active) " · активна" else ""} · ≈ ${capsule.before} → ${capsule.after} токенов")
-                Text(capsule.text, style = MaterialTheme.typography.bodySmall)
+                val readable = remember(capsule.text) {
+                    val json = org.json.JSONObject(capsule.text)
+                    listOf("goal" to "Цель", "facts" to "Факты", "decisions" to "Решения", "progress" to "Прогресс", "files" to "Файлы и версии",
+                        "tests" to "Проверки", "errors" to "Ошибки", "next" to "Следующий шаг", "uncertain" to "Неопределённость").mapNotNull { (key, title) ->
+                        val values = json.optJSONArray(key)
+                        if (values == null || values.length() == 0) null else title + ": " + (0 until values.length()).joinToString("; ") { values.getString(it) }
+                    }.joinToString("\n")
+                }
+                Text(readable, style = MaterialTheme.typography.bodySmall)
                 Row {
                     TextButton(enabled = !busy && !working && !capsule.active, onClick = { mutate { controller.activateCapsule(chat, capsule.id) } }) { Text("Использовать") }
                     TextButton(enabled = !busy && !working, onClick = { mutate { controller.deleteCapsule(chat, capsule.id) } }) { Text("Удалить сводку") }

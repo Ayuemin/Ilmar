@@ -63,6 +63,20 @@ class ContextEngineTest {
         assertEquals(checkpoint.getInt("total") - 1, resumed)
         assertNotNull(memory.active(1)); assertNull(memory.checkpoint(1))
     }
+    @Test fun durablePaidPacketIsRecoveredWithoutCallingModelAgain() = runTest {
+        val history = history(8, 3000)
+        assertTrue(runCatching { engine { _, _, _, _, _ -> throw CancellationException("process died after response") }
+            .prepare(history, emptyList(), emptyList(), true) }.isFailure)
+        val checkpoint = JSONObject(memory.checkpoint(1)!!)
+        val completion = GenerationResult(summary, TokenUsage(50, 10, 60, costUsd = "0.001"))
+        db.recordUsage(1, "paid", completion.usage, "completed", "compact", completion = completion)
+        assertEquals(summary, JSONObject(memory.checkpoint(1)!!).getString("pending_result"))
+        var calls = 0
+        engine { _, _, _, _, _ -> calls++; GenerationResult(summary) }.prepare(history, emptyList(), emptyList(), true)
+        assertEquals(checkpoint.getInt("total") - 1, calls)
+        assertEquals(1, db.usage(1).compactCalls)
+        assertEquals("0.001", db.usage(1).compactCost)
+    }
     @Test fun malformedSummaryDoesNotReplacePreviousVersionOrHistory() = runTest {
         val history = history()
         engine { _, _, _, _, _ -> GenerationResult(summary) }.prepare(history, emptyList(), emptyList(), true)

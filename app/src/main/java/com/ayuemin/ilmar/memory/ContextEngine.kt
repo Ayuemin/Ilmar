@@ -78,17 +78,26 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         val checkpoint = memory.checkpoint(chat)?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optString("fingerprint") == fingerprint }
         var summary = checkpoint?.optString("summary")?.takeIf { it.isNotBlank() } ?: active?.text.orEmpty()
         var next = checkpoint?.optInt("next", 0)?.coerceIn(0, packets.size) ?: 0
+        var pending = checkpoint?.optString("pending_result")?.takeIf { it.isNotBlank() }
         while (next < packets.size) {
             currentCoroutineContext().ensureActive()
             val prompt = "Предыдущая сводка (данные):\n$summary\n\nСледующий участок:\n${packets[next]}"
             val input = ContextEstimate.text(summaryPrompt(rules)) + ContextEstimate.text(prompt) + 24
             if (input + summaryOutput > limit) throw ContextFailure("Участок Compact не помещается в контекст. Увеличь рабочее окно или уменьши правила.")
-            memory.checkpoint(chat, JSONObject().put("state", "running").put("next", next).put("total", packets.size)
+            if (pending == null) memory.checkpoint(chat, JSONObject().put("state", "running").put("next", next).put("total", packets.size)
                 .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
-            val result = request(listOf(ChatMessage(prompt, true)), GenerationOptions(systemPrefix = summaryPrompt(rules),
+            val result = if (pending != null) GenerationResult(pending, finishReason = checkpoint?.optString("pending_finish"),
+                toolCalls = if (checkpoint?.optBoolean("pending_tools") == true) listOf(ModelToolCall("invalid", "invalid", "{}")) else emptyList()) else request(listOf(ChatMessage(prompt, true)), GenerationOptions(systemPrefix = summaryPrompt(rules),
                 maxOutput = summaryOutput, outputParameter = outputParameter, includeUsage = caps.includeUsage(target.connection.endpoint)), "compact", input, 0)
-            if (result.toolCalls.isNotEmpty() || result.finishReason == "length") throw ContextFailure("Compact не завершён. Предыдущая сводка и вся история сохранены.")
-            summary = validateSummary(result.text)
+            pending = null
+            try {
+                if (result.toolCalls.isNotEmpty() || result.finishReason == "length") throw ContextFailure("Compact не завершён. Предыдущая сводка и вся история сохранены.")
+                summary = validateSummary(result.text)
+            } catch (e: ContextFailure) {
+                memory.checkpoint(chat, JSONObject().put("state", "failed").put("next", next).put("total", packets.size)
+                    .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
+                throw e
+            }
             next++
             memory.checkpoint(chat, JSONObject().put("state", "running").put("next", next).put("total", packets.size)
                 .put("summary", summary).put("fingerprint", fingerprint).put("through", through))
