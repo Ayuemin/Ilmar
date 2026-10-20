@@ -1,10 +1,11 @@
 package com.ayuemin.ilmar.chat
 
 import android.content.Context
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,142 +14,94 @@ import androidx.compose.ui.unit.dp
 
 internal class ChatModePreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_chat_modes", Context.MODE_PRIVATE)
-    fun enabled(id: Long, mode: String) = prefs.getBoolean(id.toString() + "_" + mode, false)
-    fun choice(id: Long, name: String): String = prefs.getString(id.toString() + "_" + name, "Автоматически") ?: "Автоматически"
-    fun setChoice(id: Long, name: String, value: String) {
-        prefs.edit().putString(id.toString() + "_" + name, value).apply()
-    }
-    fun setEnabled(id: Long, mode: String, enabled: Boolean) {
-        prefs.edit().putBoolean(id.toString() + "_" + mode, enabled).apply()
-    }
+    fun enabled(id: Long, mode: String) = prefs.getBoolean("${id}_$mode", false)
+    fun choice(id: Long, key: String) = prefs.getString("${id}_$key", "auto") ?: "auto"
+    fun setChoice(id: Long, key: String, value: String) { prefs.edit().putString("${id}_$key", value).apply() }
+    fun setEnabled(id: Long, mode: String, enabled: Boolean) { prefs.edit().putBoolean("${id}_$mode", enabled).apply() }
 }
 
+/** Umnik actions/toggle/tools layout, using only Ilmar's real installed capabilities. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss: () -> Unit) {
-    var selected by remember(id) { mutableStateOf("") }
-    var depth by remember(id) { mutableStateOf(preferences.choice(id, "depth")) }
-    var searchEngine by remember(id) { mutableStateOf(preferences.choice(id, "search_engine")) }
-    var toolsExpanded by remember(id) { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
-            Text("Режимы чата", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(12.dp))
-            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
-                listOf("Агент", "Поиск", "Размышление").forEach { name ->
-                    var checked by remember(id, name) { mutableStateOf(preferences.enabled(id, name)) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = { selected = name }, modifier = Modifier.weight(1f)) { Text("$name ›") }
-                        Switch(checked = checked, onCheckedChange = {
-                            checked = it
-                            preferences.setEnabled(id, name, it)
-                        })
-                    }
-                if (selected == name) {
-                    HorizontalDivider()
-                    if (selected == "Размышление") {
-                        Text("Предпочтительная глубина (пока не передаётся API)", style = MaterialTheme.typography.labelMedium)
-                        listOf("Автоматически", "Низкая", "Средняя", "Высокая").forEach { value ->
-                            Row(verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    depth = value; preferences.setChoice(id, "depth", value)
-                                }) {
-                                RadioButton(selected = depth == value, onClick = {
-                                    depth = value; preferences.setChoice(id, "depth", value)
-                                })
-                                Text(value)
-                            }
-                        }
-                    }
-                    if (selected == "Поиск") {
-                        Text("Источник поиска (пока не подключён)", style = MaterialTheme.typography.labelMedium)
-                        listOf("Автоматически", "Провайдер", "Локальный браузер").forEach { value ->
-                            Row(verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    searchEngine = value; preferences.setChoice(id, "search_engine", value)
-                                }) {
-                                RadioButton(selected = searchEngine == value, onClick = {
-                                    searchEngine = value; preferences.setChoice(id, "search_engine", value)
-                                })
-                                Text(value)
-                            }
-                        }
-                    }
-                    Text(when (selected) {
-                        "SSH" -> "SSH-серверы настраиваются глобально. Здесь будет выбор сервера для текущего чата."
-                        "Shell" -> "Shell ещё не подключён. Разрешения будут управляться глобально."
-                        "Браузер" -> "Браузер ещё не подключён. Здесь будет выбор настроенного режима."
-                        "Размышление" -> "Глубина зависит от модели. Настройки появятся после проверки API провайдера."
-                        "Поиск" -> "Настройки поискового движка появятся после интеграции поиска."
-                        else -> "Настройки агента появятся после реализации безопасного исполнения."
-                    }, style = MaterialTheme.typography.bodySmall)
-                }
-                }
-                TextButton(onClick = { toolsExpanded = !toolsExpanded; selected = "" }) {
-                    Text(if (toolsExpanded) "Инструменты ⌄" else "Инструменты ›")
-                }
-                if (toolsExpanded) {
-                    ToolSelectionPanel(id, preferences, onDetails = { selected = it })
-                }
-
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolSelectionPanel(
-    id: Long,
-    preferences: ChatModePreferences,
-    onDetails: (String) -> Unit
-) {
-    val tools = ToolRegistry.catalogue().map { it.id }
+internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
+    onAttachText: () -> Unit, onImage: () -> Unit, onPhoto: () -> Unit, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val registry = remember { com.ayuemin.ilmar.model.ProviderRegistry(context) }
+    val model = registry.modelForChat(id)
+    val connection = registry.snapshot().providers.find { it.id == model?.providerId }
+    val capabilities = model?.let { registry.capabilities(it.id) } ?: com.ayuemin.ilmar.model.ModelCapabilities()
+    val canReason = connection?.let { capabilities.supportsReasoning(it.endpoint) } == true
+    var reasoning by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Размышление") && canReason) }
+    var effort by remember(id, model?.id) { mutableStateOf(preferences.choice(id, "reasoning_effort")) }
+    var reasoningSettings by remember { mutableStateOf(false) }
+    val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
+    val canAgent = capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty()
+    var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
+    var toolsExpanded by remember { mutableStateOf(false) }
+    val tools = ToolRegistry.catalogue()
     val available = ToolRegistry.availableIds()
-    var applied by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) && it in available }.toSet()) }
-    var chosen by remember(id) { mutableStateOf(applied) }
-    val allSelected = tools.isNotEmpty() && tools.all { it in chosen }
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = allSelected, onCheckedChange = { value ->
-                chosen = if (value) tools.toSet() else emptySet()
-            })
-            Text("Выбрать всё", modifier = Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                enabled = chosen.isNotEmpty() && chosen.all { it in available },
-                onClick = {
-                    tools.forEach { preferences.setEnabled(id, "tool_" + it, it in chosen) }
-                    applied = chosen
-                }
-            ) { Text("Включить") }
-            OutlinedButton(
-                enabled = applied.isNotEmpty(),
-                onClick = {
-                    tools.forEach { preferences.setEnabled(id, "tool_" + it, false) }
-                    applied = emptySet()
-                    chosen = emptySet()
-                }
-            ) { Text("Выключить все") }
-        }
-        Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
-        tools.forEach { name ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = name in chosen,
-                    onCheckedChange = { value ->
-                        chosen = if (value) chosen + name else chosen - name
+    var chosen by remember(id) { mutableStateOf(available.filter { preferences.enabled(id, "tool_$it") }.toSet()) }
+    var applied by remember(id) { mutableStateOf(chosen) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp).padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ComposerActionTile(Icons.Outlined.AttachFile, "Файл", true, Modifier.weight(1f)) { onDismiss(); onAttachText() }
+                ComposerActionTile(Icons.Outlined.CameraAlt, "Фото", true, Modifier.weight(1f)) { onDismiss(); onPhoto() }
+                ComposerActionTile(Icons.Outlined.Image, "Изображение", true, Modifier.weight(1f)) { onDismiss(); onImage() }
+            }
+            Text("Файлы: текст UTF-8, DOCX, PDF до 12 страниц. Фото и PDF требуют модели с входом image. До 8 вложений по 20 МБ (текст — 256 КБ); отправка только по кнопке.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                ComposerToggleTile(Icons.Outlined.Psychology, if (reasoning) 2 else 0, 3, levelDescription = "Размышление",
+                    checked = reasoning, enabled = canReason, modifier = Modifier.weight(1f),
+                    onOpenSettings = { reasoningSettings = !reasoningSettings }, onCheckedChange = {
+                        reasoning = it; preferences.setEnabled(id, "Размышление", it)
+                    })
+                ComposerToggleTile(Icons.Outlined.Language, 0, 4, levelDescription = "Интернет пока не подключён",
+                    checked = false, enabled = false, modifier = Modifier.weight(1f), onCheckedChange = {})
+                ComposerToggleTile(Icons.Outlined.SmartToy, if (agent) 5 else 0, 5, indicatorText = "АГЕНТ", levelDescription = "Агент",
+                    checked = agent, enabled = canAgent, modifier = Modifier.weight(1f), onCheckedChange = {
+                        agent = it; preferences.setEnabled(id, "Агент", it)
+                    })
+            }
+            if (reasoningSettings && canReason) {
+                Text("Глубина размышления", style = MaterialTheme.typography.labelLarge)
+                (listOf("auto") + capabilities.efforts).distinct().forEach { value ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = effort == value, onClick = { effort = value; preferences.setChoice(id, "reasoning_effort", value) })
+                        Text(if (value == "auto") "Автоматически" else value)
                     }
-                )
-                OutlinedButton(onClick = { onDetails(name) }, modifier = Modifier.weight(1f)) {
-                    Text("$name ›")
                 }
-                if (name in applied) Text("✓", color = MaterialTheme.colorScheme.primary)
+            }
+            Text(if (!capabilities.known) "Каталог не сообщил возможности модели. Обнови список в разделе «Модели»."
+                else "Reasoning: ${if (canReason) "доступен" else "не подтверждён"}. Tool calling: ${if (capabilities.tools) "поддерживается" else "не подтверждён"}.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!canAgent) Text("Для агента нужны поддержка tools, установленный инструмент, разрешение в настройках и выбор для чата.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ComposerSectionHeader(Icons.Outlined.Storage, "Инструменты", toolsExpanded) { toolsExpanded = !toolsExpanded }
+            if (toolsExpanded) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = available.isNotEmpty() && chosen.containsAll(available), enabled = available.isNotEmpty(),
+                        onCheckedChange = { chosen = if (it) available else emptySet() })
+                    Text("Выбрать всё", modifier = Modifier.weight(1f), maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Button(enabled = chosen.isNotEmpty(), onClick = {
+                        tools.forEach { preferences.setEnabled(id, "tool_${it.id}", it.id in chosen) }; applied = chosen
+                    }) { Text("Включить", maxLines = 1) }
+                }
+                tools.forEach { tool ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = tool.id in chosen, enabled = tool.id in available,
+                            onCheckedChange = { chosen = if (it) chosen + tool.id else chosen - tool.id })
+                        Text(tool.title, Modifier.weight(1f))
+                        if (tool.id !in available) Text("Не подключён", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                OutlinedButton(enabled = applied.isNotEmpty(), onClick = {
+                    tools.forEach { preferences.setEnabled(id, "tool_${it.id}", false) }; applied = emptySet(); chosen = emptySet()
+                }) { Text("Выключить все") }
             }
         }
-        }
-        Text(if (available.isEmpty()) "Инструменты пока не подключены. Отметки — только выбор; включение недоступно до установки исполнителя и настройки разрешений." else "Доступно: " + available.size + ". Отметки не включают инструменты до нажатия «Включить». Разрешения проверяются перед исполнением.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -19,6 +19,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      ILMAR_BUILD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -44,16 +46,24 @@ jobs:
           gradle-version: '8.11.1'
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Compile Kotlin and unit tests
-        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --stacktrace --no-daemon
+        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
 
       - name: Build installable debug APK
-        if: github.event_name != 'pull_request'
         run: gradle :app:assembleDebug --stacktrace --no-daemon
       - name: Publish debug APK
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ilmar-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-check-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
           retention-days: 14
