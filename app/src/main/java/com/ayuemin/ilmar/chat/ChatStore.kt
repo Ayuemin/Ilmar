@@ -36,6 +36,25 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         writableDatabase.execSQL("INSERT INTO chats(id, title) VALUES(?, ?)", arrayOf(id, title))
     }
 
+    fun clearMessages(chatId: Long) {
+        writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
+    }
+
+    fun rename(chatId: Long, title: String) {
+        writableDatabase.execSQL("UPDATE chats SET title = ? WHERE id = ?", arrayOf(title, chatId))
+    }
+
+    fun delete(chatId: Long) {
+        writableDatabase.beginTransaction()
+        try {
+            writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM chats WHERE id = ?", arrayOf(chatId))
+            writableDatabase.setTransactionSuccessful()
+        } finally {
+            writableDatabase.endTransaction()
+        }
+    }
+
     fun append(chatId: Long, message: ChatMessage, newTitle: String?) {
         writableDatabase.beginTransaction()
         try {
