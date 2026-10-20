@@ -23,6 +23,7 @@ internal class ChatModePreferences(context: Context) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss: () -> Unit) {
     var selected by remember(id) { mutableStateOf("") }
