@@ -26,7 +26,10 @@ internal class ContextStore(private val store: ChatStore) {
     }
     fun active(chat: Long) = snapshot(chat).capsules.firstOrNull { it.active }
     fun checkpoint(chat: Long): String? = db.rawQuery("SELECT payload FROM context_checkpoint WHERE chat_id=?", arrayOf(chat.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
-    fun checkpoint(chat: Long, data: JSONObject) { db.execSQL("INSERT OR REPLACE INTO context_checkpoint VALUES(?,?)", arrayOf(chat, data.toString())) }
+    fun checkpoint(chat: Long, data: JSONObject) {
+        db.execSQL("INSERT OR REPLACE INTO context_checkpoint SELECT ?,? WHERE EXISTS(SELECT 1 FROM messages WHERE chat_id=? AND id=?)",
+            arrayOf(chat, data.toString(), chat, data.getLong("through")))
+    }
     fun interrupt(chat: Long) {
         checkpoint(chat)?.let { checkpoint(chat, JSONObject(it).put("state", "interrupted")) }
     }
@@ -34,6 +37,8 @@ internal class ContextStore(private val store: ChatStore) {
     fun save(chat: Long, through: Long, text: String, hash: String, before: Int, after: Int) {
         db.beginTransaction()
         try {
+            val exists = db.rawQuery("SELECT 1 FROM messages WHERE chat_id=? AND id=?", arrayOf(chat.toString(), through.toString())).use { it.moveToFirst() }
+            if (!exists) throw ContextFailure("История была очищена. Результат сжатия не сохранён.")
             db.execSQL("UPDATE context_capsules SET active=0 WHERE chat_id=?", arrayOf(chat))
             db.execSQL("INSERT INTO context_capsules(chat_id,through_id,text,source_hash,created,before_tokens,after_tokens,active) VALUES(?,?,?,?,?,?,?,1)",
                 arrayOf(chat, through, text, hash, System.currentTimeMillis(), before, after))

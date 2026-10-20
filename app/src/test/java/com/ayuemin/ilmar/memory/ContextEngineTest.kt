@@ -93,6 +93,17 @@ class ContextEngineTest {
         db.clearMessages(1)
         assertEquals("", memory.search(1, "version 42")); assertNull(memory.active(1))
     }
+    @Test fun lateCompactionCannotRestoreMemoryAfterHistoryWasCleared() {
+        val history = history(2, 50)
+        val through = history.last().id
+        val checkpoint = JSONObject().put("through", through).put("state", "running")
+        memory.checkpoint(1, checkpoint)
+        db.clearMessages(1)
+        memory.checkpoint(1, checkpoint)
+        assertNull(memory.checkpoint(1))
+        assertThrows(ContextFailure::class.java) { memory.save(1, through, summary, ContextEstimate.source(history, through), 200, 100) }
+        assertNull(memory.active(1))
+    }
     @Test fun toolsAndToolResultsAreBudgetedAsCompleteRoundInsteadOfTruncated() = runTest {
         val history = history(1, 10)
         val huge = listOf(JSONObject().put("role", "tool").put("content", "x".repeat(40000)))
