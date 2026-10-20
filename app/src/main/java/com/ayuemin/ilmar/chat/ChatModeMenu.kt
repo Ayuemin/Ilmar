@@ -91,7 +91,6 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                 }
 
             }
-            }
         }
     }
 }
