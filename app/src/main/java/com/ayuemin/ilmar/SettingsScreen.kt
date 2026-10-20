@@ -19,6 +19,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
     val credentials = remember(context) { CredentialStore(context) }
+    var endpoint by remember { mutableStateOf(prefs.getString("api_endpoint", "https://api.openai.com/v1/chat/completions") ?: "") }
+    var model by remember { mutableStateOf(prefs.getString("api_model", "gpt-4o-mini") ?: "") }
     var apiKeyDraft by remember { mutableStateOf("") }
     var keySaved by remember { mutableStateOf(credentials.hasApiKey()) }
     var compactMessages by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
@@ -39,7 +41,17 @@ fun SettingsScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(12.dp))
         SettingsSection("Модель и провайдер",
-            "OpenAI-compatible API · сетевой адаптер пока не подключён.")
+            "OpenAI-compatible API · HTTPS, ответы без потоковой передачи.")
+        OutlinedTextField(value = endpoint, onValueChange = { endpoint = it },
+            label = { Text("Адрес chat/completions (HTTPS)") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = model, onValueChange = { model = it },
+            label = { Text("ID модели") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        TextButton(enabled = endpoint.startsWith("https://") && model.isNotBlank(), onClick = {
+            prefs.edit().putString("api_endpoint", endpoint.trim())
+                .putString("api_model", model.trim()).apply()
+        }) { Text("Сохранить параметры модели") }
         OutlinedTextField(
             value = apiKeyDraft, onValueChange = { apiKeyDraft = it },
             label = { Text("API-ключ провайдера") },
