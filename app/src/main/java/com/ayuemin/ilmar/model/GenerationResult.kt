@@ -13,7 +13,7 @@ data class ReasoningConfig(val encoding: String, val effort: String? = null)
 data class ToolSchema(val name: String, val description: String, val parameters: JSONObject)
 data class GenerationOptions(val reasoning: ReasoningConfig? = null,
     val tools: List<ToolSchema> = emptyList(), val toolHistory: List<JSONObject> = emptyList(),
-    val includeUsage: Boolean = false)
+    val includeUsage: Boolean = false, val attachmentContent: Map<Long, JSONArray> = emptyMap())
 
 internal fun nonNegativeLong(json: JSONObject?, key: String): Long? =
     json?.opt(key)?.toString()?.toLongOrNull()?.takeIf { it >= 0 }
@@ -24,7 +24,7 @@ internal fun exactCost(value: Any?): String? = value?.takeUnless { it == JSONObj
 internal object GenerationPayload {
     fun build(model: String, history: List<com.ayuemin.ilmar.chat.ChatMessage>, options: GenerationOptions): JSONObject {
         val messages = JSONArray().apply {
-            history.forEach { put(JSONObject().put("role", if (it.fromUser) "user" else "assistant").put("content", it.text)) }
+            history.forEach { put(JSONObject().put("role", if (it.fromUser) "user" else "assistant").put("content", options.attachmentContent[it.id] ?: it.text)) }
             options.toolHistory.forEach { put(it) }
         }
         return JSONObject().put("model", model).put("stream", true).put("messages", messages).apply {

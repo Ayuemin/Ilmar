@@ -4,6 +4,8 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -57,21 +60,25 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     var query by remember(selected.id) { mutableStateOf("") }
     var speechError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    var attachmentChatId by remember { mutableStateOf<Long?>(null) }
+    var attachmentChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     val attachmentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val target = attachmentChatId
-        if (uri != null && target != null) scope.launch {
-            try {
-                val text = readTextAttachment(context.contentResolver, uri)
-                if (controller.state.value.chats.any { it.id == target }) {
-                    val previous = controller.state.value.drafts[target].orEmpty()
-                    controller.setDraft(target, listOf(previous, text).filter(String::isNotBlank).joinToString("\n\n"))
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: IllegalArgumentException) { speechError = e.message }
-            catch (_: Exception) { speechError = "Не удалось прочитать текстовый файл UTF-8" }
-        }
+        if (uri != null && target != null) controller.importAttachment(target, uri)
     }
+    var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val file = cameraPath?.let { java.io.File(it) }
+        val target = attachmentChatId
+        if (success && file != null && target != null) {
+            controller.importAttachment(target, androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file), file)
+        } else file?.delete()
+        cameraPath = null
+    }
+    val speech = remember { com.ayuemin.ilmar.speech.SpeechController(context.applicationContext, scope) }
+    DisposableEffect(speech) { onDispose { speech.close() } }
+    var speakMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    speakMessage?.let { message -> com.ayuemin.ilmar.speech.SpeechSettings(
+        onDismiss = { speakMessage = null }, onSpeak = { speech.speak(message.text) }) }
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -105,14 +112,27 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     if (showModes) ChatModeMenu(selected.id, chatModes,
         onAttachText = {
             attachmentChatId = selected.id
-            try { attachmentLauncher.launch(arrayOf("text/*", "application/json")) }
+            try { attachmentLauncher.launch(arrayOf("*/*")) }
             catch (_: android.content.ActivityNotFoundException) { speechError = "Выбор файлов недоступен" }
         },
-        onDismiss = { showModes = false })
+        onImage = {
+            attachmentChatId = selected.id
+            try { attachmentLauncher.launch(arrayOf("image/*")) }
+            catch (_: android.content.ActivityNotFoundException) { speechError = "Выбор изображений недоступен" }
+        }, onPhoto = {
+            attachmentChatId = selected.id
+            try {
+                val directory = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+                val file = java.io.File.createTempFile("photo-", ".jpg", directory)
+                cameraPath = file.path
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                cameraLauncher.launch(uri)
+            } catch (_: Exception) { cameraPath?.let { java.io.File(it).delete() }; cameraPath = null; speechError = "Не удалось открыть камеру" }
+        }, onDismiss = { showModes = false })
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },
-        text = { Text("Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\n\n${controller.usage(selected.id).describe()}") },
+        text = { Text(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), text = "Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\n\n${controller.usage(selected.id).describe()}") },
         confirmButton = { TextButton(onClick = { showStats = false }) { Text("Закрыть") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("Очистить чат?") },
         text = { Text("Сообщения будут удалены без возможности восстановления.") },
@@ -150,14 +170,14 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)) {
                     items(messages) { message ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
-                            Surface(color = if (message.fromUser) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-                                shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(0.94f)) {
-                                Column(Modifier.padding(horizontal = 16.dp, vertical = if (compact) 7.dp else 12.dp)) {
-                                    if (message.fromUser) SelectionContainer { Text(message.text) }
-                                    else com.ayuemin.ilmar.ui.markdown.RichMessageContent(message.text, MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = if (compact) 4.dp else 8.dp)) {
+                            if (message.fromUser) SelectionContainer { Text(message.text) }
+                            else com.ayuemin.ilmar.ui.markdown.RichMessageContent(message.text, MaterialTheme.colorScheme.onSurface)
+                            com.ayuemin.ilmar.attachments.AttachmentList(message.attachments)
+                            if (message.id != 0L) MessageActions(message, sending,
+                                onAskAgain = { controller.branch(selected.id, message.id, true); following.value = true },
+                                onBranch = { controller.branch(selected.id, message.id); following.value = true },
+                                onSpeak = { speakMessage = message })
                         }
                     }
                 }
@@ -166,7 +186,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
                 Text("Перейти к активному ответу")
             }
-            (state.errors[selected.id] ?: speechError)?.let { error ->
+            (state.errors[selected.id] ?: speechError ?: speech.error)?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (state.errors.containsKey(selected.id)) {
                     TextButton(onClick = onConnectionSettings) { Text("Настройки подключения") }
@@ -175,16 +195,20 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             if (!inThisChat && selected.messages.lastOrNull()?.fromUser == true) {
                 TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
             }
+            if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }
+            if (selected.id in state.importing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(4.dp)) {
+                    com.ayuemin.ilmar.attachments.AttachmentList(state.attachments[selected.id].orEmpty(),
+                        onRemove = { controller.removeAttachment(selected.id, it) })
                     TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 5,
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }
+                        IconButton(enabled = selected.id !in state.importing, onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }
                         TextButton(onClick = { showModels = true }, modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp)) {
                             Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.Start) {
@@ -200,8 +224,8 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                         }
                         IconButton(onClick = dictate) { Icon(Icons.Default.Mic, "Распознать речь") }
                         if (sending) IconButton(onClick = controller::stop) { Icon(Icons.Default.Stop, "Остановить ответ") }
-                        else IconButton(enabled = draft.isNotBlank(), onClick = {
-                            val text = draft; controller.setDraft(selected.id, ""); speechError = null; following.value = true; controller.send(text)
+                        else IconButton(enabled = selected.id !in state.importing && (draft.isNotBlank() || state.attachments[selected.id].orEmpty().isNotEmpty()), onClick = {
+                            val text = draft; speechError = null; following.value = true; controller.send(text)
                         }) { Icon(Icons.Default.Send, "Отправить сообщение") }
                     }
                 }

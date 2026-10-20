@@ -82,6 +82,7 @@ fun ModelCatalogBrowser(controller: ModelCatalogViewModel, selectedModelId: Stri
                                 Text(model.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 val caps = registry.capabilities(model.id)
+                                if (caps.inputModalities.isNotEmpty()) Text("Вход: ${caps.inputModalities.joinToString()} · выход: ${caps.outputModalities.joinToString().ifBlank { "не указан" }}", style = MaterialTheme.typography.labelSmall)
                                 Text(listOfNotNull(
                                     if (caps.parameters.any { it.contains("reasoning") }) "Reasoning" else null,
                                     if (caps.tools) "Tools" else null,

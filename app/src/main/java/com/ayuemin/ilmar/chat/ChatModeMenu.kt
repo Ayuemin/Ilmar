@@ -24,7 +24,7 @@ internal class ChatModePreferences(context: Context) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
-    onAttachText: () -> Unit, onDismiss: () -> Unit) {
+    onAttachText: () -> Unit, onImage: () -> Unit, onPhoto: () -> Unit, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val registry = remember { com.ayuemin.ilmar.model.ProviderRegistry(context) }
     val model = registry.modelForChat(id)
@@ -46,11 +46,11 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
         Column(Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp).padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ComposerActionTile(Icons.Outlined.AttachFile, "Вставить", true, Modifier.weight(1f)) { onDismiss(); onAttachText() }
-                ComposerActionTile(Icons.Outlined.CameraAlt, "Камера", false, Modifier.weight(1f)) {}
-                ComposerActionTile(Icons.Outlined.Image, "Создать", false, Modifier.weight(1f)) {}
+                ComposerActionTile(Icons.Outlined.AttachFile, "Файл", true, Modifier.weight(1f)) { onDismiss(); onAttachText() }
+                ComposerActionTile(Icons.Outlined.CameraAlt, "Фото", true, Modifier.weight(1f)) { onDismiss(); onPhoto() }
+                ComposerActionTile(Icons.Outlined.Image, "Изображение", true, Modifier.weight(1f)) { onDismiss(); onImage() }
             }
-            Text("Вставить: текстовый файл. Камера и генерация изображений пока не подключены.",
+            Text("Файлы: текст UTF-8, DOCX, PDF до 12 страниц. Фото и PDF требуют модели с входом image. До 8 вложений по 20 МБ (текст — 256 КБ); отправка только по кнопке.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 ComposerToggleTile(Icons.Outlined.Psychology, if (reasoning) 2 else 0, 3, levelDescription = "Размышление",

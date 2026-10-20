@@ -6,7 +6,7 @@ import java.net.URI
 
 data class CatalogModel(val id: String, val capabilities: ModelCapabilities = ModelCapabilities())
 data class ModelCapabilities(val parameters: Set<String> = emptySet(), val efforts: Set<String> = emptySet(),
-    val contextLength: Long? = null, val maxOutputTokens: Long? = null, val known: Boolean = false) {
+    val contextLength: Long? = null, val maxOutputTokens: Long? = null, val known: Boolean = false, val inputModalities: Set<String> = emptySet(), val outputModalities: Set<String> = emptySet()) {
     val tools: Boolean get() = "tools" in parameters
     fun supportsReasoning(endpoint: String): Boolean =
         (host(endpoint) == "openrouter.ai" && parameters.any { it == "reasoning" || it.startsWith("reasoning.") }) ||
@@ -19,12 +19,12 @@ data class ModelCapabilities(val parameters: Set<String> = emptySet(), val effor
     }
     fun includeUsage(endpoint: String) = host(endpoint) in setOf("openrouter.ai", "api.openai.com") || "stream_options" in parameters
     fun toJson() = JSONObject().put("parameters", JSONArray(parameters.toList())).put("efforts", JSONArray(efforts.toList()))
-        .put("context", contextLength).put("output", maxOutputTokens).put("known", known)
+        .put("context", contextLength).put("output", maxOutputTokens).put("known", known).put("inputs", JSONArray(inputModalities.toList())).put("outputs", JSONArray(outputModalities.toList()))
     companion object {
         fun host(endpoint: String) = runCatching { URI(endpoint).host?.lowercase() }.getOrNull()
         fun fromJson(j: JSONObject?) = if (j == null) ModelCapabilities() else ModelCapabilities(
             strings(j.optJSONArray("parameters")), strings(j.optJSONArray("efforts")),
-            nonNegativeLong(j, "context"), nonNegativeLong(j, "output"), j.optBoolean("known"))
+            nonNegativeLong(j, "context"), nonNegativeLong(j, "output"), j.optBoolean("known"), strings(j.optJSONArray("inputs")), strings(j.optJSONArray("outputs")))
         fun parse(model: JSONObject): ModelCapabilities {
             val supported = model.opt("supported_parameters")
             val names = mutableSetOf<String>()
@@ -42,7 +42,9 @@ data class ModelCapabilities(val parameters: Set<String> = emptySet(), val effor
             if (supported is JSONObject) supported.keys().forEach { collect(it, supported.optJSONObject(it)) }
             efforts += strings(model.optJSONObject("reasoning")?.optJSONArray("supported_efforts"))
             return ModelCapabilities(names, efforts.filter { it in setOf("minimal", "low", "medium", "high", "xhigh", "max", "none") }.toSet(),
-                nonNegativeLong(model, "context_length"), nonNegativeLong(model.optJSONObject("top_provider"), "max_completion_tokens"), supported != null && supported != JSONObject.NULL)
+                nonNegativeLong(model, "context_length"), nonNegativeLong(model.optJSONObject("top_provider"), "max_completion_tokens"), supported != null && supported != JSONObject.NULL,
+                strings(model.optJSONObject("architecture")?.optJSONArray("input_modalities") ?: model.optJSONArray("input_modalities")),
+                strings(model.optJSONObject("architecture")?.optJSONArray("output_modalities") ?: model.optJSONArray("output_modalities")))
         }
         private fun strings(a: JSONArray?): Set<String> = if (a == null) emptySet() else
             (0 until a.length()).mapNotNull { a.opt(it) as? String }.toSet()

@@ -4,15 +4,43 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 2) {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
         createUsage(db)
+        createDetails(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createUsage(db)
+        if (oldVersion < 3) createDetails(db)
+    }
+
+    private fun createDetails(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE messages ADD COLUMN attachments TEXT")
+        db.execSQL("ALTER TABLE messages ADD COLUMN reply_info TEXT")
+        db.execSQL("CREATE TABLE draft_attachments (chat_id INTEGER PRIMARY KEY, payload TEXT NOT NULL)")
+    }
+
+    fun drafts(): Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = buildMap {
+        readableDatabase.rawQuery("SELECT chat_id, payload FROM draft_attachments", null).use { rows ->
+            while (rows.moveToNext()) put(rows.getLong(0), com.ayuemin.ilmar.attachments.ChatAttachment.decode(rows.getString(1)))
+        }
+    }
+    fun saveDraft(chatId: Long, attachments: List<com.ayuemin.ilmar.attachments.ChatAttachment>) {
+        if (attachments.isEmpty()) writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
+        else writableDatabase.execSQL("INSERT OR REPLACE INTO draft_attachments VALUES(?, ?)",
+            arrayOf<Any>(chatId, com.ayuemin.ilmar.attachments.ChatAttachment.encode(attachments)))
+    }
+    fun branch(source: Long, target: Long, through: Long, title: String) {
+        writableDatabase.beginTransaction()
+        try {
+            require(load().first { it.id == source }.messages.any { it.id == through })
+            create(target, title)
+            writableDatabase.execSQL("INSERT INTO messages(chat_id,text,from_user,attachments,reply_info) SELECT ?,text,from_user,attachments,reply_info FROM messages WHERE chat_id = ? AND id <= ? ORDER BY id", arrayOf(target, source, through))
+            writableDatabase.setTransactionSuccessful()
+        } finally { writableDatabase.endTransaction() }
     }
 
     private fun createUsage(db: SQLiteDatabase) {
@@ -41,10 +69,10 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
                 val id = chats.getLong(0)
                 val messages = mutableListOf<ChatMessage>()
                 readableDatabase.rawQuery(
-                    "SELECT text, from_user FROM messages WHERE chat_id = ? ORDER BY id",
+                    "SELECT text, from_user, id, attachments, reply_info FROM messages WHERE chat_id = ? ORDER BY id",
                     arrayOf(id.toString())
                 ).use { rows ->
-                    while (rows.moveToNext()) messages += ChatMessage(rows.getString(0), rows.getInt(1) != 0)
+                    while (rows.moveToNext()) messages += ChatMessage(rows.getString(0), rows.getInt(1) != 0, rows.getLong(2), com.ayuemin.ilmar.attachments.ChatAttachment.decode(rows.getString(3)), ReplyInfo.parse(rows.getString(4)))
                 }
                 result += ChatSession(id, chats.getString(1), messages)
             }
@@ -74,6 +102,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         try {
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM chats WHERE id = ?", arrayOf(chatId))
             writableDatabase.setTransactionSuccessful()
         } finally {
@@ -81,17 +110,19 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         }
     }
 
-    fun append(chatId: Long, message: ChatMessage, newTitle: String?) {
+    fun append(chatId: Long, message: ChatMessage, newTitle: String?): ChatMessage {
         writableDatabase.beginTransaction()
         try {
-            writableDatabase.execSQL(
-                "INSERT INTO messages(chat_id, text, from_user) VALUES(?, ?, ?)",
-                arrayOf(chatId, message.text, if (message.fromUser) 1 else 0)
-            )
+            val values = android.content.ContentValues().apply {
+                put("chat_id", chatId); put("text", message.text); put("from_user", if (message.fromUser) 1 else 0)
+                put("attachments", com.ayuemin.ilmar.attachments.ChatAttachment.encode(message.attachments)); put("reply_info", message.info?.json())
+            }
+            val messageId = writableDatabase.insertOrThrow("messages", null, values)
             if (newTitle != null) writableDatabase.execSQL(
                 "UPDATE chats SET title = ? WHERE id = ?", arrayOf(newTitle, chatId)
             )
             writableDatabase.setTransactionSuccessful()
+            return message.copy(id = messageId)
         } finally {
             writableDatabase.endTransaction()
         }

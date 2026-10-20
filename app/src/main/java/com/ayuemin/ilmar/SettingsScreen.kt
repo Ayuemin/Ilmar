@@ -86,7 +86,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 Text("Компактные сообщения", Modifier.weight(1f))
                 Switch(compact, { compact = it; prefs.edit().putBoolean("compact_messages", it).apply() })
             }
-            "Память и контекст" -> Text("История хранится на устройстве. Очистка и удаление доступны в меню чата. Сжатие контекста и резервные копии пока не подключены.")
+            "Память и контекст" -> Text("Полная история и вложения хранятся на устройстве. При каждом запросе модели отправляется вся история выбранного чата. Автоматическое и ручное сжатие, резерв ответа и общий бюджет контекста ещё не реализованы. Кэшированные токены учитываются только по usage провайдера; управление prompt caching не настроено. Ветвление не заменяет сжатие.")
             "Инструменты" -> {
                 val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
                 val tools = com.ayuemin.ilmar.chat.ToolRegistry.catalogue().filter { it.executorRegistered }
