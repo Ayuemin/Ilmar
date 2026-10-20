@@ -31,7 +31,7 @@ internal object ToolRegistry {
         installed.values.filter { canExecute(it.descriptor.id, modes.enabled(chatId, "tool_${it.descriptor.id}"), broker.granted(it.descriptor.id)) }.map { entry ->
             BoundTool(entry.schema) { arguments ->
                 val id = entry.descriptor.id
-                check(canExecute(id, modes.enabled(chatId, "tool_$id"), broker.granted(id))) { "Разрешение инструмента отозвано" }
+                if (!canExecute(id, modes.enabled(chatId, "tool_$id"), broker.granted(id))) throw com.ayuemin.ilmar.agent.AgentFailure("PERMISSION_REVOKED", "$id: разрешение отозвано или инструмент больше не настроен.")
                 check(installed[id] === entry) { "Исполнитель изменился" }
                 entry.executor(chatId, arguments)
             }

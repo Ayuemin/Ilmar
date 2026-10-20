@@ -42,13 +42,14 @@ internal fun ContextSettings(onConnections: () -> Unit = {}) {
         } ?: "Выбранная модель недоступна. Выбери другую.")
         TextButton(onClick = { chooseCompact = true }) { Text("Выбрать провайдера и модель Compact") }
         Text("Отдельная модель используется только для сжатия. Её API-ключ берётся из подключения; расходы входят в общий бюджет задачи.", style = MaterialTheme.typography.bodySmall)
-        Row { Text("Автоматический Compact при 80%", Modifier.weight(1f)); Switch(automatic, { automatic = it }) }
-        OutlinedTextField(window, { window = it }, label = { Text("Локальный предел контекста, токены") }, singleLine = true)
-        Text("Предел ограничивается реальным окном из каталога. Если каталог его не сообщил, используется это значение. После обновления APK обнови каталог.", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(output, { output = it }, label = { Text("Резерв и максимальный ответ, токены") }, singleLine = true)
+        TextButton(onClick = { window = "0"; output = "0"; tokens = "0"; automatic = true; message = "Автоматический режим подготовлен. Нажми «Сохранить»." }) { Text("Непрерывный контекст: автоматические настройки") }
+        Row { Text("Циклический Compact при 80%", Modifier.weight(1f)); Switch(automatic, { automatic = it }) }
+        OutlinedTextField(window, { window = it }, label = { Text("Контекст: 0 — окно модели из каталога") }, singleLine = true)
+        Text("По умолчанию используется окно из каталога, а не 8192. Если каталог не сообщил окно, резервный предел — 32768. Явное значение ограничивается реальным окном API.", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(output, { output = it }, label = { Text("Резерв и предел ответа; 0 — автоматически") }, singleLine = true)
         Text("Лимит вывода отправляется только при поддержке API. В остальных случаях резерв остаётся оценкой.", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(recent, { recent = it }, label = { Text("Последние сообщения дословно, 0–20") }, singleLine = true)
-        OutlinedTextField(tokens, { tokens = it }, label = { Text("Бюджет токенов задачи, включая Compact") }, singleLine = true)
+        OutlinedTextField(recent, { recent = it }, label = { Text("Предпочтительно последних сообщений дословно") }, singleLine = true)
+        OutlinedTextField(tokens, { tokens = it }, label = { Text("Бюджет токенов задачи; 0 — без лимита") }, singleLine = true)
         OutlinedTextField(usd, { usd = it }, label = { Text("Локальный бюджет USD; пусто — без лимита") }, singleLine = true)
         Text("Перед запросом проверяется оценка, после — фактический usage. Для USD нужны тарифы и ограничение вывода; изображения без денежной оценки блокируются. Это локальная защита по тарифу каталога, не гарантия счёта провайдера. Для жёсткого денежного лимита установи квоту у провайдера.", style = MaterialTheme.typography.bodySmall)
         Text("Стабильный префикс сохраняется для автоматического caching OpenAI. Явный ephemeral cache для OpenRouter/Anthropic включается только при известных выгодных тарифах записи/чтения; стандартный TTL — 5 минут. Попадание в кэш подтверждается только cached_tokens.", style = MaterialTheme.typography.bodySmall)
@@ -59,5 +60,6 @@ internal fun ContextSettings(onConnections: () -> Unit = {}) {
             } catch (e: Exception) { message = if (e is NumberFormatException) "Введи целые числа для токенов и количества сообщений" else e.message ?: "Проверь настройки" }
         }) { Text("Сохранить") }
         message?.let { Text(it) }
+        EmbeddingSettings()
     }
 }

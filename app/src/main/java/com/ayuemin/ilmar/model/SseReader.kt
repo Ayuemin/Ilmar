@@ -1,5 +1,6 @@
 package com.ayuemin.ilmar.model
 
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -54,11 +55,15 @@ internal object SseReader {
                     (part.opt("id") as? String)?.let { call.id = merge(call.id, it) }
                     part.optJSONObject("function")?.let { fn ->
                         (fn.opt("name") as? String)?.let { call.name = merge(call.name, it) }
-                        (fn.opt("arguments") as? String)?.let { call.arguments.append(it) }
+                        (fn.opt("arguments") as? String)?.let {
+                            val bytes = it.toByteArray(Charsets.UTF_8).size
+                            if (call.bytes.toLong() + bytes > Limits.bytes("argument_kib")) throw IOException("Аргументы инструмента превышают глобальный лимит; измени расширенные настройки")
+                            call.bytes += bytes; call.arguments.append(it)
+                        }
                     }
-                    if (call.arguments.length > 64 * 1024) throw IOException("Аргументы инструмента слишком велики")
                 }
-                if (calls.size > 24) throw IOException("Слишком много инструментальных вызовов")
+                val maxCalls = Limits.get("calls")
+                if (maxCalls > 0 && calls.size > maxCalls) throw IOException("Слишком много инструментальных вызовов; проверь глобальный лимит")
             }
         }
         while (!done) {
@@ -74,7 +79,7 @@ internal object SseReader {
         if (text.isBlank() && tools.isEmpty()) throw IOException("Пустой ответ")
         return GenerationResult(text.toString(), usage, finish, tools)
     }
-    private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder())
+    private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder(), var bytes: Int = 0)
     private fun merge(current: String, part: String) = current + part
     private fun contentText(value: Any?): String = when (value) {
         is String -> value

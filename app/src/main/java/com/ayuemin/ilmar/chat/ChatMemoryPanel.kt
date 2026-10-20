@@ -14,6 +14,8 @@ import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolean, onDismiss: () -> Unit) {
+    val chatState by controller.state.collectAsState()
+    LaunchedEffect(chat) { controller.indexArchive(chat) }
     var revision by remember { mutableIntStateOf(0) }
     val snapshot by produceState<MemorySnapshot?>(null, chat, revision, busy) { value = withContext(Dispatchers.IO) { controller.memorySnapshot(chat) } }
     var rules by remember(chat) { mutableStateOf<String?>(null) }
@@ -39,12 +41,17 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
                 val checkpoint = remember(raw) { org.json.JSONObject(raw) }
                 Text("Контрольная точка: ${checkpoint.optInt("next")} из ${checkpoint.optInt("total")} участков. Явное повторение продолжит с сохранённого места, если исходники и настройки не изменились.", style = MaterialTheme.typography.bodySmall)
             }
+            Text("Карточка состояния", style = MaterialTheme.typography.titleMedium)
+            Text("Цель, прогресс и следующий шаг — в активной сводке ниже. Утверждённые решения закрепляй в правилах отдельно. Исходные сообщения сохраняются полностью.", style = MaterialTheme.typography.bodySmall)
+            chatState.archiveStatus[chat]?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            TextButton(onClick = { controller.indexArchive(chat) }) { Text("Обновить семантический индекс") }
+            if (snapshot?.capsules.isNullOrEmpty()) Text("Карточка ещё не создана: Compact сработает по мере заполнения окна или вручную.")
             Text("Версии сводки (последние 20)", style = MaterialTheme.typography.labelLarge)
             snapshot?.capsules.orEmpty().forEach { capsule ->
                 Text("#${capsule.id}${if (capsule.active) " · активна" else ""} · ≈ ${capsule.before} → ${capsule.after} токенов")
                 val readable = remember(capsule.text) {
                     val json = org.json.JSONObject(capsule.text)
-                    listOf("goal" to "Цель", "facts" to "Факты", "decisions" to "Решения", "progress" to "Прогресс", "files" to "Файлы и версии",
+                    listOf("goal" to "Цель", "plan" to "План", "facts" to "Факты", "decisions" to "Решения", "progress" to "Прогресс", "files" to "Файлы и версии",
                         "tests" to "Проверки", "errors" to "Ошибки", "next" to "Следующий шаг", "uncertain" to "Неопределённость").mapNotNull { (key, title) ->
                         val values = json.optJSONArray(key)
                         if (values == null || values.length() == 0) null else title + ": " + (0 until values.length()).joinToString("; ") { values.getString(it) }
@@ -61,7 +68,11 @@ internal fun ChatMemoryPanel(chat: Long, controller: ChatViewModel, busy: Boolea
                 try { results = withContext(Dispatchers.IO) { controller.memorySearch(chat, query) }.ifBlank { "Совпадений нет" } }
                 catch (_: Exception) { error = "Не удалось выполнить поиск" } finally { working = false }
             } }) { Text("Найти на устройстве") }
-            if (results.isNotBlank()) Text(results, style = MaterialTheme.typography.bodySmall)
+            TextButton(enabled = query.isNotBlank() && !working, onClick = { working = true; scope.launch {
+                try { results = controller.semanticSearch(chat, query).ifBlank { "Семантических совпадений нет: проверь настройки RAG и готовность индекса. Локальный поиск доступен отдельно." } }
+                catch (_: Exception) { error = "Не удалось выполнить поиск по смыслу" } finally { working = false }
+            } }) { Text("Найти по смыслу (API)") }
+            if (results.isNotBlank()) androidx.compose.foundation.text.selection.SelectionContainer { Text(results, style = MaterialTheme.typography.bodySmall) }
             if (working || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }

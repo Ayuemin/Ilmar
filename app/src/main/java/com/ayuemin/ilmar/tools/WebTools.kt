@@ -7,6 +7,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.io.IOException
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.InetAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
@@ -41,31 +44,60 @@ internal class WebTools(private val client: OkHttpClient = OkHttpClient.Builder(
     .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()) {
     suspend fun fetch(url: String): String {
         val parsed = url.toHttpUrl()
-        require(parsed.scheme == "https" && parsed.port == 443 && parsed.username.isEmpty() && parsed.password.isEmpty()) { "Разрешены только публичные HTTPS URL на порту 443 без паролей" }
-        require(!parsed.host.contains(':') && !parsed.host.matches(Regex("[0-9.]+"))) { "Используй доменное имя публичного сайта, а не IP-адрес" }
-        val response = load(Request.Builder().url(parsed).header("User-Agent", "Ilmar/0.1 URL reader").build(), 1024 * 1024)
+        require(parsed.scheme == "https" && parsed.username.isEmpty() && parsed.password.isEmpty()) { "Разрешены только публичные HTTPS URL без паролей" }
+        validatePublicUrl(parsed)
+        val response = load(Request.Builder().url(parsed).header("User-Agent", "Ilmar/0.1 URL reader").build(), Limits.bytes("fetch_kib"))
         require(response.first.startsWith("text/") || response.first.contains("json") || response.first.contains("xml")) { "URL должен возвращать текст или HTML" }
         val text = if (response.first.contains("html")) Jsoup.parse(response.second, url).apply {
             select("script,style,noscript,nav,footer,header,iframe,form,svg").remove()
         }.let { doc -> doc.selectFirst("article,main")?.text() ?: doc.body().text() } else response.second
-        return JSONObject().put("url", parsed.toString()).put("text", text.take(24000))
-            .put("truncated", text.length > 24000).put("untrusted", true).toString()
+        return JSONObject().put("url", parsed.toString()).put("text", text.take(Limits.get("excerpt_chars")))
+            .put("truncated", text.length > Limits.get("excerpt_chars")).put("untrusted", true).toString()
     }
-    suspend fun search(query: String, key: String): String {
-        require(query.isNotBlank() && query.length <= 1000) { "Поисковый запрос: до 1000 символов" }
-        require(key.isNotBlank()) { "Настрой ключ Brave Search" }
-        val url = "https://api.search.brave.com/res/v1/web/search".toHttpUrl().newBuilder()
-            .addQueryParameter("q", query).addQueryParameter("count", "5").build()
-        val body = load(Request.Builder().url(url).header("Accept", "application/json").header("X-Subscription-Token", key).build(), 512 * 1024).second
-        val results = JSONObject(body).optJSONObject("web")?.optJSONArray("results") ?: JSONArray()
-        return JSONObject().put("results", JSONArray().apply { repeat(minOf(5, results.length())) { i ->
-            val item = results.getJSONObject(i)
-            put(JSONObject().put("title", item.optString("title").take(300)).put("url", item.optString("url").take(2048))
-                .put("snippet", Jsoup.parse(item.optString("description")).text().take(2000)))
+    suspend fun search(query: String, key: String): String = search(query, SearchTarget(SearchProfile.preset("Brave"), key, JSONObject(SearchProfile.headers("Brave"))))
+    suspend fun search(query: String, target: SearchTarget): String {
+        require(query.isNotBlank() && query.length <= 8000) { "Поисковый запрос: до 8000 символов" }
+        val profile = target.profile
+        val count = Limits.get("search_results")
+        fun substitute(value: String) = value.replace("{query}", query).replace("{api_key}", target.key).replace("{count}", count.toString())
+        val original = profile.endpoint.toHttpUrl()
+        validatePublicUrl(original)
+        val url = original.newBuilder().query(null).apply {
+            repeat(original.querySize) { index -> addQueryParameter(original.queryParameterName(index), original.queryParameterValue(index)?.let(::substitute)) }
+            if (profile.method == "GET" && profile.queryParameter.isNotBlank()) setQueryParameter(profile.queryParameter, query)
+        }.build()
+        val request = Request.Builder().url(url).header("Accept", "application/json")
+        target.headers.keys().forEach { name ->
+            require(!name.equals("Host", true) && !name.equals("Content-Length", true)) { "Host и Content-Length задаются клиентом" }
+            request.header(name, substitute(target.headers.getString(name)))
+        }
+        fun bodyValue(value: Any?): Any? = when (value) {
+            is JSONObject -> JSONObject().apply { value.keys().forEach { put(it, bodyValue(value.opt(it))) } }
+            is JSONArray -> JSONArray().apply { repeat(value.length()) { put(bodyValue(value.opt(it))) } }
+            is String -> if (value == "{count}") count else substitute(value)
+            else -> value
+        }
+        if (profile.method == "POST") request.post(bodyValue(JSONObject(profile.body)).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+        val body = load(request.build(), Limits.bytes("fetch_kib")).second
+        val root: Any = if (body.trimStart().startsWith('[')) JSONArray(body) else JSONObject(body)
+        val results = JsonFieldPath.get(root, profile.resultsPath) as? JSONArray
+            ?: error("По пути '${profile.resultsPath}' нет массива результатов. Проверь схему ответа API поиска.")
+        return JSONObject().put("provider", profile.name).put("results", JSONArray().apply { repeat(minOf(count, results.length())) { i ->
+            val item = results.opt(i)
+            val urlValue = JsonFieldPath.get(item, profile.urlPath)?.toString().orEmpty()
+            val parsed = runCatching { urlValue.toHttpUrl() }.getOrNull()
+            if (parsed != null && parsed.scheme in setOf("http", "https")) put(JSONObject()
+                .put("title", org.jsoup.Jsoup.parse(JsonFieldPath.get(item, profile.titlePath)?.toString().orEmpty()).text().take(1000))
+                .put("url", urlValue.take(4096)).put("snippet", Jsoup.parse(JsonFieldPath.get(item, profile.snippetPath)?.toString().orEmpty()).text().take(8000)))
         } }).put("untrusted", true).toString()
     }
+    private fun validatePublicUrl(url: HttpUrl) {
+        require(url.scheme == "https" && url.username.isEmpty() && url.password.isEmpty()) { "Для tools нужен HTTPS URL без встроенного пароля" }
+        if (url.host.contains(':') || url.host.matches(Regex("[0-9.]+"))) require(PublicAddressPolicy.allowed(InetAddress.getByName(url.host))) { "Локальные и служебные IP запрещены" }
+    }
     private suspend fun load(request: Request, limit: Int): Pair<String, String> = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request)
+        val call = client.newBuilder().callTimeout(Limits.get("web_seconds").toLong(), TimeUnit.SECONDS)
+            .readTimeout(Limits.get("web_seconds").toLong(), TimeUnit.SECONDS).build().newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) { continuation.resumeWith(Result.failure(IOException("Нет соединения или истекло время ожидания"))) }

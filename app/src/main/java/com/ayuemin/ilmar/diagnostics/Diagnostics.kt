@@ -1,15 +1,75 @@
 package com.ayuemin.ilmar.diagnostics
 
 import android.content.Context
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
+import org.json.JSONArray
+import org.json.JSONObject
 
-/** Only fixed event codes and local chat IDs; no exception text, bodies, URLs, or credentials. */
+/** Structured local journal; request secrets and authorization headers are excluded/redacted. */
 class Diagnostics(context: Context) {
-    private val prefs = context.getSharedPreferences("ilmar_diagnostics", Context.MODE_PRIVATE)
-    @Synchronized fun record(code: String, chatId: Long) {
-        require(code in setOf("START", "SUCCESS", "CANCELLED", "NETWORK_ERROR", "INTERRUPTED"))
-        val line = "${System.currentTimeMillis()} $code chat=$chatId"
-        prefs.edit().putString("events", (read().lines() + line).takeLast(100).joinToString("\n")).apply()
+    private val app = context.applicationContext
+    private val helper = JournalDatabase(app)
+    init { Limits.install(app) }
+    fun record(code: String, chatId: Long, details: JSONObject = JSONObject()) = synchronized(lock) {
+        val payload = JSONObject().put("time", System.currentTimeMillis()).put("event", code).put("chat", chatId).put("details", Redaction.json(details))
+        val db = helper.writableDatabase
+        db.insertOrThrow("events", null, android.content.ContentValues().apply { put("payload", payload.toString()) })
+        db.execSQL("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ${Limits.get("log_events")})")
     }
-    fun read(): String = prefs.getString("events", "").orEmpty()
-    fun clear() { prefs.edit().remove("events").apply() }
+    fun failure(code: String, chat: Long, error: Throwable, details: JSONObject = JSONObject()) {
+        details.put("exception", error.javaClass.simpleName).put("message", error.message).put("stack", error.stackTraceToString())
+        if (error is com.ayuemin.ilmar.model.ProviderFailure) details.put("http_status", error.httpStatus).put("provider_error", error.details)
+        record(code, chat, details)
+    }
+    fun read(errorsOnly: Boolean = false): String = synchronized(lock) {
+        helper.readableDatabase.rawQuery("SELECT payload FROM events ORDER BY id DESC LIMIT 200", null).use { rows -> buildString {
+            while (rows.moveToNext()) {
+                val event = JSONObject(rows.getString(0)); val code = event.getString("event")
+                if (errorsOnly && !code.contains("ERROR") && !code.contains("FAILED") && !code.contains("TIMEOUT") && code !in setOf("NO_PROGRESS", "ROUND_LIMIT", "CALL_LIMIT", "ARGUMENT_LIMIT", "RESULT_LIMIT", "TOOLS_DISABLED", "PERMISSION_REVOKED")) continue
+                val time = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.ROOT).format(java.util.Date(event.getLong("time")))
+                append("$time  $code  chat=${event.optLong("chat")}\n")
+                val data = event.optJSONObject("details")
+                if (data != null && data.length() > 0) append(data.toString(2).take(5000)).append('\n')
+                append('\n')
+            }
+        } }
+    }
+    fun export(output: java.io.OutputStream) = synchronized(lock) {
+        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+            writer.appendLine(JSONObject().put("type", "ilmar_diagnostics").put("version", com.ayuemin.ilmar.BuildConfig.VERSION_NAME)
+                .put("sha", com.ayuemin.ilmar.BuildConfig.BUILD_SHA).put("sdk", android.os.Build.VERSION.SDK_INT)
+                .put("limits", JSONObject(Limits.fields.associate { it.key to Limits.get(it.key) })).toString())
+            val legacy = app.getSharedPreferences("ilmar_diagnostics", Context.MODE_PRIVATE).getString("events", "").orEmpty()
+            if (legacy.isNotBlank()) writer.appendLine(JSONObject().put("event", "LEGACY_LOG").put("text", Redaction.text(legacy)).toString())
+            helper.readableDatabase.rawQuery("SELECT payload FROM events ORDER BY id", null).use { while (it.moveToNext()) writer.appendLine(it.getString(0)) }
+            com.ayuemin.ilmar.tools.ToolDataStore(app).use { it.exportCalls(writer) }
+        }
+    }
+    fun clear() = synchronized(lock) {
+        helper.writableDatabase.delete("events", null, null)
+        app.getSharedPreferences("ilmar_diagnostics", Context.MODE_PRIVATE).edit().remove("events").apply()
+        com.ayuemin.ilmar.tools.ToolDataStore(app).use { it.writableDatabase.delete("calls", null, null) }
+    }
+    private class JournalDatabase(context: Context) : android.database.sqlite.SQLiteOpenHelper(context, "ilmar_journal.db", null, 1) {
+        override fun onCreate(db: android.database.sqlite.SQLiteDatabase) { db.execSQL("CREATE TABLE events(id INTEGER PRIMARY KEY,payload TEXT NOT NULL)") }
+        override fun onUpgrade(db: android.database.sqlite.SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    }
+    companion object { private val lock = Any() }
+}
+
+internal object Redaction {
+    private val sensitive = Regex("(?i)^(api.?key|authorization|access_token|refresh_token|token|password|secret|cookie|credentials?)$")
+    fun text(value: String): String = value
+        .replace(Regex("(?i)(bearer\\s+)[^\\s\"<>]+"), "$1[REDACTED]")
+        .replace(Regex("(?i)((?:api[_-]?key|access_token|token|password|secret)[=:\\s]+)[^\\s&,\"}]+"), "$1[REDACTED]")
+        .replace(Regex("sk-[A-Za-z0-9_-]{8,}"), "[REDACTED]")
+    fun json(value: Any?): Any? = when (value) {
+        is JSONObject -> JSONObject().apply { value.keys().forEach { key -> put(key, if (sensitive.containsMatchIn(key)) "[REDACTED]" else json(value.opt(key))) } }
+        is JSONArray -> JSONArray().apply { repeat(value.length()) { put(json(value.opt(it))) } }
+        is String -> {
+            val nested = if (value.trimStart().startsWith('{')) runCatching { JSONObject(value) }.getOrNull() else null
+            (if (nested != null) json(nested).toString() else text(value)).take(Limits.get("log_chars"))
+        }
+        else -> value
+    }
 }

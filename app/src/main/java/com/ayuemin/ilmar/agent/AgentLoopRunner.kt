@@ -6,36 +6,63 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 
 internal data class BoundTool(val schema: ToolSchema, val execute: suspend (JSONObject) -> String)
 
 /** Every execution crosses a bound permission check. No arbitrary downloaded code or implicit retries. */
-internal class AgentLoopRunner(private val maxRounds: Int = 8, private val maxCalls: Int = 24) {
-    suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = withTimeout(180_000) {
+internal class AgentFailure(val code: String, message: String) : IllegalStateException(message)
+
+internal suspend fun <T> optionalTimeout(seconds: Int, action: suspend () -> T): T =
+    if (seconds == 0) action() else withTimeout(seconds.toLong() * 1000) { action() }
+
+internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds"), private val maxCalls: Int = Limits.get("calls"),
+    private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {}) {
+    suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
         val history = mutableListOf<JSONObject>()
-        val guard = AgentToolLoopGuard()
+        val repeatThreshold = Limits.get("repeat_threshold")
+        val guard = AgentToolLoopGuard(threshold = repeatThreshold.coerceAtLeast(2))
         var calls = 0
-        repeat(maxRounds) {
+        var round = 0
+        while (maxRounds == 0 || round < maxRounds) {
+            round++
             currentCoroutineContext().ensureActive()
+            onProgress("Раунд $round · вызовов tools: $calls")
             val result = generate(history.toList(), tools.map { it.schema })
-            if (result.toolCalls.isEmpty()) return@withTimeout result
-            require(tools.isNotEmpty()) { "Модель запросила инструмент, но агент и инструменты не включены" }
+            if (result.toolCalls.isEmpty()) return@optionalTimeout result
+            if (tools.isEmpty()) throw AgentFailure("TOOLS_DISABLED", "Модель запросила инструмент, но режим агента или инструменты не включены.")
             require(result.toolCalls.map { it.id }.distinct().size == result.toolCalls.size) { "Повторяющиеся ID вызовов" }
+            val traceId = java.util.UUID.randomUUID().toString()
+            val groupStart = history.size
             history += JSONObject().put("role", "assistant").put("content", result.text)
+                .put("_trace_id", traceId)
                 .put("tool_calls", JSONArray().apply { result.toolCalls.forEach { call ->
                     put(JSONObject().put("id", call.id).put("type", "function").put("function", JSONObject().put("name", call.name).put("arguments", call.arguments)))
                 } })
             for (call in result.toolCalls) {
-                check(++calls <= maxCalls) { "Достигнут лимит вызовов инструментов" }
-                val tool = tools.find { it.schema.name == call.name } ?: error("Инструмент не разрешён для этого чата")
-                require(call.arguments.toByteArray(Charsets.UTF_8).size <= 64 * 1024) { "Слишком большие аргументы инструмента" }
-                val arguments = JSONObject(call.arguments)
-                val output = withTimeout(20_000) { tool.execute(arguments) }
-                require(output.toByteArray(Charsets.UTF_8).size <= 64 * 1024) { "Результат инструмента слишком большой" }
-                check(!guard.observe(call.name, call.arguments, output)) { "Агент остановлен: повторяющиеся вызовы без прогресса" }
+                calls++
+                if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools. Его можно изменить в расширенных настройках.")
+                val tool = tools.find { it.schema.name == call.name }
+                if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
+                onProgress("Раунд $round · выполняется ${call.name}")
+                val output = try {
+                    if (tool == null) JSONObject().put("error", "UNKNOWN_TOOL").put("message", "Инструмент ${call.name} не доступен; используй только предоставленные schemas.").toString()
+                    else optionalTimeout(Limits.get("tool_seconds")) { tool.execute(JSONObject(call.arguments)) }
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    JSONObject().put("error", "TOOL_TIMEOUT").put("tool", call.name).put("message", "Истекло время вызова. Проверь аргументы или расширенные настройки.").toString()
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: com.ayuemin.ilmar.tools.ClarificationRequired) { throw e }
+                catch (e: org.json.JSONException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", "Исправь JSON-аргументы ${call.name}: ${e.message}").toString() }
+                catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", e.message).toString() }
+                if (output.toByteArray(Charsets.UTF_8).size > Limits.bytes("result_kib")) throw AgentFailure("RESULT_LIMIT", "${call.name}: результат превышает глобальный лимит. Увеличь его или читай данные частями.")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output)
+                if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
+            onRound(traceId, history.drop(groupStart))
+            val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(history, Limits.get("trace_tokens"), preserveTrace = true)
+            history.clear(); history.addAll(working)
         }
-        error("Агент остановлен: достигнут лимит шагов")
+        throw AgentFailure("ROUND_LIMIT", "Достигнут лимит $maxRounds раундов агента. История сохранена; лимит можно увеличить или отключить в расширенных настройках.")
     }
 }

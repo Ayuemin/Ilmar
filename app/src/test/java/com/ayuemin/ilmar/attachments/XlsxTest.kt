@@ -35,7 +35,7 @@ class XlsxTest {
     }
     @Test fun rejectsXmlEntitiesAndOversizedExpansion() {
         listOf("<!DOCTYPE worksheet [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><worksheet>&x;</worksheet>",
-            "<worksheet>" + "a".repeat(2 * 1024 * 1024) + "</worksheet>").forEach { xml ->
+            "<worksheet>" + "a".repeat(com.ayuemin.ilmar.settings.RuntimeLimits.mib("xml_mib").toInt()) + "</worksheet>").forEach { xml ->
             val file = workbook(mapOf("xl/worksheets/sheet1.xml" to xml))
             try { assertTrue(runCatching { XlsxText.read(file) }.isFailure) } finally { file.delete() }
         }

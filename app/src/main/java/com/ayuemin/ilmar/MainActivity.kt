@@ -42,7 +42,8 @@ class MainActivity : ComponentActivity() {
                     color = Color(0xFF000000)) {
                     if (settings) SettingsScreen(onBack = { settings = false }, initialPage = settingsPage)
                     else ChatScreen(onSettings = { settingsPage = null; settings = true }, controller = controller,
-                        onConnectionSettings = { settingsPage = "Подключения"; settings = true })
+                        onConnectionSettings = { settingsPage = "Подключения"; settings = true },
+                        onSettingsPage = { settingsPage = it; settings = true })
                 }
             }
         }

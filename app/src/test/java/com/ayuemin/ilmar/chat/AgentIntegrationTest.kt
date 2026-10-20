@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.ayuemin.ilmar.agent.*
 import com.ayuemin.ilmar.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.json.JSONObject
 import org.junit.*
@@ -27,6 +28,7 @@ class AgentIntegrationTest {
         listOf("ilmar_ui", "ilmar_models", "ilmar_chat_modes", "ilmar_requests", "ilmar_tool_permissions").forEach {
             app.getSharedPreferences(it, 0).edit().clear().commit()
         }
+        com.ayuemin.ilmar.settings.RuntimeLimits.install(app); com.ayuemin.ilmar.settings.RuntimeLimits.reset()
         registry = ProviderRegistry(app, MemorySecrets())
         registry.saveProvider(null, "Test", "https://example.com/v1", "key")
         val provider = registry.snapshot().providers.single()
@@ -69,4 +71,35 @@ class AgentIntegrationTest {
         assertEquals(6, vm.usage(1).calls)
         assertNull(vm.state.value.activeChatId)
     }
+    @Test fun intermediateFileIsVisibleAndFailedTaskCanBeRetriedWithoutCreatingAnotherChatOrFile() = runTest(dispatcher) {
+        // Real filesystem IO must not race runTest's instant advancement of virtual tool deadlines.
+        val limits = com.ayuemin.ilmar.settings.RuntimeLimits
+        limits.save(limits.fields.associate { it.key to if (it.key == "tool_seconds") 0 else limits.get(it.key) })
+        val modes = ChatModePreferences(app)
+        modes.setEnabled(1, "tool_create_file", true); modes.setEnabled(1, "Агент", true)
+        ToolPermissionBroker(app).setGranted("create_file", true)
+        var calls = 0; var retry = false
+        val provider = object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit) = error("typed")
+            override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
+                if (retry) return GenerationResult("Completed")
+                if (calls++ == 0) return GenerationResult("", toolCalls = listOf(ModelToolCall("file", "create_file", """{"name":"Demo.md","content":"file data"}""")))
+                throw java.io.IOException("offline after file")
+            }
+        }
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        vm.send("Create file and explain it"); advanceUntilIdle()
+        kotlinx.coroutines.withContext(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(10000) { vm.state.first { it.activeChatId == null } }
+        }
+        advanceUntilIdle()
+        assertTrue(vm.state.value.errors.isNotEmpty())
+        assertTrue(vm.state.value.errors.toString() + "\n" + com.ayuemin.ilmar.diagnostics.Diagnostics(app).read(), vm.state.value.chats.single().messages.last().attachments.isNotEmpty())
+        assertEquals("Demo.md", vm.state.value.chats.single().messages.last().attachments.single().name)
+        retry = true; vm.retry(); advanceUntilIdle()
+        assertEquals("Completed", vm.state.value.chats.single().messages.last().text)
+        assertEquals(1, vm.state.value.chats.size)
+        assertEquals(1, vm.state.value.chats.single().messages.sumOf { it.attachments.size })
+    }
+
 }

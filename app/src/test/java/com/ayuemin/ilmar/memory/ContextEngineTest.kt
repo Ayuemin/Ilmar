@@ -104,13 +104,16 @@ class ContextEngineTest {
         assertThrows(ContextFailure::class.java) { memory.save(1, through, summary, ContextEstimate.source(history, through), 200, 100) }
         assertNull(memory.active(1))
     }
-    @Test fun toolsAndToolResultsAreBudgetedAsCompleteRoundInsteadOfTruncated() = runTest {
+    @Test fun oversizedToolGroupsBecomeReferencesWithoutChangingOriginals() = runTest {
         val history = history(1, 10)
         val huge = listOf(JSONObject().put("role", "tool").put("content", "x".repeat(40000)))
         var calls = 0
-        assertTrue(runCatching { engine(ContextPolicy(automatic = false)) { _, _, _, _, _ -> calls++; GenerationResult(summary) }
-            .prepare(history, emptyList(), huge) }.isFailure)
+        val projected = engine(ContextPolicy(automatic = false)) { _, _, _, _, _ -> calls++; GenerationResult(summary) }
+            .prepare(history, emptyList(), huge)
+        assertTrue(projected.estimatedInput + projected.output <= projected.limit)
         assertEquals(0, calls); assertEquals(40000, huge.single().getString("content").length)
+        assertFalse(projected.options.toolHistory.any { it.optString("role") == "tool" })
+
     }
     @Test fun automaticCompactionOccursBeforeAnswerAndAllCallsShareBudget() = runTest {
         val history = history(8, 1000); val purposes = mutableListOf<String>()
