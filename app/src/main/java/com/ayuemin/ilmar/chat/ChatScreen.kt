@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import com.ayuemin.ilmar.ui.IlmarWelcome
 import com.ayuemin.ilmar.ui.IlmarCircleAction
 import com.ayuemin.ilmar.ui.IlmarFieldShape
@@ -41,6 +43,9 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     var selectedId by remember { mutableStateOf(chats.first().id) }
     var draft by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
+    var streamingText by remember { mutableStateOf("") }
+    var streamingChatId by remember { mutableStateOf<Long?>(null) }
+    var activeRequest by remember { mutableStateOf<Job?>(null) }
     var requestError by remember { mutableStateOf<String?>(null) }
     val provider = remember { OpenAiCompatibleProvider() }
     val credentials = remember(context) { CredentialStore(context) }
@@ -86,13 +91,13 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         Text(selected.title, color = Color(0xFFB7A5E9), style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(vertical = 8.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-        if (selected.messages.isEmpty()) {
+        if (selected.messages.isEmpty() && !(sending && streamingChatId == selectedId)) {
             IlmarWelcome(Modifier.align(Alignment.Center))
         } else LazyColumn(Modifier.fillMaxSize(),
             state = messageListState,
             verticalArrangement = Arrangement.spacedBy(if (compactMessages) 4.dp else 10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
-            items(selected.messages) { message ->
+            items(selected.messages + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) listOf(ChatMessage(streamingText, false)) else emptyList()) { message ->
                 Row(Modifier.fillMaxWidth(),
                     horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
                     Surface(color = if (message.fromUser) Color(0xFF38304D) else Color(0xFF242632),
@@ -135,29 +140,46 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                         requestError = "Сохрани API-ключ в настройках"
                     } else {
                         sending = true
-                        scope.launch {
+                        streamingChatId = targetChat
+                        streamingText = ""
+                        activeRequest = scope.launch {
                             try {
-                                val reply = provider.complete(
+                                val buffer = StringBuilder()
+                                provider.stream(
                                     prefs.getString("api_endpoint", "https://api.openai.com/v1/chat/completions") ?: "",
                                     prefs.getString("api_model", "gpt-4o-mini") ?: "",
                                     apiKey, history
-                                )
-                                store.append(targetChat, ChatMessage(reply, false), null)
-                                chats = chats.map { chat ->
-                                    if (chat.id == targetChat) chat.copy(messages = chat.messages + ChatMessage(reply, false))
-                                    else chat
+                                ) { delta ->
+                                    buffer.append(delta)
+                                    streamingText = buffer.toString()
                                 }
+                                val reply = buffer.toString()
+                                if (reply.isNotBlank()) {
+                                    store.append(targetChat, ChatMessage(reply, false), null)
+                                    chats = chats.map { chat ->
+                                        if (chat.id == targetChat) chat.copy(messages = chat.messages + ChatMessage(reply, false))
+                                        else chat
+                                    }
+                                }
+                            } catch (_: CancellationException) {
+                                // Partial output stays ephemeral and is not saved.
                             } catch (e: Exception) {
                                 requestError = e.message ?: "Не удалось получить ответ"
                             } finally {
+                                streamingText = ""
+                                streamingChatId = null
                                 sending = false
+                                activeRequest = null
                             }
                         }
                     }
                 }
             }) { Text(if (sending) "…" else "➤") }
         }
-        if (sending) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (sending) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            TextButton(onClick = { activeRequest?.cancel() }) { Text("Остановить ответ") }
+        }
         requestError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
