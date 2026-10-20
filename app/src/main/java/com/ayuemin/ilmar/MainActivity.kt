@@ -28,24 +28,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
-        window.statusBarColor = android.graphics.Color.rgb(5, 4, 4)
+        window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION")
-        window.navigationBarColor = android.graphics.Color.rgb(5, 4, 4)
+        window.navigationBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = 0
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent {
             var settings by remember { mutableStateOf(false) }
             MaterialTheme(colorScheme = darkColorScheme(
-                background = Color(0xFF050404), surface = Color(0xFF080605),
-                surfaceContainerLow = Color(0xFF1B100D), surfaceContainer = Color(0xFF291A15),
-                primary = Color(0xFFF0B198), onPrimary = Color(0xFF21120E),
-                outline = Color(0xFF8D6257), outlineVariant = Color(0xFF60443C),
-                onSurfaceVariant = Color(0xFFC9A99C),
-                onBackground = Color(0xFFF6EDE9), onSurface = Color(0xFFF6EDE9)
+                background = Color(0xFF000000), surface = Color(0xFF181818),
+                surfaceContainerLow = Color(0xFF1B1B1B), surfaceContainer = Color(0xFF282828),
+                primary = Color(0xFFF1F1F1), onPrimary = Color(0xFF151515),
+                outline = Color(0xFF626262), outlineVariant = Color(0xFF383838),
+                onSurfaceVariant = Color(0xFFA3A3A3),
+                onBackground = Color(0xFFF2F2F2), onSurface = Color(0xFFF2F2F2)
             )) {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-                    color = Color(0xFF050404)) {
+                    color = Color(0xFF000000)) {
                     if (settings) SettingsScreen(onBack = { settings = false })
                     else ChatScreen(onSettings = { settings = true })
                 }
