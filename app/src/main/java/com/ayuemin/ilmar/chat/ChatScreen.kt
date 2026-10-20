@@ -127,7 +127,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IlmarCircleAction("☰", "Открыть диалоги", onClick = { scope.launch { drawerState.open() } })
-            Text(selected.title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium,
+            Text(selected.title, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
             Box {
                 IlmarCircleAction("⋮", "Действия с чатом", onClick = { overflow = true })
@@ -155,7 +155,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             items((selected.messages + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) listOf(ChatMessage(streamingText, false)) else emptyList()).filter { !searchOpen || searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { message ->
                 Row(Modifier.fillMaxWidth(),
                     horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
-                    Surface(color = if (message.fromUser) Color(0xFF493028) else Color(0xFF201511),
+                    Surface(color = if (message.fromUser) Color(0xFF303030) else Color(0xFF1B1B1B),
                         shape = RoundedCornerShape(18.dp), modifier = Modifier.widthIn(max = 320.dp)) {
                         SelectionContainer {
                             Text(message.text, color = Color.White,
