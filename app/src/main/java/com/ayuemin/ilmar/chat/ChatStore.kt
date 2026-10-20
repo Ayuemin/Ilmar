@@ -4,21 +4,33 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 4), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 6), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
         createUsage(db)
         createDetails(db)
         createContext(db)
+        createToolTraces(db)
+        com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createUsage(db)
         if (oldVersion < 3) createDetails(db)
         if (oldVersion < 4) createContext(db)
+        if (oldVersion < 5) createToolTraces(db)
+        if (oldVersion < 6) com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
 
+    private fun createToolTraces(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE tool_traces(id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, payload TEXT NOT NULL)")
+    }
+    fun saveToolTrace(chatId: Long, id: String, messages: List<org.json.JSONObject>) {
+        writableDatabase.execSQL("INSERT OR REPLACE INTO tool_traces SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM chats WHERE id=?)",
+            arrayOf<Any>(id, chatId, org.json.JSONArray(messages).toString(), chatId))
+    }
+    fun readToolTrace(chatId: Long, id: String): String? = readableDatabase.rawQuery("SELECT payload FROM tool_traces WHERE chat_id=? AND id=?", arrayOf(chatId.toString(), id)).use { if (it.moveToFirst()) it.getString(0) else null }
     private fun createContext(db: SQLiteDatabase) {
         com.ayuemin.ilmar.memory.ContextStore.create(db)
         db.execSQL("ALTER TABLE request_usage ADD COLUMN purpose TEXT NOT NULL DEFAULT 'answer'")
@@ -66,7 +78,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
             if (purpose == "compact" && completion != null) {
                 val memory = com.ayuemin.ilmar.memory.ContextStore(this)
                 memory.checkpoint(chatId)?.let { raw ->
-                    memory.checkpoint(chatId, org.json.JSONObject(raw).put("pending_result", completion.text.take(20000))
+                    memory.checkpoint(chatId, org.json.JSONObject(raw).put("pending_result", completion.text)
                         .put("pending_finish", completion.finishReason).put("pending_tools", completion.toolCalls.isNotEmpty()))
                 }
             }
@@ -109,6 +121,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun clearMessages(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)
@@ -123,6 +136,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun delete(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.memory.ContextStore(this).clear(chatId)

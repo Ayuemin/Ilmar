@@ -34,16 +34,10 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
     var editing by remember { mutableStateOf<ProviderConnection?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
     var compact by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
-    val diagnostics = remember { Diagnostics(context) }
-    var events by remember { mutableStateOf(diagnostics.read()) }
-    var confirmClear by remember { mutableStateOf(false) }
     if (page != null) BackHandler { page = null }
     if (editorOpen) ConnectionEditor(editing, registry, onDismiss = { editorOpen = false }, onSaved = {
         editorOpen = false; revision++; catalog.changed()
     })
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Очистить диагностику?") },
-        confirmButton = { TextButton(onClick = { diagnostics.clear(); events = ""; confirmClear = false }) { Text("Очистить") } },
-        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } })
     if (page == "Модели") {
         Column(Modifier.fillMaxSize().imePadding().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +66,8 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 SettingsCard("Интерфейс", "Компактность сообщений") { page = "Интерфейс" }
                 SettingsCard("Память и контекст", "История, Compact, кэш и бюджеты") { page = "Память и контекст" }
                 SettingsCard("Инструменты", "Состояние подключений") { page = "Инструменты" }
-                SettingsCard("Диагностика", "Версия и события запросов") { events = diagnostics.read(); page = "Диагностика" }
+                SettingsCard("Расширенные лимиты", "Агент, файлы, интернет, память и журнал — глобально") { page = "Расширенные лимиты" }
+                SettingsCard("Диагностика", "Версия и события запросов") { page = "Диагностика" }
             }
             "Подключения" -> {
                 data.providers.forEach { connection ->
@@ -89,6 +84,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 Switch(compact, { compact = it; prefs.edit().putBoolean("compact_messages", it).apply() })
             }
             "Память и контекст" -> com.ayuemin.ilmar.memory.ContextSettings(onConnections = { page = "Подключения" })
+            "Расширенные лимиты" -> com.ayuemin.ilmar.settings.RuntimeSettings()
             "Инструменты" -> {
                 com.ayuemin.ilmar.tools.ToolSettings()
                 val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
@@ -102,13 +98,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                     }
                 }
             }
-            "Диагностика" -> {
-                Text("Ilmar · ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}")
-                Text("SHA: ${BuildConfig.BUILD_SHA.take(12)}", style = MaterialTheme.typography.bodySmall)
-                Text("Журнал содержит только время, код события и ID чата; последние 100 событий.")
-                Text(events.ifBlank { "Событий пока нет" }, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(enabled = events.isNotBlank(), onClick = { confirmClear = true }) { Text("Очистить журнал") }
-            }
+            "Диагностика" -> com.ayuemin.ilmar.diagnostics.DiagnosticsPanel()
         }
     }
 }

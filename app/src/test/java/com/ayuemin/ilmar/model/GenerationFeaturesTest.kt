@@ -68,4 +68,18 @@ class GenerationFeaturesTest {
         assertTrue(runCatching { GenerationPayload.build("m", emptyList(), GenerationOptions(responseSchema = JSONObject("""{"type":"array"}"""))) }.isFailure)
     }
 
+    @Test fun streamsLargeFileArgumentsAndMoreThanTwentyFourCallsUsingGlobalLimits() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        com.ayuemin.ilmar.settings.RuntimeLimits.install(app); com.ayuemin.ilmar.settings.RuntimeLimits.reset()
+        val content = "данные".repeat(20000)
+        val calls = org.json.JSONArray().apply { repeat(30) { i -> put(JSONObject().put("index", i).put("id", "call_$i").put("function", JSONObject().put("name", "create_file").put("arguments", JSONObject().put("name", "file$i.txt").put("content", if (i == 0) content else "small").toString()))) } }
+        val json = JSONObject().put("choices", org.json.JSONArray().put(JSONObject().put("delta", JSONObject().put("tool_calls", calls))))
+        val result = parse(event(json.toString()) + "data: [DONE]\n\n")
+        assertEquals(30, result.toolCalls.size)
+        assertEquals(content, JSONObject(result.toolCalls.first().arguments).getString("content"))
+        val limits = com.ayuemin.ilmar.settings.RuntimeLimits
+        limits.save(limits.fields.associate { it.key to if (it.key == "argument_kib") 64 else limits.get(it.key) })
+        assertTrue(runCatching { parse(event(json.toString()) + "data: [DONE]\n\n") }.isFailure)
+    }
+
 }

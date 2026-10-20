@@ -39,9 +39,7 @@ internal fun AttachmentList(items: List<ChatAttachment>, onRemove: ((String) -> 
     }
     fun export(item: ChatAttachment) {
         exportingId = item.id
-        try { save.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-            .setType(if (item.mime in setOf("text/html", "image/svg+xml", "application/xml")) "application/octet-stream" else item.mime)
-            .putExtra(Intent.EXTRA_TITLE, item.name)) }
+        try { save.launch(FileExport.intent(item.name, item.mime)) }
         catch (_: android.content.ActivityNotFoundException) { exportingId = null; android.widget.Toast.makeText(context, "Сохранение файлов недоступно", android.widget.Toast.LENGTH_SHORT).show() }
     }
     Column(Modifier.heightIn(max = if (onRemove == null) 480.dp else 160.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {

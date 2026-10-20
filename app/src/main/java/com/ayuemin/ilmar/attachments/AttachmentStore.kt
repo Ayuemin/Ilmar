@@ -13,11 +13,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.*
 import java.util.UUID
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 import org.xmlpull.v1.XmlPullParser
 
 /** Originals stay private; images/PDF pages are normalized once, then reused across turns/branches. */
 class AttachmentStore(context: Context) {
-    private val app = context.applicationContext
+    private val app = context.applicationContext.also { Limits.install(it) }
     private val root = File(app.filesDir, "attachments").apply { mkdirs() }
     fun file(id: String): File {
         require(id.matches(Regex("[a-zA-Z0-9.-]+")) && id !in setOf(".", "..")) { "Некорректное вложение" }
@@ -36,7 +37,7 @@ class AttachmentStore(context: Context) {
         fun newFile() = file(UUID.randomUUID().toString()).also { created += it }
         try {
             val original = newFile()
-            original.outputStream().use { output -> copyLimited(input, output, 20 * 1024 * 1024) }
+            original.outputStream().use { output -> copyLimited(input, output, Limits.mib("import_mib").coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
             val ext = name.substringAfterLast('.', "").lowercase()
             val image = mime.startsWith("image/") || ext in setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "bmp")
             val images = mutableListOf<String>()
@@ -46,7 +47,7 @@ class AttachmentStore(context: Context) {
                 mime == "application/pdf" || ext == "pdf" -> {
                     ParcelFileDescriptor.open(original, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                         PdfRenderer(fd).use { pdf ->
-                            require(pdf.pageCount in 1..12) { "PDF: поддерживается от 1 до 12 страниц" }
+                            require(pdf.pageCount in 1..Limits.get("pdf_pages")) { "PDF превышает глобальный лимит страниц" }
                             repeat(pdf.pageCount) { pageIndex -> pdf.openPage(pageIndex).use { page ->
                                 val scale = minOf(1400f / maxOf(page.width, page.height), 2f)
                                 val bitmap = Bitmap.createBitmap(maxOf(1, (page.width * scale).toInt()), maxOf(1, (page.height * scale).toInt()), Bitmap.Config.ARGB_8888)
@@ -62,14 +63,14 @@ class AttachmentStore(context: Context) {
                 ext == "xlsx" || mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> text = XlsxText.read(original)
                 ext == "docx" || mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> text = docxText(original)
                 mime.startsWith("text/") || ext in setOf("txt", "md", "csv", "json", "xml", "yaml", "yml", "log", "kt", "py", "js", "html") || mime == "application/json" -> {
-                    require(original.length() <= 256 * 1024) { "Текстовый файл: не больше 256 КБ" }
+                    require(original.length() <= Limits.bytes("text_kib")) { "Текстовый файл превышает глобальный лимит" }
                     val bytes = original.readBytes(); require(bytes.none { it == 0.toByte() }) { "Файл не является текстовым" }
                     text = Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
                 }
                 else -> error("Поддерживаются изображения, PDF, DOCX, XLSX и текстовые файлы UTF-8")
             }
             require(text == null || text.isNotBlank()) { "В документе нет доступного текста" }
-            require(images.sumOf { file(it).length() } <= 12 * 1024 * 1024) { "Изображения документа слишком велики" }
+            require(images.sumOf { file(it).length() } <= Limits.mib("images_mib")) { "Изображения документа слишком велики" }
             return ChatAttachment(original.name, name, mime.ifBlank { when (ext) { "pdf" -> "application/pdf"; "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; else -> "application/octet-stream" } }, original.length(), text, images)
         } catch (e: Exception) { created.forEach { it.delete() }; throw e }
     }
@@ -100,10 +101,10 @@ class AttachmentStore(context: Context) {
     }
     private fun docxText(source: File): String {
         java.util.zip.ZipFile(source).use { zip ->
-            require(zip.size() <= 2000) { "Слишком много компонентов DOCX" }
+            require(zip.size() <= Limits.get("zip_entries")) { "Слишком много компонентов DOCX" }
             val entry = zip.getEntry("word/document.xml") ?: error("В DOCX отсутствует документ")
             val xml = ByteArrayOutputStream()
-            zip.getInputStream(entry).use { copyLimited(it, xml, 2 * 1024 * 1024) }
+            zip.getInputStream(entry).use { copyLimited(it, xml, Limits.mib("xml_mib").toInt()) }
             val bytes = xml.toByteArray()
             require(!bytes.toString(Charsets.UTF_8).contains(Regex("<!DOCTYPE|<!ENTITY", RegexOption.IGNORE_CASE))) { "DTD в DOCX запрещён" }
             val parser = Xml.newPullParser().apply {
@@ -114,7 +115,7 @@ class AttachmentStore(context: Context) {
             while (parser.eventType != XmlPullParser.END_DOCUMENT) {
                 if (parser.eventType == XmlPullParser.TEXT) result.append(parser.text)
                 if (parser.eventType == XmlPullParser.END_TAG && parser.name == "p") result.append('\n')
-                require(result.length <= 256 * 1024) { "В DOCX слишком много текста" }; parser.next()
+                require(result.length <= Limits.bytes("text_kib")) { "В DOCX слишком много текста" }; parser.next()
             }
             return result.toString()
         }

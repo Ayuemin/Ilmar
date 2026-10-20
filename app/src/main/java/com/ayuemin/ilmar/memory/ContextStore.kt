@@ -1,6 +1,7 @@
 package com.ayuemin.ilmar.memory
 
 import android.database.sqlite.SQLiteDatabase
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 import com.ayuemin.ilmar.chat.ChatStore
 import org.json.JSONObject
 
@@ -8,12 +9,13 @@ internal data class Capsule(val id: Long, val through: Long, val text: String, v
     val before: Int, val after: Int, val active: Boolean)
 internal data class MemorySnapshot(val rules: String, val capsules: List<Capsule>, val checkpoint: String?)
 internal class ContextStore(private val store: ChatStore) {
+    fun saveToolTrace(chat: Long, id: String, messages: List<JSONObject>) = store.saveToolTrace(chat, id, messages)
     private val db get() = store.writableDatabase
     fun rules(chat: Long): String = db.rawQuery("SELECT text FROM context_rules WHERE chat_id=?", arrayOf(chat.toString())).use {
         if (it.moveToFirst()) it.getString(0) else ""
     }
     fun setRules(chat: Long, text: String) {
-        require(text.length <= 12000) { "Правила: не больше 12 тысяч символов" }
+        require(text.length <= Limits.get("rules_chars")) { "Правила превышают глобальный лимит; измени расширенные настройки" }
         db.execSQL("INSERT OR REPLACE INTO context_rules VALUES(?,?)", arrayOf(chat, text))
         db.execSQL("DELETE FROM context_checkpoint WHERE chat_id=?", arrayOf(chat))
     }
@@ -62,9 +64,9 @@ internal class ContextStore(private val store: ChatStore) {
         val words = Regex("[\\p{L}\\p{N}_]{2,}").findAll(query).map { it.value }.distinct().take(6).toList()
         if (words.isEmpty()) return ""
         db.execSQL("INSERT INTO message_search(rowid,chat_id,body) SELECT id,chat_id,text || ' ' || coalesce(attachments,'') FROM messages WHERE id NOT IN (SELECT rowid FROM message_search)")
-        return db.rawQuery("SELECT rowid,snippet(message_search,'','', ' … ', -1, 30) FROM message_search WHERE message_search MATCH ? AND CAST(chat_id AS INTEGER)=CAST(? AS INTEGER) AND rowid<=? ORDER BY rowid DESC LIMIT 3",
-            arrayOf(words.joinToString(" OR ") { "\"$it\"" }, chat.toString(), through.toString())).use { rows ->
-            buildString { while (rows.moveToNext()) append("Сообщение ${rows.getLong(0)}: ${rows.getString(1).take(600)}\n") }.take(1800)
+        return db.rawQuery("SELECT rowid,snippet(message_search,'','', ' … ', -1, 30) FROM message_search WHERE message_search MATCH ? AND CAST(chat_id AS INTEGER)=CAST(? AS INTEGER) AND rowid<=? ORDER BY rowid DESC LIMIT ?",
+            arrayOf(words.joinToString(" OR ") { "\"$it\"" }, chat.toString(), through.toString(), Limits.get("retrieval_hits").toString())).use { rows ->
+            buildString { while (rows.moveToNext()) append("Сообщение ${rows.getLong(0)}: ${rows.getString(1).take(600)}\n") }.take(Limits.get("excerpt_chars"))
         }
     }
     companion object {

@@ -1,6 +1,7 @@
 package com.ayuemin.ilmar.tools
 
 import kotlinx.coroutines.sync.withLock
+import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
@@ -17,11 +18,11 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
     @Synchronized fun saveMemory(chat: Long, text: String): String {
-        require(text.isNotBlank() && text.length <= 4000) { "Запись памяти: до 4000 символов" }
+        require(text.isNotBlank() && text.length <= Limits.get("memory_chars")) { "Запись памяти превышает глобальный лимит" }
         val db = writableDatabase
         db.rawQuery("SELECT rowid FROM memories WHERE CAST(chat AS INTEGER)=CAST(? AS INTEGER) AND body=?", arrayOf(chat.toString(), text)).use { if (it.moveToFirst()) return it.getLong(0).toString() }
         val count = db.rawQuery("SELECT count(*) FROM memories WHERE CAST(chat AS INTEGER)=CAST(? AS INTEGER)", arrayOf(chat.toString())).use { it.moveToFirst(); it.getInt(0) }
-        require(count < 200) { "Лимит: 200 записей памяти на чат" }
+        require(Limits.get("memory_records") == 0 || count < Limits.get("memory_records")) { "Достигнут глобальный лимит записей памяти" }
         val values = android.content.ContentValues().apply { put("chat", chat); put("body", text) }
         return db.insertOrThrow("memories", null, values).toString()
     }
@@ -36,7 +37,7 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
     }
     fun plan(chat: Long, steps: JSONArray?): String {
         if (steps != null) {
-            require(steps.length() <= 30 && steps.toString().length <= 12000) { "План: до 30 шагов и 12 тысяч символов" }
+            require(steps.length() <= Limits.get("plan_steps") && steps.toString().length <= Limits.bytes("argument_kib")) { "План превышает глобальный лимит" }
             repeat(steps.length()) { i -> val step = steps.getJSONObject(i)
                 require(step.getString("text").length in 1..500 && step.getString("status") in setOf("pending", "in_progress", "completed")) }
             require((0 until steps.length()).count { steps.getJSONObject(it).getString("status") == "in_progress" } <= 1)
@@ -46,17 +47,26 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
     }
     private val cacheLock = kotlinx.coroutines.sync.Mutex()
     suspend fun cached(id: String, load: suspend () -> String): String = cacheLock.withLock {
+        if (Limits.get("cache_minutes") == 0) return@withLock load()
         val now = System.currentTimeMillis()
-        readableDatabase.rawQuery("SELECT payload FROM cache WHERE id=? AND created>?", arrayOf(id, (now - 5 * 60 * 1000).toString())).use { if (it.moveToFirst()) return@withLock it.getString(0) }
+        readableDatabase.rawQuery("SELECT payload FROM cache WHERE id=? AND created>?", arrayOf(id, (now - Limits.get("cache_minutes").toLong() * 60 * 1000).toString())).use { if (it.moveToFirst()) return@withLock it.getString(0) }
         val result = load()
         writableDatabase.execSQL("INSERT OR REPLACE INTO cache VALUES(?,?,?)", arrayOf<Any>(id, now, result))
-        writableDatabase.execSQL("DELETE FROM cache WHERE id NOT IN (SELECT id FROM cache ORDER BY created DESC LIMIT 32)")
+        writableDatabase.execSQL("DELETE FROM cache WHERE id NOT IN (SELECT id FROM cache ORDER BY created DESC LIMIT ${Limits.get("cache_entries")})")
         result
     }
     fun log(chat: Long, tool: String, args: JSONObject, result: String, duration: Long, status: String) {
         writableDatabase.execSQL("INSERT INTO calls(chat,tool,args,result,latency,status,cost) VALUES(?,?,?,?,?,?,NULL)",
-            arrayOf<Any>(chat, tool, args.toString().take(2048), result.take(2048), duration, status))
-        writableDatabase.execSQL("DELETE FROM calls WHERE id NOT IN (SELECT id FROM calls ORDER BY id DESC LIMIT 100)")
+            arrayOf<Any>(chat, tool, com.ayuemin.ilmar.diagnostics.Redaction.json(args).toString().take(Limits.get("log_chars")), com.ayuemin.ilmar.diagnostics.Redaction.text(result).take(Limits.get("log_chars")), duration, status))
+        writableDatabase.execSQL("DELETE FROM calls WHERE id NOT IN (SELECT id FROM calls ORDER BY id DESC LIMIT ${Limits.get("log_events")})")
+    }
+    fun exportCalls(writer: java.io.Writer) {
+        readableDatabase.rawQuery("SELECT id,chat,tool,args,result,latency,status,cost FROM calls ORDER BY id", null).use { rows ->
+            while (rows.moveToNext()) writer.append(JSONObject().put("event", "TOOL_LOG").put("id", rows.getLong(0)).put("chat", rows.getLong(1))
+                .put("tool", rows.getString(2)).put("arguments", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(3)))
+                .put("result", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(4))).put("latency_ms", rows.getLong(5))
+                .put("status", rows.getString(6)).put("cost", if (rows.isNull(7)) JSONObject.NULL else rows.getString(7)).toString()).append('\n')
+        }
     }
     fun clear(chat: Long) {
         writableDatabase.execSQL("DELETE FROM memories WHERE CAST(chat AS INTEGER)=CAST(? AS INTEGER)", arrayOf(chat))

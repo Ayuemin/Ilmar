@@ -8,20 +8,20 @@ import java.math.BigDecimal
 import java.security.MessageDigest
 
 internal class ContextFailure(message: String) : IllegalStateException(message)
-internal data class ContextPolicy(val window: Int = 8192, val output: Int = 1536, val recent: Int = 6,
-    val taskTokens: Int = 100000, val taskUsd: String? = null, val automatic: Boolean = true) {
-    fun limit(caps: ModelCapabilities) = minOf(window.toLong(), caps.contextLength ?: window.toLong()).toInt()
-    fun reserve(caps: ModelCapabilities) = minOf(output.toLong(), caps.maxOutputTokens ?: output.toLong()).toInt()
+internal data class ContextPolicy(val window: Int = 0, val output: Int = 0, val recent: Int = 6,
+    val taskTokens: Int = 0, val taskUsd: String? = null, val automatic: Boolean = true) {
+    fun limit(caps: ModelCapabilities) = (if (window == 0) caps.contextLength ?: 32768L else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
+    fun reserve(caps: ModelCapabilities) = (if (output == 0) minOf(caps.maxOutputTokens ?: 8192L, (limit(caps) / 4).toLong()) else minOf(output.toLong(), caps.maxOutputTokens ?: output.toLong())).coerceAtLeast(1).toInt()
     fun validate() {
-        require(window in 2048..2_000_000 && output in 256..32768 && output < window / 2) { "Резерв ответа должен быть меньше половины контекста" }
-        require(recent in 0..20 && taskTokens in 2048..10_000_000) { "Проверь число последних сообщений и бюджет задачи" }
+        require((window == 0 || window in 2048..Int.MAX_VALUE) && (output == 0 || output in 256..1000000) && (window == 0 || output < window / 2)) { "Резерв ответа должен быть меньше половины контекста" }
+        require(recent in 0..10000 && (taskTokens == 0 || taskTokens in 2048..Int.MAX_VALUE)) { "Проверь число последних сообщений и бюджет задачи" }
         require(taskUsd == null || (taskUsd.toBigDecimalOrNull()?.let { it > BigDecimal.ZERO } == true)) { "Бюджет USD должен быть положительным числом" }
     }
 }
 internal class ContextPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_context", Context.MODE_PRIVATE)
-    fun load() = ContextPolicy(prefs.getInt("window", 8192), prefs.getInt("output", 1536), prefs.getInt("recent", 6),
-        prefs.getInt("task_tokens", 100000), prefs.getString("task_usd", null), prefs.getBoolean("automatic", true))
+    fun load() = ContextPolicy(prefs.getInt("window", 0), prefs.getInt("output", 0), prefs.getInt("recent", 6),
+        prefs.getInt("task_tokens", 0), prefs.getString("task_usd", null), prefs.getBoolean("automatic", true))
     var compactModelId: String?
         get() = prefs.getString("compact_model_id", null)
         set(value) { check(prefs.edit().putString("compact_model_id", value).commit()) }
@@ -48,7 +48,7 @@ internal class TaskBudget(private val policy: ContextPolicy, private val caps: M
     fun before(input: Int, output: Int, images: Boolean, boundedOutput: Boolean, modelCaps: ModelCapabilities = caps) {
         val caps = modelCaps
         reservedTokens = input.toLong() + output
-        if (tokens + reservedTokens > policy.taskTokens) throw ContextFailure("Достигнут токеновый бюджет задачи. Измени лимит в настройках памяти.")
+        if (policy.taskTokens > 0 && tokens + reservedTokens > policy.taskTokens) throw ContextFailure("Достигнут токеновый бюджет задачи. Измени лимит в настройках памяти.")
         val limit = policy.taskUsd?.toBigDecimal()
         if (limit != null && (images || !boundedOutput || caps.promptPrice == null || caps.completionPrice == null || caps.requestPrice == null))
             throw ContextFailure("Для бюджета USD нужны тарифы текста и ограничение вывода в каталоге. Для изображений денежная оценка недоступна.")

@@ -39,7 +39,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
     val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty() }
     var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
     val canSearch = capabilities.tools && broker.granted("web_search") &&
-        com.ayuemin.ilmar.security.CredentialStore(context).hasApiKey(com.ayuemin.ilmar.tools.NativeTools.SEARCH_KEY)
+        com.ayuemin.ilmar.tools.SearchRegistry(context).ready()
     var search by remember(id) { mutableStateOf(preferences.enabled(id, "tool_web_search") && preferences.enabled(id, "Агент")) }
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
@@ -62,7 +62,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                     onOpenSettings = { reasoningSettings = !reasoningSettings }, onCheckedChange = {
                         reasoning = it; preferences.setEnabled(id, "Размышление", it)
                     })
-                ComposerToggleTile(Icons.Outlined.Language, if (search) 3 else 0, 4, levelDescription = "Поиск Brave",
+                ComposerToggleTile(Icons.Outlined.Language, if (search) 3 else 0, 4, levelDescription = "Поиск через настроенный API",
                     checked = search && agent, enabled = canSearch, modifier = Modifier.weight(1f), onCheckedChange = {
                         search = it; preferences.setEnabled(id, "tool_web_search", it)
                         chosen = if (it) chosen + "web_search" else chosen - "web_search"; applied = chosen

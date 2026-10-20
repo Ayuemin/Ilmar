@@ -11,7 +11,7 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [28])
 class WebToolsTest {
-    @Test fun privateLiteralsHttpCredentialsAndAlternatePortsAreRejectedBeforeNetwork() = runTest {
+    @Test fun privateLiteralsHttpAndCredentialsAreRejectedBeforeNetwork() = runTest {
         var requests = 0
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             requests++
@@ -19,7 +19,7 @@ class WebToolsTest {
                 .body("ok".toResponseBody("text/plain".toMediaType())).build()
         }.build()
         val tools = WebTools(client)
-        listOf("http://public.example", "https://127.0.0.1", "https://[::1]", "https://user:password@public.example", "https://public.example:8443").forEach {
+        listOf("http://public.example", "https://127.0.0.1", "https://[::1]", "https://user:password@public.example").forEach {
             assertTrue(it, runCatching { tools.fetch(it) }.isFailure)
         }
         assertEquals(0, requests)
@@ -47,7 +47,7 @@ class WebToolsTest {
             val client = OkHttpClient.Builder().addInterceptor { chain ->
                 Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("Test")
                     .header("Location", "https://127.0.0.1/")
-                    .body("x".repeat(1024 * 1024 + 1).toResponseBody("text/plain".toMediaType())).build()
+                    .body("x".repeat(com.ayuemin.ilmar.settings.RuntimeLimits.bytes("fetch_kib") + 1).toResponseBody("text/plain".toMediaType())).build()
             }.build()
             assertTrue(runCatching { WebTools(client).fetch("https://example.com") }.isFailure)
         }

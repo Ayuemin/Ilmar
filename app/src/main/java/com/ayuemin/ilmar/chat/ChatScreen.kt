@@ -28,10 +28,11 @@ import com.ayuemin.ilmar.ui.IlmarWelcome
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewModel(), onConnectionSettings: () -> Unit = onSettings) {
+fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewModel(), onConnectionSettings: () -> Unit = onSettings, onSettingsPage: (String) -> Unit = { onSettings() }) {
     val context = LocalContext.current
     val state by controller.state.collectAsState()
     val selected = state.chats.firstOrNull { it.id == state.selectedId } ?: return
+    LaunchedEffect(selected.id) { controller.indexArchive(selected.id) }
     val sending = state.activeChatId != null
     val inThisChat = state.activeChatId == selected.id
     val draft = state.drafts[selected.id].orEmpty()
@@ -194,10 +195,15 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             (state.errors[selected.id] ?: speechError ?: speech.error)?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (state.errors.containsKey(selected.id)) {
-                    TextButton(onClick = onConnectionSettings) { Text("Настройки подключения") }
+                    Row {
+                        TextButton(onClick = { onSettingsPage("Диагностика") }) { Text("Подробности / журнал") }
+                        if (error.contains("контекст", true) || error.contains("Compact", true)) TextButton(onClick = { onSettingsPage("Память и контекст") }) { Text("Память") }
+                        else if (error.contains("лимит", true) || error.contains("врем", true)) TextButton(onClick = { onSettingsPage("Расширенные лимиты") }) { Text("Лимиты") }
+                        else TextButton(onClick = onConnectionSettings) { Text("Подключение") }
+                    }
                 }
             }
-            if (!inThisChat && selected.messages.lastOrNull()?.fromUser == true) {
+            if (!inThisChat && (selected.messages.lastOrNull()?.fromUser == true || state.errors.containsKey(selected.id) && selected.messages.any { it.fromUser })) {
                 TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
             }
             if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }

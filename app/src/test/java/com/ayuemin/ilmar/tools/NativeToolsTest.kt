@@ -97,4 +97,44 @@ class NativeToolsTest {
         }
     }
 
+    @Test fun largerGeneratedFilesAndMessageAndTraceReadsSupportPagingWithoutCrossChatAccess() = runTest {
+        val app = ApplicationProvider.getApplicationContext<Context>(); NativeTools.install(app)
+        val modes = ChatModePreferences(app); val broker = ToolPermissionBroker(app)
+        for (name in listOf("create_file", "read_file")) { broker.setGranted(name, true); modes.setEnabled(9010, "tool_$name", true) }
+        ChatStore(app).use { store ->
+            store.load().filter { it.id == 9010L }.forEach { store.delete(it.id) }; store.create(9010, "Paging")
+            val original = store.append(9010, ChatMessage("Full original message", true), null)
+            val create = ToolRegistry.authorized(9010, modes, broker).first { it.schema.name == "create_file" }
+            val read = ToolRegistry.authorized(9010, modes, broker).first { it.schema.name == "read_file" }
+            val content = "Русский текст ".repeat(8000)
+            val response = JSONObject(create.execute(JSONObject().put("name", "Большой.md").put("content", content)))
+            val id = response.getString("file_id")
+            val chunk = JSONObject(read.execute(JSONObject().put("file_id", id).put("offset", 100).put("limit", 1000)))
+            assertEquals(content.substring(100, 1100), chunk.getString("text")); assertEquals(1100, chunk.getInt("next_offset"))
+            assertEquals(content, store.load().first { it.id == 9010L }.messages.last().attachments.single().text)
+            assertEquals("Full original message", JSONObject(read.execute(JSONObject().put("file_id", "message:${original.id}"))).getString("text"))
+            store.saveToolTrace(9010, "trace-42", listOf(JSONObject().put("role", "tool").put("content", "original result")))
+            assertTrue(JSONObject(read.execute(JSONObject().put("file_id", "trace:trace-42"))).getString("text").contains("original result"))
+            assertTrue(JSONObject(read.execute(JSONObject().put("file_id", "trace:other-chat"))).has("error"))
+        }
+    }
+
+    @Test fun historySearchUsesFullOriginalsAndCannotReadAnotherChat() = kotlinx.coroutines.test.runTest {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        NativeTools.install(app)
+        val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
+        val broker = com.ayuemin.ilmar.agent.ToolPermissionBroker(app)
+        broker.setGranted("search_history", true); modes.setEnabled(9011, "tool_search_history", true)
+        com.ayuemin.ilmar.chat.ChatStore(app).use { store ->
+            store.load().filter { it.id in listOf(9011L, 9012L) }.forEach { store.delete(it.id) }
+            store.create(9011, "Current"); store.create(9012, "Private")
+            store.append(9011, com.ayuemin.ilmar.chat.ChatMessage("deployment-version-42", true), null)
+            store.append(9012, com.ayuemin.ilmar.chat.ChatMessage("private deployment-version-99", true), null)
+            val tool = com.ayuemin.ilmar.chat.ToolRegistry.authorized(9011, modes, broker).first { it.schema.name == "search_history" }
+            val result = tool.execute(org.json.JSONObject().put("query", "deployment").put("mode", "lexical"))
+            assertTrue(result.contains("version-42")); assertFalse(result.contains("version-99"))
+            store.delete(9011); store.delete(9012)
+        }
+    }
+
 }
