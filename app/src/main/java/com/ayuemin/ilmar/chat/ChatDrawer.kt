@@ -4,11 +4,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun ChatDrawer(
@@ -18,6 +17,14 @@ fun ChatDrawer(
     onNew: () -> Unit,
     onSettings: () -> Unit
 ) {
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(chats, query) {
+        if (query.isBlank()) chats.asReversed()
+        else chats.asReversed().filter { chat ->
+            chat.title.contains(query.trim(), ignoreCase = true) ||
+                chat.messages.any { it.text.contains(query.trim(), ignoreCase = true) }
+        }
+    }
     ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Spacer(Modifier.height(20.dp))
         Text("✦ Ilmar", color = MaterialTheme.colorScheme.primary,
@@ -26,30 +33,43 @@ fun ChatDrawer(
         Spacer(Modifier.height(16.dp))
         NavigationDrawerItem(
             label = { Text("＋  Новый чат") },
-            selected = false,
-            onClick = onNew,
+            selected = false, onClick = { query = ""; onNew() },
             modifier = Modifier.padding(horizontal = 12.dp)
         )
+        OutlinedTextField(
+            value = query, onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            singleLine = true,
+            placeholder = { Text("Поиск по чатам и сообщениям") },
+            trailingIcon = {
+                if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("×") }
+            }
+        )
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text("ИСТОРИЯ", color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Text("ИСТОРИЯ · ${filtered.size}",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 24.dp))
+        if (filtered.isEmpty()) {
+            Text("Ничего не найдено",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(24.dp))
+        }
         LazyColumn(Modifier.weight(1f)) {
-            items(chats, key = { it.id }) { chat ->
+            items(filtered, key = { it.id }) { chat ->
                 NavigationDrawerItem(
-                    label = { Text(chat.title, maxLines = 1) },
+                    label = { Text(chat.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = chat.id == selectedId,
-                    onClick = { onSelect(chat.id) },
+                    onClick = { query = ""; onSelect(chat.id) },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
         }
         HorizontalDivider()
         NavigationDrawerItem(
-            label = { Text("⚙  Настройки") },
-            selected = false,
-            onClick = onSettings,
-            modifier = Modifier.padding(12.dp)
+            label = { Text("⚙  Настройки") }, selected = false,
+            onClick = onSettings, modifier = Modifier.padding(12.dp)
         )
     }
 }
