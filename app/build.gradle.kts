@@ -12,8 +12,8 @@ android {
         applicationId = "com.ayuemin.ilmar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.1.0-continuous-context"
+        versionCode = 11
+        versionName = "0.1.1-compact-journal"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -57,4 +57,3 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("junit:junit:4.13.2")
 }
-
