@@ -1,13 +1,29 @@
 # Ilmar
 
-Модульный Android AI-агент с расширяемой системой инструментов.
+Android-чат на Kotlin, Compose и Material 3 — основа будущего агента.
 
-Документация и Roadmap ведутся отдельно в Obsidian.
+- Несколько OpenAI-compatible HTTPS-подключений и зарегистрированных моделей.
+- Ключи отдельно для каждого подключения, зашифрованные через Android Keystore.
+- Выбор модели для каждого чата, локальная SQLite-история, streaming и остановка.
+- Сетевые ошибки не запускают автоматический повтор платных запросов.
+- GitHub-инструменты и плагины пока не исполняются.
 
-## CI
-- `android-checks.yml`: быстрая компиляция и модульные тесты без APK на push и pull request.
-- `android-apk.yml`: сборка debug APK вручную через Actions → Run workflow.
-- Кэш Gradle сохраняется между запусками.
-- Пока Android-проект не добавлен, workflow завершается без сборки.
+Документация и единственный Roadmap: [Obsidian / Ilmar](https://github.com/Ayuemin/Ayuemin-obsidian-/tree/main/Ilmar).
 
-Сборка релизного подписанного APK будет добавлена после настройки подписи и согласования release-процесса.
+## Проверка и APK
+
+`android-checks.yml` компилирует Kotlin, запускает unit/Robolectric tests и lint,
+затем собирает `ilmar-debug-apk` на push в main и pull request.
+`android-apk.yml` позволяет отдельно собрать debug APK вручную через Actions.
+Артефакты хранятся 14 дней. SHA и версия доступны в Настройки → Диагностика.
+
+Локально нужны JDK 17, Gradle 8.11.1 и Android SDK 35:
+
+```sh
+gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+[Проверки перед телефонной приёмкой](docs/chat-preview-acceptance.md).
+Успешный CI не заменяет проверку API и интерфейса на устройстве.
+Обновление поверх старого APK требует совпадающей подписи; удалять приложение ради
+установки без сохранения данных нельзя. Стабильная релизная подпись ещё не настроена.

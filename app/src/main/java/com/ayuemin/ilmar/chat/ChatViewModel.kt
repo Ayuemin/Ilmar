@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
     val activeChatId: Long? = null, val streamingText: String = "",
-    val errors: Map<Long, String> = emptyMap()
+    val errors: Map<Long, String> = emptyMap(), val drafts: Map<Long, String> = emptyMap()
 )
 
 /** Activity scoped: independent of screen composition, settings navigation and rotation. */
@@ -49,6 +49,7 @@ class ChatViewModel @JvmOverloads constructor(
         mutable.value = ChatState(chats, chats.first().id, errors = errors)
     }
 
+    fun setDraft(id: Long, text: String) { mutable.update { it.copy(drafts = it.drafts + (id to text)) } }
     fun select(id: Long) { if (mutable.value.chats.any { it.id == id }) mutable.update { it.copy(selectedId = id) } }
     fun create() {
         val id = maxOf(System.currentTimeMillis(), (mutable.value.chats.maxOfOrNull { it.id } ?: 0) + 1)
@@ -69,7 +70,7 @@ class ChatViewModel @JvmOverloads constructor(
         if (mutable.value.activeChatId == id) stop()
         store.delete(id)
         val remaining = mutable.value.chats.filterNot { it.id == id }
-        mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id) }
+        mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id, drafts = it.drafts - id) }
         if (remaining.isEmpty()) create()
     }
     fun send(text: String) {

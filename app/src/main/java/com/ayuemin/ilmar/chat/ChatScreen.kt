@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,7 +30,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     val selected = state.chats.firstOrNull { it.id == state.selectedId } ?: return
     val sending = state.activeChatId != null
     val inThisChat = state.activeChatId == selected.id
-    var draft by rememberSaveable(selected.id) { mutableStateOf("") }
+    val draft = state.drafts[selected.id].orEmpty()
     val prefs = remember { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
     val compact = prefs.getBoolean("compact_messages", false)
     val chatModes = remember { ChatModePreferences(context) }
@@ -48,7 +47,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!spoken.isNullOrBlank()) draft = (draft.trim() + " " + spoken).trim()
+            if (!spoken.isNullOrBlank()) controller.setDraft(selected.id, (draft.trim() + " " + spoken).trim())
         }
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
@@ -129,14 +128,14 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             if (inThisChat) LinearProgressIndicator(Modifier.fillMaxWidth())
             (state.errors[selected.id] ?: speechError)?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (selected.messages.lastOrNull()?.fromUser == true) {
-                    TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
-                }
+            }
+            if (!inThisChat && selected.messages.lastOrNull()?.fromUser == true) {
+                TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
             }
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(4.dp)) {
-                    TextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 5,
+                    TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 5,
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -154,7 +153,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                         }) { Icon(Icons.Default.Mic, "Распознать речь") }
                         if (sending) IconButton(onClick = controller::stop) { Icon(Icons.Default.Stop, "Остановить ответ") }
                         else IconButton(enabled = draft.isNotBlank(), onClick = {
-                            val text = draft; draft = ""; speechError = null; following.value = true; controller.send(text)
+                            val text = draft; controller.setDraft(selected.id, ""); speechError = null; following.value = true; controller.send(text)
                         }) { Icon(Icons.Default.Send, "Отправить сообщение") }
                     }
                 }
