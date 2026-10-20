@@ -5,7 +5,7 @@ import java.math.BigDecimal
 
 /** Adapted from Umnik RequestCostLedger: exact decimal addition, unknown never means zero. */
 data class UsageRecord(val usage: TokenUsage, val status: String)
-class UsageLedger(records: List<UsageRecord>) {
+class UsageLedger(private val records: List<UsageRecord>) {
     val calls = records.size
     val incompleteCost = records.any { it.usage.costUsd == null }
     val failed = records.count { it.status != "completed" }

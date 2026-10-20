@@ -19,7 +19,7 @@ internal object ToolRegistry {
     fun unregister(id: String) { installed.remove(id) }
     fun catalogue(): List<Descriptor> {
         val base = listOf("SSH", "Shell", "Браузер").map { Descriptor(it, it, false, false) }
-        return base.filterNot { it.id in installed } + installed.values.map { it.descriptor }.sortedBy { it.id }
+        return base.filterNot { installed.containsKey(it.id) } + installed.values.map { it.descriptor }.sortedBy { it.id }
     }
     fun canExecute(id: String, enabledForChat: Boolean, permissionGranted: Boolean): Boolean =
         enabledForChat && permissionGranted && installed.containsKey(id)
