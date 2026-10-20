@@ -100,8 +100,7 @@ private fun ToolSelectionPanel(
     onDetails: (String) -> Unit
 ) {
     val tools = listOf("SSH", "Shell", "Браузер")
-    // The registry is not wired yet: none of these tools can execute.
-    val available = emptySet<String>()
+    val available = ToolRegistry.availableIds()
     var chosen by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) }.toSet()) }
     var applied by remember(id) { mutableStateOf(chosen) }
     val allSelected = tools.all { it in chosen }
@@ -140,7 +139,7 @@ private fun ToolSelectionPanel(
                 chosen = emptySet()
             }
         ) { Text("Выключить все") }
-        Text("Инструменты пока не установлены. Выбор можно подготовить, но включение станет доступно только после регистрации и проверки разрешений.",
+        Text("Доступных к исполнению инструментов: " + available.size + ". Выбор не предоставляет разрешения: их проверяет исполнитель перед каждым действием.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
