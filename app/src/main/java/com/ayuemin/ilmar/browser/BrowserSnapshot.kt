@@ -6,8 +6,19 @@ import org.json.JSONObject
 /** Read-only extraction, adapted from Umnik's DOM snapshots. No JS interface is exposed. */
 internal object BrowserSnapshot {
     const val SCRIPT = """(function(){
-      const links=Array.from(document.querySelectorAll('a[href]')).filter(a=>a.innerText.trim() && a.getClientRects().length).slice(0,40);
-      return JSON.stringify({url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,12000),
+      const inView=r=>r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth;
+      const scrolled=scrollY>0;
+      const links=Array.from(document.querySelectorAll('a[href]')).filter(a=>a.innerText.trim() && a.getClientRects().length && (!scrolled || inView(a.getBoundingClientRect()))).slice(0,40);
+      let text=(document.body?.innerText||'').slice(0,12000);
+      if(scrolled && document.body){
+        text='';let node,visits=0;const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+        while((node=walker.nextNode()) && visits++<15000 && text.length<12000){
+          if(!node.textContent.trim() || node.parentElement?.closest('script,style,noscript'))continue;
+          const range=document.createRange();range.selectNodeContents(node);
+          if(Array.from(range.getClientRects()).some(inView))text+=node.textContent.trim()+'\n';
+        }
+      }
+      return JSON.stringify({url:location.href,title:document.title,text:text.slice(0,12000),scroll_y:scrollY,has_more:scrollY+innerHeight<document.documentElement.scrollHeight,
         links:links.map((a,i)=>({ref:i+1,title:a.innerText.trim().slice(0,160),url:a.href}))});
     })()"""
     fun decode(evaluation: String): JSONObject {
@@ -16,7 +27,8 @@ internal object BrowserSnapshot {
         require(page.has("url") && page.has("text")) { "Неполный снимок страницы" }
         val links = page.optJSONArray("links") ?: JSONArray()
         return JSONObject().put("url", page.getString("url")).put("title", page.optString("title").take(300))
-            .put("text", page.getString("text").take(12000)).put("links", JSONArray().apply {
+            .put("text", page.getString("text").take(12000)).put("scroll_y", page.optLong("scroll_y"))
+            .put("has_more", page.optBoolean("has_more")).put("links", JSONArray().apply {
                 repeat(minOf(40, links.length())) { i -> val link = links.getJSONObject(i)
                     if (BrowserAddress.valid(link.optString("url"))) put(JSONObject().put("ref", link.getInt("ref"))
                         .put("title", link.optString("title").take(160)).put("url", link.getString("url").take(4096)))
