@@ -203,10 +203,12 @@ class ChatViewModel @JvmOverloads constructor(
         val history = mutable.value.chats.first { it.id == chatId }.messages.toList()
         check(runtime.edit().putLong("active_chat", chatId).commit())
         mutable.update { it.copy(activeChatId = chatId, streamingText = "", errors = it.errors - chatId) }
-        val taskSession = memory.tasks.begin(chatId, history)
-        diagnostics.record("START", chatId, taskSession.json())
+        var cleanupSession: com.ayuemin.ilmar.agent.TaskSession? = null
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
+                val taskSession = memory.tasks.begin(chatId, history)
+                cleanupSession = taskSession
+                diagnostics.record("START", chatId, taskSession.json())
                 val started = System.currentTimeMillis()
                 val roundUsage = mutableListOf<UsageRecord>()
                 val capabilities = registry.capabilities(target.model.id)
@@ -296,13 +298,23 @@ class ChatViewModel @JvmOverloads constructor(
                     else if (e is IllegalStateException || e is IllegalArgumentException) e.message ?: "Проверь параметры запроса; подробности в диагностике."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
-                if (!closed) { memory.tasks.finish(taskSession, "FAILED"); memory.interrupt(chatId) }
+                if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
                 request = null
             }
         }
-        request?.start()
+        val job = request!!
+        job.invokeOnCompletion {
+            // Cancellation before the lazy body starts skips its finally block.
+            if (!closed && request === job) {
+                cleanupSession?.let { memory.tasks.finish(it, "PAUSED") }
+                runtime.edit().remove("active_chat").commit()
+                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
+                request = null
+            }
+        }
+        job.start()
     }
     fun stop() {
         val id = mutable.value.activeChatId ?: return

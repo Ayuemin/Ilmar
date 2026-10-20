@@ -85,4 +85,14 @@ class ChatViewModelTest {
         provider.gate.complete("late answer"); advanceUntilIdle()
         assertTrue(vm.state.value.chats.single().messages.isEmpty())
     }
+    @Test fun cancellationBeforeCoroutineStartsDoesNotLeaveAnUnretryableRunningTask() = runTest(dispatcher) {
+        val provider = FakeProvider()
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        vm.send("hello"); vm.stop(); advanceUntilIdle()
+        assertNull(vm.state.value.activeChatId)
+        assertEquals(0, provider.calls)
+        vm.retry(); runCurrent(); provider.gate.complete("answer"); advanceUntilIdle()
+        assertEquals(1, provider.calls)
+        assertEquals(listOf("hello", "answer"), vm.state.value.chats.single().messages.map { it.text })
+    }
 }
