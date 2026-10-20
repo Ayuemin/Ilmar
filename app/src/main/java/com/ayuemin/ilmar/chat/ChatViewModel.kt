@@ -58,6 +58,7 @@ class ChatViewModel @JvmOverloads constructor(
             store.create(1L, "Новый чат"); listOf(ChatSession(1L, "Новый чат"))
         }
         com.ayuemin.ilmar.memory.EmbeddingLedger(store).interruptOpen()
+        memory.tasks.interruptOpen()
         val interrupted = runtime.getLong("active_chat", -1)
         runtime.getString("active_request", null)?.let { pending ->
             if (interrupted >= 0) store.recordUsage(interrupted, pending, TokenUsage(), "interrupted", runtime.getString("active_purpose", "answer") ?: "answer")
@@ -202,7 +203,8 @@ class ChatViewModel @JvmOverloads constructor(
         val history = mutable.value.chats.first { it.id == chatId }.messages.toList()
         check(runtime.edit().putLong("active_chat", chatId).commit())
         mutable.update { it.copy(activeChatId = chatId, streamingText = "", errors = it.errors - chatId) }
-        diagnostics.record("START", chatId)
+        val taskSession = memory.tasks.begin(chatId, history)
+        diagnostics.record("START", chatId, taskSession.json())
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val started = System.currentTimeMillis()
@@ -227,10 +229,10 @@ class ChatViewModel @JvmOverloads constructor(
                             diagnostics.record(code, chatId, details)
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR") mutable.update { it.copy(chats = store.load()) }
                         },
-                        semanticSearch = { query, through -> archive.search(chatId, query, through) },
+                        semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
                             if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
-                            val requestId = java.util.UUID.randomUUID().toString()
+                            val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
                             try {
                                 val callTarget = if (purpose == "compact" && compactId != null) {
@@ -239,7 +241,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     }
                                 } else target
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
-                                val callDetails = org.json.JSONObject().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
+                                val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
                                     .put("estimated_input", estimatedInput).put("messages", projectedHistory.size).put("tools", options.tools.map { it.name }.joinToString())
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
@@ -256,7 +258,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
                             } catch (e: Exception) {
                                 diagnostics.failure("MODEL_ERROR", chatId, e, org.json.JSONObject().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
-                                recordCall(chatId, requestId, TokenUsage(), "failed", purpose); throw e
+                                recordCall(chatId, requestId, (e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), "failed", purpose); throw e
                             }
                         }).run(history, compactOnly, reasoning, tools)
                 }
@@ -294,7 +296,7 @@ class ChatViewModel @JvmOverloads constructor(
                     else if (e is IllegalStateException || e is IllegalArgumentException) e.message ?: "Проверь параметры запроса; подробности в диагностике."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
-                if (!closed) memory.interrupt(chatId)
+                if (!closed) { memory.tasks.finish(taskSession, "FAILED"); memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
                 request = null

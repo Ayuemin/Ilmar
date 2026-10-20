@@ -15,7 +15,7 @@ internal object ToolHistoryProjection {
         val kept = mutableListOf<List<JSONObject>>()
         val older = mutableListOf<String>()
         for (group in groups.asReversed()) {
-            val clean = group.map { JSONObject(it.toString()).apply { if (!preserveTrace) { remove("_trace_id"); remove("_started_calls") } } }
+            val clean = group.map { JSONObject(it.toString()).apply { if (!preserveTrace) { remove("_trace_id"); remove("_started_calls"); remove("_reused_from") } } }
             val size = ContextEstimate.text(clean.joinToString())
             if (size <= remaining / 2 || kept.isEmpty() && size <= remaining * 0.7) {
                 kept.add(0, clean); remaining -= size

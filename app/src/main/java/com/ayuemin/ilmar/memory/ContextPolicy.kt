@@ -40,11 +40,13 @@ internal object ContextEstimate {
             .put("attachments", com.ayuemin.ilmar.attachments.ChatAttachment.encode(it.attachments)).toString()
     })
 }
-internal class TaskBudget(private val policy: ContextPolicy, private val caps: ModelCapabilities) {
-    private var tokens = 0L
-    private var cost = BigDecimal.ZERO
-    private var reservedTokens = 0L
-    private var reservedCost = BigDecimal.ZERO
+internal class TaskBudget(private val policy: ContextPolicy, private val caps: ModelCapabilities, initialTokens: Long = 0, initialCost: BigDecimal = BigDecimal.ZERO) {
+    private var tokens = initialTokens
+    private var cost = initialCost
+    var reservedTokens = 0L
+        private set
+    var reservedCost = BigDecimal.ZERO
+        private set
     fun before(input: Int, output: Int, images: Boolean, boundedOutput: Boolean, modelCaps: ModelCapabilities = caps) {
         val caps = modelCaps
         reservedTokens = input.toLong() + output

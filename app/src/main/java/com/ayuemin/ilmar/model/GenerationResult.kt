@@ -15,7 +15,7 @@ data class GenerationOptions(val reasoning: ReasoningConfig? = null,
     val tools: List<ToolSchema> = emptyList(), val toolHistory: List<JSONObject> = emptyList(),
     val includeUsage: Boolean = false, val attachmentContent: Map<Long, JSONArray> = emptyMap(), val systemPrefix: String = "",
     val retrieval: String = "", val maxOutput: Int? = null, val outputParameter: String? = null, val ephemeralCache: Boolean = false,
-    val responseSchema: JSONObject? = null)
+    val responseSchema: JSONObject? = null, val requestId: String? = null)
 
 internal fun nonNegativeLong(json: JSONObject?, key: String): Long? =
     json?.opt(key)?.toString()?.toLongOrNull()?.takeIf { it >= 0 }

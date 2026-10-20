@@ -79,7 +79,7 @@ internal object SseReader {
         if (text.isBlank() && tools.isEmpty()) throw ProviderFailure(
             if (finish == "length") "Модель исчерпала лимит вывода без текста. Увеличь лимит или выбери другую модель Compact."
             else "Модель завершила поток без текста ответа",
-            details = "empty_response; finish_reason=${finish ?: "unknown"}; output_tokens=${usage.output}; reasoning_tokens=${usage.reasoning}")
+            details = "empty_response; finish_reason=${finish ?: "unknown"}; output_tokens=${usage.output}; reasoning_tokens=${usage.reasoning}", reportedUsage = usage)
         return GenerationResult(text.toString(), usage, finish, tools)
     }
     private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder(), var bytes: Int = 0)

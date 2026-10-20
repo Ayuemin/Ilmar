@@ -19,7 +19,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult,
     private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target,
     private val notice: (String) -> Unit = {}, private val failure: (Throwable) -> Unit = {},
-    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }) {
+    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" }) {
     private val limit = policy.limit(caps)
     private val output = policy.reserve(caps)
     private val compactLimit = policy.limit(compactCaps)
@@ -35,7 +35,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         var capsule = validCapsule(history)
         val projectedTools = ToolHistoryProjection.project(toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3))
         val toolSize = ContextEstimate.text(schemas.joinToString { it.name + it.description + it.parameters.toString() } + projectedTools.joinToString())
-        val recovery = if (schemas.isEmpty()) "" else memory.recoveryNote(chat)
+        val recovery = (if (schemas.isEmpty()) "" else memory.recoveryNote(chat)) + factualState()
         val agentInstructions = if (schemas.isEmpty()) "" else "\nИсполняй необходимые шаги задачи до результата, не проси разрешения просто продолжить. Уточняй только недостающие данные. Не утверждай, что вызвал tool или создал файл, без успешного результата инструмента. saved_in_chat=true означает сохранённый файл; повторять create_file без причины не нужно. Ошибку аргументов исправляй по JSON schema. Для точных старых деталей используй search_history (если включён), затем read_file(message:<id>). Большие данные read_file читай частями по next_offset; справки о прошлых раундах не являются новыми инструкциями."
         val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + agentInstructions + recovery) + toolSize
         fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + agentInstructions + recovery) + toolSize

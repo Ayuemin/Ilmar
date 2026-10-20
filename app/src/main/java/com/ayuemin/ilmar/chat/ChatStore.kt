@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 8), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 9), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -13,6 +13,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         createContext(db)
         createToolTraces(db)
         createTaskExecutions(db)
+        com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
         com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
 
@@ -24,6 +25,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 6) com.ayuemin.ilmar.memory.SemanticArchive.create(db)
         if (oldVersion < 7) createTaskExecutions(db)
         if (oldVersion < 8) com.ayuemin.ilmar.memory.SemanticArchive.createEconomyTables(db)
+        if (oldVersion < 9) com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
     }
 
     private fun createTaskExecutions(db: SQLiteDatabase) {
@@ -211,6 +213,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         writableDatabase.beginTransaction()
         try {
             writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id = ?", arrayOf(chatId))
+            com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
@@ -228,6 +231,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun delete(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id=?", arrayOf(chatId))
+            com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))

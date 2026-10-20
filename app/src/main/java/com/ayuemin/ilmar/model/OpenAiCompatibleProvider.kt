@@ -23,7 +23,7 @@ interface ChatProvider {
         GenerationResult(stream(endpoint, model, apiKey, history, onDelta))
 }
 
-class ProviderFailure(message: String, val httpStatus: Int? = null, val details: String? = null) : IOException(message) {
+class ProviderFailure(message: String, val httpStatus: Int? = null, val details: String? = null, val reportedUsage: TokenUsage? = null) : IOException(message) {
     companion object {
         fun http(status: Int, details: String? = null) = ProviderFailure(when (status) {
             401 -> "Ошибка API: HTTP 401. Проверь API-ключ подключения."
