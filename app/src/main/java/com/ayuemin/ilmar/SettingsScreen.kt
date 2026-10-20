@@ -24,24 +24,17 @@ fun SettingsScreen(onBack: () -> Unit) {
     var apiKeyDraft by remember { mutableStateOf("") }
     var keySaved by remember { mutableStateOf(credentials.hasApiKey()) }
     var compactMessages by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-    ) {
-        TextButton(onClick = onBack) { Text("← Назад") }
-        Spacer(Modifier.height(12.dp))
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface)
-        Text("Ilmar · управление приложением",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(28.dp))
-        Text("ПОДКЛЮЧЕНИЯ И ДАННЫЕ",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(12.dp))
-        SettingsSection("Модель и провайдер",
-            "OpenAI-compatible API · HTTPS, ответы без потоковой передачи.")
+    var expanded by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("←") }
+            Text("Настройки", style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.height(24.dp))
+        SettingsCategory("Подключения", "Произвольный HTTPS API, модель и ключ", "◎",
+            expanded == "Подключения", { expanded = if (expanded == "Подключения") null else "Подключения" }) {
         OutlinedTextField(value = endpoint, onValueChange = { endpoint = it },
             label = { Text("Адрес chat/completions (HTTPS)") },
             singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -75,7 +68,22 @@ fun SettingsScreen(onBack: () -> Unit) {
                 keySaved = false
             }) { Text("Удалить ключ") }
         }
-        Spacer(Modifier.height(16.dp))
+        }
+        SettingsCategory("Модели", "Выбор модели и параметры генерации", "◈",
+            expanded == "Модели", { expanded = if (expanded == "Модели") null else "Модели" }) {
+            Text("Модель и адрес API задаются в разделе «Подключения».",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SettingsCategory("Память и контекст", "История чатов и контекст", "◷",
+            expanded == "Память и контекст", { expanded = if (expanded == "Память и контекст") null else "Память и контекст" }) {
+            Text("Чаты хранятся локально в SQLite. Управление памятью появится позже.")
+        }
+        SettingsCategory("Инструменты", "Доступные инструменты и разрешения", "⚒",
+            expanded == "Инструменты", { expanded = if (expanded == "Инструменты") null else "Инструменты" }) {
+            Text("Подключение инструментов находится в разработке.")
+        }
+        SettingsCategory("Интерфейс", "Внешний вид и сообщения", "◉",
+            expanded == "Интерфейс", { expanded = if (expanded == "Интерфейс") null else "Интерфейс" }) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
             shape = IlmarPanelShape,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -94,11 +102,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                 })
             }
         }
-        SettingsSection("Чаты и память",
-            "История хранится на устройстве в SQLite. Удаление и экспорт пока недоступны.")
-        SettingsSection("Инструменты и разрешения",
-            "Управление инструментами появится в следующих версиях.")
-        SettingsSection("О приложении", "Ilmar · 0.1.0-dev")
+        }
+        SettingsCategory("Диагностика", "Версия и состояние приложения", "⚙",
+            expanded == "Диагностика", { expanded = if (expanded == "Диагностика") null else "Диагностика" }) {
+            Text("Ilmar · 0.1.0-dev")
+        }
     }
 }
 
@@ -115,6 +123,51 @@ private fun SettingsSection(title: String, description: String) {
             Spacer(Modifier.height(8.dp))
             Text(description, style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFFBFC0CD))
+        }
+    }
+}
+
+@Composable
+private fun SettingsCategory(
+    title: String, subtitle: String, symbol: String,
+    expanded: Boolean, onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        shape = IlmarPanelShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+    ) {
+        Column {
+            Surface(onClick = onClick, color = Color.Transparent, shape = IlmarPanelShape) {
+                Row(Modifier.fillMaxWidth().padding(18.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Surface(shape = androidx.compose.foundation.shape.CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.size(48.dp)) {
+                        Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                            Text(symbol, color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium)
+                        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(if (expanded) "⌄" else "›",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.headlineSmall)
+                }
+            }
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    content()
+                }
+            }
         }
     }
 }
