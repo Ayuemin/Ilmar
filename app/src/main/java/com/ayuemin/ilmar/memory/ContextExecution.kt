@@ -28,7 +28,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
             status(engine.lastNotice ?: "Compact сохранён · оценка контекста ${projection.estimatedInput} + ${projection.output} / ${projection.limit}")
             return null
         }
-        return AgentLoopRunner(onRound = { id, round -> memory.saveToolTrace(chat, id, round); event(if (round.any { it.optString("role") == "tool" && runCatching { org.json.JSONObject(it.optString("content")).has("error") }.getOrDefault(false) }) "TOOL_ROUND_ERROR" else "TOOL_ROUND", org.json.JSONObject().put("trace_id", id).put("messages", org.json.JSONArray(round))) }, onProgress = { status(it); event("AGENT_PROGRESS", org.json.JSONObject().put("message", it)) }).run(tools) { toolHistory, schemas ->
+        return AgentLoopRunner(onCheckpoint = { id, partial -> memory.saveToolTrace(chat, id, partial) }, onRound = { id, round -> memory.saveToolTrace(chat, id, round); event(if (round.any { it.optString("role") == "tool" && runCatching { org.json.JSONObject(it.optString("content")).has("error") }.getOrDefault(false) }) "TOOL_ROUND_ERROR" else "TOOL_ROUND", org.json.JSONObject().put("trace_id", id).put("messages", org.json.JSONArray(round))) }, onProgress = { status(it); event("AGENT_PROGRESS", org.json.JSONObject().put("message", it)) }).run(tools) { toolHistory, schemas ->
             val projection = engine.prepare(history, schemas, toolHistory)
             status("Контекст ≈ ${projection.estimatedInput} + ${projection.output} / ${projection.limit} · сокращён на ≈ ${projection.saved}")
             invoke(projection.history, projection.options.copy(reasoning = reasoning), "answer", projection.estimatedInput, projection.saved)
