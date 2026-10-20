@@ -43,19 +43,22 @@ class OpenAiCompatibleProvider {
             connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             if (code !in 200..299) throw IllegalStateException("Ошибка API: HTTP $code")
+            var finished = false
             connection.inputStream.bufferedReader().use { reader ->
                 while (true) {
                     coroutineContext.ensureActive()
                     val line = reader.readLine() ?: break
                     if (!line.startsWith("data:")) continue
                     val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]") break
+                    if (data == "[DONE]") { finished = true; break }
                     if (data.isEmpty()) continue
                     val choice = JSONObject(data).optJSONArray("choices")?.optJSONObject(0)
                     val delta = choice?.optJSONObject("delta")?.optString("content").orEmpty()
                     if (delta.isNotEmpty()) withContext(Dispatchers.Main) { onDelta(delta) }
                 }
             }
+            coroutineContext.ensureActive()
+            if (!finished) throw java.io.EOFException("Поток ответа прерван до завершения")
         } finally {
             connection.disconnect()
         }
