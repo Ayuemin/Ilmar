@@ -17,6 +17,12 @@ internal object ToolRegistry {
         Descriptor("Браузер", "Браузер", configured = false, executorRegistered = false)
     )
 
+    /** UI selection alone is never an authorization to execute. */
+    fun canExecute(id: String, enabledForChat: Boolean, permissionGranted: Boolean): Boolean =
+        enabledForChat && permissionGranted && catalogue().any {
+            it.id == id && it.configured && it.executorRegistered
+        }
+
     fun availableIds(): Set<String> =
         catalogue().filter { it.configured && it.executorRegistered }.map { it.id }.toSet()
 }
