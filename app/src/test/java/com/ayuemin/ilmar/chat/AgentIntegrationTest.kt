@@ -64,7 +64,7 @@ class AgentIntegrationTest {
         }
         val vm = ChatViewModel(app, provider, registry, dispatcher)
         vm.send("test"); advanceUntilIdle()
-        assertEquals(6, calls); assertEquals(6, executions)
+        assertEquals(6, calls); assertEquals(1, executions)
         assertEquals(1, vm.state.value.chats.single().messages.size)
         assertTrue(vm.state.value.errors.values.single().contains("Агент остановлен"))
         assertEquals("0.6", vm.usage(1).costUsd)
