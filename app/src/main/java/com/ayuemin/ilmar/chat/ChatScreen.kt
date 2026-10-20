@@ -74,23 +74,22 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             )
         }
     ) {
-    Column(Modifier.fillMaxSize().background(Color(0xFF14151C)).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IlmarCircleAction("☰", "Открыть диалоги", onClick = { scope.launch { drawerState.open() } })
-            Text("Ilmar", color = Color.White, style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f))
-            IlmarCircleAction("⚙", "Настройки", onClick = onSettings)
-            IconButton(onClick = {
+            Text(selected.title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+            IlmarCircleAction("⋮", "Настройки", onClick = onSettings)
+            /* Quick new chat is also available in the drawer. */
+            /*IconButton(onClick = {
                 val id = (chats.maxOfOrNull { it.id } ?: 0L) + 1L
                 store.create(id, "Новый чат")
                 chats = chats + ChatSession(id, "Новый чат")
                 selectedId = id
                 draft = ""
-            }) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall) }
+            }) { Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall) }*/
         }
-        Text(selected.title, color = Color(0xFFB7A5E9), style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(vertical = 8.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
         if (selected.messages.isEmpty() && !(sending && streamingChatId == selectedId)) {
             IlmarWelcome(Modifier.align(Alignment.Center))
@@ -101,7 +100,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
             items(selected.messages + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) listOf(ChatMessage(streamingText, false)) else emptyList()) { message ->
                 Row(Modifier.fillMaxWidth(),
                     horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
-                    Surface(color = if (message.fromUser) Color(0xFF38304D) else Color(0xFF242632),
+                    Surface(color = if (message.fromUser) Color(0xFF493028) else Color(0xFF201511),
                         shape = RoundedCornerShape(18.dp), modifier = Modifier.widthIn(max = 320.dp)) {
                         SelectionContainer {
                             Text(message.text, color = Color.White,
