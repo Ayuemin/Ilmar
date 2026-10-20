@@ -47,7 +47,7 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
 
     fun saveConnection(id: String?, name: String, endpoint: String, modelNames: List<String>, key: String) {
         require(name.isNotBlank()) { "Укажи название подключения" }
-        require(validEndpoint(endpoint)) { "Требуется полный HTTPS адрес chat/completions" }
+        require(validEndpoint(endpoint)) { "Требуется корректный HTTPS адрес API" }
         val names = modelNames.map(String::trim).filter(String::isNotEmpty).distinct()
         require(names.isNotEmpty()) { "Добавь хотя бы один ID модели" }
         val old = snapshot()

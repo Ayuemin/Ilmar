@@ -45,7 +45,7 @@ class ProviderTransportTest {
         assertEquals(1, server.requestCount)
     }
     @Test fun preservesHttpStatusButNeverLeaksErrorBodyOrRetries() = runBlocking {
-        for (code in listOf(401, 429)) {
+        for (code in listOf(401, 403, 404, 429)) {
             server.enqueue(MockResponse().setResponseCode(code).setBody("private-key and provider details"))
             val error = runCatching {
                 OpenAiCompatibleProvider(client).stream(server.url("/").toString(), "m", "fake-key", history) {}
@@ -53,7 +53,19 @@ class ProviderTransportTest {
             assertTrue(error.message!!.contains(code.toString()))
             assertFalse(error.message!!.contains("private"))
         }
-        assertEquals(2, server.requestCount)
+        assertEquals(4, server.requestCount)
+    }
+    @Test fun openRouterStyleBaseIsPostedToChatRouteWithoutFallbackOrDuplicate() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(404).setBody("private provider error"))
+        val error = runCatching {
+            OpenAiCompatibleProvider(client).stream(server.url("/api/v1").toString(), "deepseek/deepseek-v4.1-flash", "fake-key", history) {}
+        }.exceptionOrNull() as ProviderFailure
+        assertEquals(404, error.httpStatus)
+        assertTrue(error.message!!.contains("ID модели"))
+        val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("/api/v1/chat/completions", request.path)
+        assertTrue(request.body.readUtf8().contains("deepseek/deepseek-v4.1-flash"))
+        assertEquals(1, server.requestCount)
     }
     @Test fun cancelsActualCallWhileResponseBodyReadIsBlocked() = runBlocking {
         val headers = CompletableDeferred<Unit>()

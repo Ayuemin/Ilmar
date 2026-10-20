@@ -14,18 +14,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ayuemin.ilmar.diagnostics.Diagnostics
+import com.ayuemin.ilmar.model.ChatEndpoint
 import com.ayuemin.ilmar.model.ProviderConnection
 import com.ayuemin.ilmar.model.ProviderRegistry
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
     val registry = remember { ProviderRegistry(context) }
     var revision by remember { mutableIntStateOf(0) }
     val data = remember(revision) { registry.snapshot() }
-    var page by remember { mutableStateOf<String?>(null) }
+    var page by remember(initialPage) { mutableStateOf(initialPage) }
     var editing by remember { mutableStateOf<ProviderConnection?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
     var compact by remember { mutableStateOf(prefs.getBoolean("compact_messages", false)) }
@@ -127,7 +128,12 @@ private fun ConnectionEditor(connection: ProviderConnection?, registry: Provider
         text = {
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true)
-                OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Полный HTTPS адрес chat/completions") })
+                OutlinedTextField(endpoint, { endpoint = it }, label = { Text("HTTPS адрес API") })
+                Text("Можно указать базовый адрес, например https://openrouter.ai/api/v1, или полный адрес chat/completions.",
+                    style = MaterialTheme.typography.bodySmall)
+                if (ProviderRegistry.validEndpoint(endpoint)) {
+                    Text("Адрес запросов: ${ChatEndpoint.resolve(endpoint)}", style = MaterialTheme.typography.bodySmall)
+                }
                 OutlinedTextField(models, { models = it }, label = { Text("ID моделей — по одному на строку") }, minLines = 2)
                 OutlinedTextField(key, { key = it }, label = { Text(if (keyPresent) "Новый ключ (необязательно)" else "API-ключ") },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)

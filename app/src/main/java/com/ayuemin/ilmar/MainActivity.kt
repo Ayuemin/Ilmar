@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val controller: ChatViewModel = viewModel()
             var settings by rememberSaveable { mutableStateOf(false) }
+            var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Color(0xFF000000), surface = Color(0xFF181818),
                 surfaceContainerLow = Color(0xFF1B1B1B), surfaceContainer = Color(0xFF282828),
@@ -39,8 +40,9 @@ class MainActivity : ComponentActivity() {
             )) {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
                     color = Color(0xFF000000)) {
-                    if (settings) SettingsScreen(onBack = { settings = false })
-                    else ChatScreen(onSettings = { settings = true }, controller = controller)
+                    if (settings) SettingsScreen(onBack = { settings = false }, initialPage = settingsPage)
+                    else ChatScreen(onSettings = { settingsPage = null; settings = true }, controller = controller,
+                        onConnectionSettings = { settingsPage = "Подключения"; settings = true })
                 }
             }
         }

@@ -76,3 +76,20 @@ Context Compact, background task scheduling, encrypted backups and production AP
 signing remain separate work. History schema stays at SQLite version 1; this
 change does not recreate or migrate that database. Process termination interrupts
 requests; the app does not attempt to bypass Android force-stop behavior.
+
+## Follow-up: base API address (2026-10-20)
+
+The phone screenshot showed HTTP 404. The supplied address was
+`https://openrouter.ai/api/v1`; the previous transport posted directly to that
+base. The transport now resolves it to `/api/v1/chat/completions` on the same
+host. `/v1` and bare-host API bases are also supported. Full and custom routes
+remain unchanged, including their query parameters. This happens once before
+sending; a 404 never triggers probing, retries, or a model change.
+
+Settings show the final request address. Existing saved connections receive this
+behavior without rewriting the registry or touching credentials/history. HTTP
+401/403/404/429 have actionable messages, and errors link to global settings.
+
+Before acceptance, retry the existing message on the phone. If 404 remains after
+the route is correct, verify the model ID against the provider's actual catalog;
+this change does not assert that the screenshot's model ID exists.

@@ -24,7 +24,7 @@ import com.ayuemin.ilmar.ui.IlmarWelcome
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewModel()) {
+fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewModel(), onConnectionSettings: () -> Unit = onSettings) {
     val context = LocalContext.current
     val state by controller.state.collectAsState()
     val selected = state.chats.firstOrNull { it.id == state.selectedId } ?: return
@@ -131,6 +131,9 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             }
             (state.errors[selected.id] ?: speechError)?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (state.errors.containsKey(selected.id)) {
+                    TextButton(onClick = onConnectionSettings) { Text("Настройки подключения") }
+                }
             }
             if (!inThisChat && selected.messages.lastOrNull()?.fromUser == true) {
                 TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }

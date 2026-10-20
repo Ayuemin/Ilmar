@@ -20,7 +20,17 @@ interface ChatProvider {
     suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String
 }
 
-class ProviderFailure(message: String) : IOException(message)
+class ProviderFailure(message: String, val httpStatus: Int? = null) : IOException(message) {
+    companion object {
+        fun http(status: Int) = ProviderFailure(when (status) {
+            401 -> "Ошибка API: HTTP 401. Проверь API-ключ подключения."
+            403 -> "Ошибка API: HTTP 403. У подключения нет доступа к этой модели."
+            404 -> "Ошибка API: HTTP 404. Проверь адрес API и ID модели в настройках подключения."
+            429 -> "Ошибка API: HTTP 429. Достигнут лимит запросов или квоты. Повтори позже."
+            else -> "Ошибка API: HTTP $status. Попробуй позже или проверь подключение."
+        }, status)
+    }
+}
 
 /** No redirects, response-body logging, automatic retries, or implicit provider changes. */
 class OpenAiCompatibleProvider(
@@ -37,7 +47,7 @@ class OpenAiCompatibleProvider(
             .put("messages", JSONArray().apply { history.forEach {
                 put(JSONObject().put("role", if (it.fromUser) "user" else "assistant").put("content", it.text))
             } }).toString()
-        val request = Request.Builder().url(endpoint)
+        val request = Request.Builder().url(ChatEndpoint.resolve(endpoint))
             .header("Authorization", "Bearer $apiKey").header("Accept", "text/event-stream")
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         return suspendCancellableCoroutine { continuation ->
@@ -50,7 +60,7 @@ class OpenAiCompatibleProvider(
                 override fun onResponse(call: Call, response: Response) {
                     val result = try {
                         Result.success(response.use {
-                            if (!it.isSuccessful) throw ProviderFailure("Ошибка API: HTTP ${it.code}")
+                            if (!it.isSuccessful) throw ProviderFailure.http(it.code)
                             val body = it.body ?: throw IOException("Пустой ответ")
                             body.charStream().buffered().use { reader ->
                                 SseReader.read(reader) { delta -> if (continuation.isActive) onDelta(delta) }
