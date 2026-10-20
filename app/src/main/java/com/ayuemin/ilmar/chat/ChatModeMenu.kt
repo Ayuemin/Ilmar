@@ -26,6 +26,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
     var selected by remember(id) { mutableStateOf("") }
     var depth by remember(id) { mutableStateOf(preferences.choice(id, "depth")) }
     var searchEngine by remember(id) { mutableStateOf(preferences.choice(id, "search_engine")) }
+    var toolsExpanded by remember(id) { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Режимы чата") },
@@ -41,7 +42,20 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                         })
                     }
                 }
-                TextButton(onClick = { selected = "Инструменты" }) { Text("Инструменты ›") }
+                TextButton(onClick = { toolsExpanded = !toolsExpanded; selected = "" }) {
+                    Text(if (toolsExpanded) "Инструменты ⌄" else "Инструменты ›")
+                }
+                if (toolsExpanded) {
+                    Text("Инструменты без настроенных подключений", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOf("SSH", "Shell", "Браузер").forEach { name ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(name, modifier = Modifier.weight(1f).clickable { selected = name }
+                                .padding(vertical = 12.dp))
+                            Switch(checked = false, onCheckedChange = null, enabled = false)
+                        }
+                    }
+                }
                 if (selected.isNotEmpty()) {
                     HorizontalDivider()
                     if (selected == "Размышление") {
@@ -73,7 +87,9 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                         }
                     }
                     Text(when (selected) {
-                        "Инструменты" -> "Инструменты ещё не подключены. Здесь будет выбор доступных для чата ресурсов."
+                        "SSH" -> "SSH-серверы настраиваются глобально. Здесь будет выбор сервера для текущего чата."
+                        "Shell" -> "Shell ещё не подключён. Разрешения будут управляться глобально."
+                        "Браузер" -> "Браузер ещё не подключён. Здесь будет выбор настроенного режима."
                         "Размышление" -> "Глубина зависит от модели. Настройки появятся после проверки API провайдера."
                         "Поиск" -> "Настройки поискового движка появятся после интеграции поиска."
                         else -> "Настройки агента появятся после реализации безопасного исполнения."
