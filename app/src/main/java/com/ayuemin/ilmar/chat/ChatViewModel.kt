@@ -230,7 +230,8 @@ class ChatViewModel @JvmOverloads constructor(
                     modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val tools = agentTools + if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                val browserForAgent = modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
+                val tools = agentTools + if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId) else emptyList()
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
