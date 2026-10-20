@@ -3,6 +3,8 @@ package com.ayuemin.ilmar.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,6 +41,10 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
+    val messageListState = rememberLazyListState()
+    LaunchedEffect(selectedId, selected.messages.size) {
+        if (selected.messages.isNotEmpty()) messageListState.animateScrollToItem(selected.messages.lastIndex)
+    }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -77,6 +83,7 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
         if (selected.messages.isEmpty()) {
             IlmarWelcome(Modifier.align(Alignment.Center))
         } else LazyColumn(Modifier.fillMaxSize(),
+            state = messageListState,
             verticalArrangement = Arrangement.spacedBy(if (compactMessages) 4.dp else 10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)) {
             items(selected.messages) { message ->
@@ -84,8 +91,10 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                     horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
                     Surface(color = if (message.fromUser) Color(0xFF38304D) else Color(0xFF242632),
                         shape = RoundedCornerShape(18.dp), modifier = Modifier.widthIn(max = 320.dp)) {
-                        Text(message.text, color = Color.White,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = if (compactMessages) 7.dp else 12.dp))
+                        SelectionContainer {
+                            Text(message.text, color = Color.White,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = if (compactMessages) 7.dp else 12.dp))
+                        }
                     }
                 }
             }
