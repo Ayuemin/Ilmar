@@ -55,12 +55,14 @@ class DiagnosticsAcceptanceTest {
             val ledger = EmbeddingLedger(db); val embedding = ledger.start(1, "index", "embed", 2, 100)
             ledger.finish(embedding, "completed", TokenUsage(input = 10, cached = 2))
         }
+        com.ayuemin.ilmar.tools.ToolDataStore(app).use { it.plan(1, org.json.JSONArray("""[{"text":"Saved plan","status":"completed"}]""")) }
         val text = export(); assertFalse(text.contains("private-secret"))
         val rows = text.lineSequence().filter { it.isNotBlank() }.map { JSONObject(it) }.toList()
         val runs = rows.filter { it.optString("event") == "TASK_RUN" }
         assertEquals(2, runs.size); assertEquals(runs[0].getString("run_id"), runs[1].getString("parent_run_id"))
         val usage = rows.single { it.optString("event") == "EMBEDDING_USAGE" }.getJSONObject("usage")
         assertEquals(10, usage.getInt("input_tokens")); assertEquals(2, usage.getInt("cached_tokens")); assertTrue(usage.isNull("cost_usd"))
+        assertEquals("agent_declaration", rows.single { it.optString("event") == "PLAN_STATE" }.getString("status_source"))
         val reservation = rows.single { it.optString("event") == "TASK_MODEL_RESERVATION" }
         assertTrue(reservation.isNull("reserved_cost")); assertEquals("FAILED", reservation.getString("status"))
     }

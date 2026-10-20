@@ -95,4 +95,26 @@ class ChatViewModelTest {
         assertEquals(1, provider.calls)
         assertEquals(listOf("hello", "answer"), vm.state.value.chats.single().messages.map { it.text })
     }
+    @Test fun diagnosticsLinkRealModelRequestsToTaskRetryAndResolvedWindowAndUsage() = runTest(dispatcher) {
+        com.ayuemin.ilmar.memory.ContextPreferences(app).save(com.ayuemin.ilmar.memory.ContextPolicy(window = 8192, output = 512, recent = 2, taskTokens = 4096))
+        com.ayuemin.ilmar.diagnostics.Diagnostics(app).clear()
+        val provider = object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit) = error("typed")
+            override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
+                assertNotNull(options.requestId)
+                return GenerationResult("done", TokenUsage(10, 3, 13, 4, 2, "0.02"), "stop")
+            }
+        }
+        val vm = ChatViewModel(app, provider, registry, dispatcher); vm.send("hello"); advanceUntilIdle()
+        val out = java.io.ByteArrayOutputStream(); com.ayuemin.ilmar.diagnostics.Diagnostics(app).export(out)
+        val rows = out.toString("UTF-8").lineSequence().filter { it.isNotBlank() }.map { org.json.JSONObject(it) }.toList()
+        val request = rows.single { it.optString("event") == "MODEL_REQUEST" }.getJSONObject("details")
+        assertEquals(8192, request.getInt("working_window_tokens")); assertEquals(512, request.getInt("reserved_output_tokens"))
+        assertEquals(8192, request.getInt("compact_window_tokens")); assertEquals(4096, request.getJSONObject("context_policy").getInt("task_token_budget"))
+        assertTrue(request.getString("task_id").isNotBlank()); assertTrue(request.getString("run_id").isNotBlank())
+        val response = rows.single { it.optString("event") == "MODEL_RESPONSE" }.getJSONObject("details")
+        assertEquals(4, response.getInt("cached_tokens")); assertEquals(2, response.getInt("reasoning_tokens")); assertEquals("0.02", response.getJSONObject("usage").getString("cost_usd"))
+        val reservation = rows.single { it.optString("event") == "TASK_MODEL_RESERVATION" }
+        assertEquals(request.getString("request_id"), reservation.getString("request_id")); assertEquals(request.getString("run_id"), reservation.getString("run_id"))
+    }
 }

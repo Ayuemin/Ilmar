@@ -34,6 +34,7 @@ internal fun TaskStateCard(snapshot: MemorySnapshot?) {
     val plan = snapshot?.plan
     if (plan != null && plan.length() > 0) {
         Text("Актуальный план todo", style = MaterialTheme.typography.labelLarge)
+        Text("Статусы плана задаёт агент. Подтверждения операций показаны отдельно выше.", style = MaterialTheme.typography.bodySmall)
         LazyColumn(Modifier.fillMaxWidth().heightIn(min = 48.dp, max = 200.dp)) {
             items(plan.length(), key = { plan.getJSONObject(it).getString("id") }) { i ->
                 val step = plan.getJSONObject(i)

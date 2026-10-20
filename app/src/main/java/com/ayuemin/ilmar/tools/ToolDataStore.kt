@@ -77,7 +77,7 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
         if (plan.length() == 0) return ""
         val all = (0 until plan.length()).map { plan.getJSONObject(it) }
         val selected = all.sortedBy { when (it.getString("status")) { "in_progress" -> 0; "pending" -> 1; else -> 2 } }
-        var note = "\nФактический план todo из SQLite; не заменяй его сводкой модели. Всего шагов ${all.size}, завершено ${all.count { it.getString("status") == "completed" }}. Полный план: todo без steps.\n"
+        var note = "\nСохранённый план todo (статусы агента, не доказательства действий): ${all.size} шагов, ${all.count { it.getString("status") == "completed" }} отмечены completed. Полный план: todo без steps.\n"
         for (step in selected) {
             val line = "${step.getString("id")}: ${step.getString("status")} · ${step.getString("text").take(160)}\n"
             if (com.ayuemin.ilmar.memory.ContextEstimate.text(note + line) > maxTokens) break
@@ -106,6 +106,10 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
                 .put("tool", rows.getString(2)).put("arguments", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(3)))
                 .put("result", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(4))).put("latency_ms", rows.getLong(5))
                 .put("status", rows.getString(6)).put("cost", if (rows.isNull(7)) JSONObject.NULL else rows.getString(7)).toString()).append('\n')
+        }
+        readableDatabase.rawQuery("SELECT chat,payload FROM plans ORDER BY chat", null).use { rows ->
+            while (rows.moveToNext()) writer.append(com.ayuemin.ilmar.diagnostics.Redaction.json(JSONObject().put("event", "PLAN_STATE").put("chat_id", rows.getLong(0))
+                .put("status_source", "agent_declaration").put("steps", JSONArray(rows.getString(1)))).toString()).append('\n')
         }
     }
     fun clear(chat: Long) {

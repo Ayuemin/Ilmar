@@ -152,7 +152,7 @@ data: [DONE]
         app.getSharedPreferences("ilmar_models", 0).edit().clear().commit()
         app.getSharedPreferences("ilmar_ui", 0).edit().clear().commit()
         app.getSharedPreferences("ilmar_context", 0).edit().clear().commit()
-        val registry = ProviderRegistry(app, com.ayuemin.ilmar.chat.MemorySecrets())
+        val registry = ProviderRegistry(app, MemorySecrets())
         registry.saveConnection(null, "Embedding", server.url("/v1").toString(), listOf("embed"), "key")
         val connection = registry.snapshot().providers.single()
         com.ayuemin.ilmar.memory.EmbeddingPreferences(app).save(com.ayuemin.ilmar.memory.EmbeddingConfig(true, connection.id, "embed"))
