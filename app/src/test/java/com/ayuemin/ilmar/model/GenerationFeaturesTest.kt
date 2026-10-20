@@ -59,4 +59,13 @@ class GenerationFeaturesTest {
         assertFalse(payload.has("tools"))
         assertNull(ModelCapabilities().reasoningConfig("https://openrouter.ai/api/v1", true, "high"))
     }
+    @Test fun structuredOutputIsExplicitAndValidatesRootSchema() {
+        val schema = JSONObject("""{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":false}""")
+        val payload = GenerationPayload.build("m", emptyList(), GenerationOptions(responseSchema = schema))
+        assertEquals("json_schema", payload.getJSONObject("response_format").getString("type"))
+        assertTrue(payload.getJSONObject("response_format").getJSONObject("json_schema").getBoolean("strict"))
+        assertFalse(GenerationPayload.build("m", emptyList(), GenerationOptions()).has("response_format"))
+        assertTrue(runCatching { GenerationPayload.build("m", emptyList(), GenerationOptions(responseSchema = JSONObject("""{"type":"array"}"""))) }.isFailure)
+    }
+
 }

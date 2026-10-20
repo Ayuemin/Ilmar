@@ -9,13 +9,13 @@ import com.ayuemin.ilmar.model.*
 internal class ContextExecution(chat: Long, memory: ContextStore, files: AttachmentStore, private val policy: ContextPolicy,
     private val caps: ModelCapabilities, private val target: ModelTarget,
     private val status: (String) -> Unit,
+    private val compactTarget: ModelTarget = target, private val compactCaps: ModelCapabilities = caps,
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private val budget = TaskBudget(policy, caps)
-    private val engine = ContextEngine(chat, memory, files, policy, caps, target) { history, options, purpose, input, saved ->
-        invoke(history, options, purpose, input, saved)
-    }
+    private val engine = ContextEngine(chat, memory, files, policy, caps, target,
+        { history, options, purpose, input, saved -> invoke(history, options, purpose, input, saved) }, compactCaps, compactTarget)
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
-        budget.before(input, options.maxOutput ?: policy.reserve(caps), history.any { m -> m.attachments.any { it.images.isNotEmpty() } }, options.outputParameter != null)
+        budget.before(input, options.maxOutput ?: policy.reserve(caps), history.any { m -> m.attachments.any { it.images.isNotEmpty() } }, options.outputParameter != null, if (purpose == "compact") compactCaps else caps)
         if (purpose == "compact") status("Compact: сжатие ранней истории…")
         return request(history, options, purpose, input, saved).also { budget.after(it.usage) }
     }

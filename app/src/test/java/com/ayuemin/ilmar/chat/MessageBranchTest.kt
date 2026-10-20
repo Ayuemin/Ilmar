@@ -66,7 +66,7 @@ class MessageBranchTest {
             assertEquals(item, second.load().single().messages.last().attachments.single())
         } finally { second.close() }
     }
-    @Test fun askingOldQuestionUsesOnlyItsPrefixAndKeepsOriginalConversation() = runTest(dispatcher) {
+    @Test fun askingOldQuestionAppendsToSameChatAndPreservesHistory() = runTest(dispatcher) {
         val registry = ProviderRegistry(app, MemorySecrets())
         registry.saveConnection(null, "Test", "https://example.com/v1", listOf("m"), "key")
         var captured = emptyList<String>()
@@ -80,9 +80,36 @@ class MessageBranchTest {
         vm.send("second"); advanceUntilIdle()
         val source = vm.state.value.chats.single()
         vm.branch(source.id, source.messages.first().id, true); advanceUntilIdle()
-        assertEquals(listOf("first"), captured)
-        assertEquals(4, vm.state.value.chats.first { it.id == source.id }.messages.size)
-        assertEquals(listOf("first", "reply"), vm.state.value.chats.first { it.id == vm.state.value.selectedId }.messages.map { it.text })
+        assertEquals(listOf("first", "reply", "second", "reply", "first"), captured)
+        assertEquals(source.id, vm.state.value.selectedId)
+        assertEquals(1, vm.state.value.chats.size)
+        assertEquals(6, vm.state.value.chats.single().messages.size)
+        assertEquals(listOf("first", "reply", "second", "reply", "first", "reply"), vm.state.value.chats.single().messages.map { it.text })
         assertEquals("m", vm.state.value.chats.first { it.id == vm.state.value.selectedId }.messages.last().info!!.model)
     }
+    @Test fun unansweredTailRetriesWithoutDuplicateAndKeepsDraft() = runTest(dispatcher) {
+        val registry = ProviderRegistry(app, MemorySecrets())
+        registry.saveConnection(null, "Test", "https://example.com/v1", listOf("m"), "key")
+        var fail = true
+        val provider = object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String {
+                if (fail) throw java.io.IOException("offline")
+                assertEquals(1, history.size)
+                return "reply"
+            }
+        }
+        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        vm.send("question"); advanceUntilIdle()
+        val chat = vm.state.value.chats.single()
+        vm.setDraft(chat.id, "Unsent draft")
+        val draftAttachment = ChatAttachment("draft-file", "Черновик.txt", "text/plain", 3, "abc")
+        ChatStore(app).use { it.saveDraft(chat.id, listOf(draftAttachment)) }
+        fail = false
+        vm.askAgain(chat.id, chat.messages.single().id); advanceUntilIdle()
+        assertEquals(1, vm.state.value.chats.size)
+        assertEquals(listOf("question", "reply"), vm.state.value.chats.single().messages.map { it.text })
+        assertEquals("Unsent draft", vm.state.value.drafts[chat.id])
+        ChatStore(app).use { assertEquals(listOf(draftAttachment), it.drafts()[chat.id]) }
+    }
+
 }

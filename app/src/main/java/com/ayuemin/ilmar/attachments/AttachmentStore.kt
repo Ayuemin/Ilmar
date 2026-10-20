@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.*
 import java.util.UUID
-import java.util.zip.ZipInputStream
 import org.xmlpull.v1.XmlPullParser
 
 /** Originals stay private; images/PDF pages are normalized once, then reused across turns/branches. */
@@ -21,7 +20,7 @@ class AttachmentStore(context: Context) {
     private val app = context.applicationContext
     private val root = File(app.filesDir, "attachments").apply { mkdirs() }
     fun file(id: String): File {
-        require(id.matches(Regex("[a-zA-Z0-9.-]+"))) { "Некорректное вложение" }
+        require(id.matches(Regex("[a-zA-Z0-9.-]+")) && id !in setOf(".", "..")) { "Некорректное вложение" }
         return File(root, id)
     }
     suspend fun import(uri: Uri): ChatAttachment = withContext(Dispatchers.IO) {
@@ -60,13 +59,14 @@ class AttachmentStore(context: Context) {
                         }
                     }; text = null
                 }
+                ext == "xlsx" || mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> text = XlsxText.read(original)
                 ext == "docx" || mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> text = docxText(original)
                 mime.startsWith("text/") || ext in setOf("txt", "md", "csv", "json", "xml", "yaml", "yml", "log", "kt", "py", "js", "html") || mime == "application/json" -> {
                     require(original.length() <= 256 * 1024) { "Текстовый файл: не больше 256 КБ" }
                     val bytes = original.readBytes(); require(bytes.none { it == 0.toByte() }) { "Файл не является текстовым" }
                     text = Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
                 }
-                else -> error("Поддерживаются изображения, PDF, DOCX и текстовые файлы UTF-8")
+                else -> error("Поддерживаются изображения, PDF, DOCX, XLSX и текстовые файлы UTF-8")
             }
             require(text == null || text.isNotBlank()) { "В документе нет доступного текста" }
             require(images.sumOf { file(it).length() } <= 12 * 1024 * 1024) { "Изображения документа слишком велики" }
@@ -99,21 +99,25 @@ class AttachmentStore(context: Context) {
         } finally { flattened.recycle(); if (adjusted !== decoded) adjusted.recycle(); decoded.recycle() }
     }
     private fun docxText(source: File): String {
-        ZipInputStream(source.inputStream()).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (entry.name != "word/document.xml") continue
-                val xml = ByteArrayOutputStream(); copyLimited(zip, xml, 2 * 1024 * 1024)
-                val parser = Xml.newPullParser().apply { setInput(ByteArrayInputStream(xml.toByteArray()), "UTF-8") }
-                val result = StringBuilder()
-                while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-                    if (parser.eventType == XmlPullParser.TEXT) result.append(parser.text)
-                    if (parser.eventType == XmlPullParser.END_TAG && parser.name == "p") result.append('\n')
-                    require(result.length <= 256 * 1024) { "В DOCX слишком много текста" }; parser.next()
-                }
-                return result.toString()
+        java.util.zip.ZipFile(source).use { zip ->
+            require(zip.size() <= 2000) { "Слишком много компонентов DOCX" }
+            val entry = zip.getEntry("word/document.xml") ?: error("В DOCX отсутствует документ")
+            val xml = ByteArrayOutputStream()
+            zip.getInputStream(entry).use { copyLimited(it, xml, 2 * 1024 * 1024) }
+            val bytes = xml.toByteArray()
+            require(!bytes.toString(Charsets.UTF_8).contains(Regex("<!DOCTYPE|<!ENTITY", RegexOption.IGNORE_CASE))) { "DTD в DOCX запрещён" }
+            val parser = Xml.newPullParser().apply {
+                setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+                setInput(ByteArrayInputStream(bytes), "UTF-8")
             }
-        }; error("В DOCX отсутствует документ")
+            val result = StringBuilder()
+            while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+                if (parser.eventType == XmlPullParser.TEXT) result.append(parser.text)
+                if (parser.eventType == XmlPullParser.END_TAG && parser.name == "p") result.append('\n')
+                require(result.length <= 256 * 1024) { "В DOCX слишком много текста" }; parser.next()
+            }
+            return result.toString()
+        }
     }
     companion object {
         private fun copyLimited(input: InputStream, output: OutputStream, limit: Int) {

@@ -182,6 +182,12 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
 
     fun target(chatId: Long): ModelTarget {
         val model = modelForChat(chatId) ?: error("Выбери доступную модель в настройках чата")
+        return targetModel(model.id)
+    }
+
+    /** Resolve a stable model ID without changing any chat or global selection. */
+    fun targetModel(modelId: String): ModelTarget {
+        val model = snapshot().models.find { it.id == modelId } ?: error("Выбранная модель недоступна")
         check(isAvailable(model.id)) { "Модель больше не доступна в каталоге провайдера. Выбери другую." }
         val connection = snapshot().providers.find { it.id == model.providerId }
             ?: error("Подключение модели недоступно")
