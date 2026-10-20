@@ -34,7 +34,7 @@ function snapshot(scrollY) {
   }, {timeout: 1000}));
 }
 const first = snapshot(0);
-assert.equal(first.text.length, 12000);
+assert.equal(first.text.length, 4000);
 assert.equal(first.links.length, 2);
 assert.equal(first.has_more, true);
 const later = snapshot(900);
