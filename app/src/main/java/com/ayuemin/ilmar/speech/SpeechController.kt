@@ -32,15 +32,22 @@ internal class SpeechController(private val context: Context, private val scope:
     var playing by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     private var ready = false
+    private var initializing = true
+    private var pendingSystem: String? = null
     private val handler = Handler(Looper.getMainLooper())
     private var engine: TextToSpeech? = null
     private var player: MediaPlayer? = null
     private var task: Job? = null
     private var audio: File? = null
     private var generation = 0
-    init { engine = TextToSpeech(context) { status -> ready = status == TextToSpeech.SUCCESS } }
+    init { engine = TextToSpeech(context) { status ->
+        initializing = false
+        ready = status == TextToSpeech.SUCCESS
+        if (ready) pendingSystem?.let { pendingSystem = null; speak(it) }
+        else { pendingSystem = null; playing = false; error = "Системный синтез речи недоступен. Проверь установленный движок TTS." }
+    } }
     fun stop() {
-        generation++; task?.cancel(); task = null; engine?.stop(); player?.release(); player = null
+        pendingSystem = null; generation++; task?.cancel(); task = null; engine?.stop(); player?.release(); player = null
         audio?.delete(); audio = null; playing = false
     }
     fun close() { stop(); engine?.shutdown(); engine = null }
@@ -50,7 +57,11 @@ internal class SpeechController(private val context: Context, private val scope:
         if (content.isEmpty()) return
         val preferences = SpeechPreferences(context)
         if (preferences.provider.isBlank()) {
-            if (!ready) { error = "Системный синтез речи ещё не готов. Проверь установленный движок TTS."; return }
+            if (!ready) {
+                if (initializing) { pendingSystem = content; playing = true }
+                else error = "Системный синтез речи недоступен. Проверь установленный движок TTS."
+                return
+            }
             val language = engine?.setLanguage(Locale.getDefault()) ?: TextToSpeech.LANG_NOT_SUPPORTED
             if (language < 0) { error = "В системном движке не установлен голос для выбранного языка"; return }
             val pieces = content.chunked(3500); val token = generation
