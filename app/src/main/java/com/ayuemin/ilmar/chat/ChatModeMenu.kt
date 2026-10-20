@@ -12,6 +12,10 @@ import androidx.compose.ui.unit.dp
 internal class ChatModePreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_chat_modes", Context.MODE_PRIVATE)
     fun enabled(id: Long, mode: String) = prefs.getBoolean(id.toString() + "_" + mode, false)
+    fun choice(id: Long, name: String): String = prefs.getString(id.toString() + "_" + name, "Автоматически") ?: "Автоматически"
+    fun setChoice(id: Long, name: String, value: String) {
+        prefs.edit().putString(id.toString() + "_" + name, value).apply()
+    }
     fun setEnabled(id: Long, mode: String, enabled: Boolean) {
         prefs.edit().putBoolean(id.toString() + "_" + mode, enabled).apply()
     }
@@ -20,6 +24,8 @@ internal class ChatModePreferences(context: Context) {
 @Composable
 internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss: () -> Unit) {
     var selected by remember(id) { mutableStateOf("") }
+    var depth by remember(id) { mutableStateOf(preferences.choice(id, "depth")) }
+    var searchEngine by remember(id) { mutableStateOf(preferences.choice(id, "search_engine")) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Режимы чата") },
@@ -38,6 +44,34 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                 TextButton(onClick = { selected = "Инструменты" }) { Text("Инструменты ›") }
                 if (selected.isNotEmpty()) {
                     HorizontalDivider()
+                    if (selected == "Размышление") {
+                        Text("Предпочтительная глубина (пока не передаётся API)", style = MaterialTheme.typography.labelMedium)
+                        listOf("Автоматически", "Низкая", "Средняя", "Высокая").forEach { value ->
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    depth = value; preferences.setChoice(id, "depth", value)
+                                }) {
+                                RadioButton(selected = depth == value, onClick = {
+                                    depth = value; preferences.setChoice(id, "depth", value)
+                                })
+                                Text(value)
+                            }
+                        }
+                    }
+                    if (selected == "Поиск") {
+                        Text("Источник поиска (пока не подключён)", style = MaterialTheme.typography.labelMedium)
+                        listOf("Автоматически", "Провайдер", "Локальный браузер").forEach { value ->
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    searchEngine = value; preferences.setChoice(id, "search_engine", value)
+                                }) {
+                                RadioButton(selected = searchEngine == value, onClick = {
+                                    searchEngine = value; preferences.setChoice(id, "search_engine", value)
+                                })
+                                Text(value)
+                            }
+                        }
+                    }
                     Text(when (selected) {
                         "Инструменты" -> "Инструменты ещё не подключены. Здесь будет выбор доступных для чата ресурсов."
                         "Размышление" -> "Глубина зависит от модели. Настройки появятся после проверки API провайдера."
