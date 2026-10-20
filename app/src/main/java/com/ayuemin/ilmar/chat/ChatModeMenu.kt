@@ -46,15 +46,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                     Text(if (toolsExpanded) "Инструменты ⌄" else "Инструменты ›")
                 }
                 if (toolsExpanded) {
-                    Text("Инструменты без настроенных подключений", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    listOf("SSH", "Shell", "Браузер").forEach { name ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(name, modifier = Modifier.weight(1f).clickable { selected = name }
-                                .padding(vertical = 12.dp))
-                            Switch(checked = false, onCheckedChange = null, enabled = false)
-                        }
-                    }
+                    ToolSelectionPanel(id, preferences, onDetails = { selected = it })
                 }
                 if (selected.isNotEmpty()) {
                     HorizontalDivider()
@@ -99,4 +91,57 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
     )
+}
+
+@Composable
+private fun ToolSelectionPanel(
+    id: Long,
+    preferences: ChatModePreferences,
+    onDetails: (String) -> Unit
+) {
+    val tools = listOf("SSH", "Shell", "Браузер")
+    // The registry is not wired yet: none of these tools can execute.
+    val available = emptySet<String>()
+    var chosen by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) }.toSet()) }
+    var applied by remember(id) { mutableStateOf(chosen) }
+    val allSelected = tools.all { it in chosen }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = allSelected, onCheckedChange = { value ->
+                chosen = if (value) tools.toSet() else emptySet()
+            })
+            Text("Выбрать всё", modifier = Modifier.weight(1f))
+            Button(
+                enabled = chosen.isNotEmpty() && chosen.all { it in available },
+                onClick = {
+                    tools.forEach { preferences.setEnabled(id, "tool_" + it, it in chosen) }
+                    applied = chosen
+                }
+            ) { Text("Включить") }
+        }
+        tools.forEach { name ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = name in chosen,
+                    onCheckedChange = { value ->
+                        chosen = if (value) chosen + name else chosen - name
+                    }
+                )
+                Text(name, modifier = Modifier.weight(1f).clickable { onDetails(name) }
+                    .padding(vertical = 10.dp))
+                if (name in applied) Text("✓", color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        OutlinedButton(
+            enabled = applied.isNotEmpty(),
+            onClick = {
+                tools.forEach { preferences.setEnabled(id, "tool_" + it, false) }
+                applied = emptySet()
+                chosen = emptySet()
+            }
+        ) { Text("Выключить все") }
+        Text("Инструменты пока не установлены. Выбор можно подготовить, но включение станет доступно только после регистрации и проверки разрешений.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
