@@ -59,7 +59,7 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
         val providerId = id ?: UUID.randomUUID().toString()
         val connection = ProviderConnection(providerId, name.trim(), endpoint.trim())
         if (old.providers.any { it.id == providerId && it.endpoint != connection.endpoint }) {
-            prefs.edit().remove("loaded_$providerId").commit()
+            prefs.edit().remove("loaded_$providerId").remove("capabilities_$providerId").commit()
         }
         val models = names.map { modelName ->
             old.models.find { it.providerId == providerId && it.name == modelName }
@@ -97,6 +97,20 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
             .filterNot { id -> current.any { it.id == id } }.toSet() + merged.filter { it.id !in present }.map { it.id }
         write(old.copy(models = all, defaultModelId = old.defaultModelId ?: present.firstOrNull()))
         check(prefs.edit().putStringSet("unavailable", unavailable).putBoolean("loaded_$providerId", true).commit())
+    }
+
+    @Synchronized fun applyCatalogDetails(providerId: String, endpoint: String, entries: List<CatalogModel>) {
+        applyCatalog(providerId, endpoint, entries.map { it.id })
+        val models = snapshot().models.filter { it.providerId == providerId }
+        val data = JSONObject()
+        entries.forEach { entry -> models.find { it.name == entry.id }?.let { data.put(it.id, entry.capabilities.toJson()) } }
+        check(prefs.edit().putString("capabilities_$providerId", data.toString()).commit())
+    }
+
+    fun capabilities(modelId: String): ModelCapabilities {
+        val model = snapshot().models.find { it.id == modelId } ?: return ModelCapabilities()
+        val raw = prefs.getString("capabilities_${model.providerId}", null) ?: return ModelCapabilities()
+        return runCatching { ModelCapabilities.fromJson(JSONObject(raw).optJSONObject(modelId)) }.getOrDefault(ModelCapabilities())
     }
 
     fun isAvailable(modelId: String) = modelId !in prefs.getStringSet("unavailable", emptySet()).orEmpty()

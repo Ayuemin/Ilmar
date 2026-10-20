@@ -11,7 +11,8 @@ import java.util.concurrent.TimeUnit
 class ModelCatalogClient(private val client: OkHttpClient = OkHttpClient.Builder()
     .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
     .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).build()) {
-    suspend fun load(endpoint: String, apiKey: String): List<String> = suspendCancellableCoroutine { continuation ->
+    suspend fun load(endpoint: String, apiKey: String): List<String> = loadDetailed(endpoint, apiKey).map { it.id }
+    suspend fun loadDetailed(endpoint: String, apiKey: String): List<CatalogModel> = suspendCancellableCoroutine { continuation ->
         val request = Request.Builder().url(modelsUrl(endpoint)).header("Authorization", "Bearer $apiKey").get().build()
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
@@ -35,7 +36,7 @@ class ModelCatalogClient(private val client: OkHttpClient = OkHttpClient.Builder
                             }
                             data.toString("UTF-8")
                         }
-                        parse(bytes)
+                        parseDetailed(bytes)
                     }
                 }.recoverCatching { e ->
                     throw (e as? ProviderFailure ?: IOException("Некорректный или недоступный каталог моделей"))
@@ -55,11 +56,16 @@ class ModelCatalogClient(private val client: OkHttpClient = OkHttpClient.Builder
             if (chat.host == "openrouter.ai") builder.setQueryParameter("output_modalities", "all")
             return builder.build().toString()
         }
-        fun parse(raw: String): List<String> {
+        fun parse(raw: String): List<String> = parseDetailed(raw).map { it.id }
+        fun parseDetailed(raw: String): List<CatalogModel> {
             val data = JSONObject(raw).getJSONArray("data")
-            return (0 until data.length()).mapNotNull {
-                (data.optJSONObject(it)?.opt("id") as? String)?.trim()?.takeIf(String::isNotEmpty)
-            }.distinct().sorted()
+            val models = (0 until data.length()).mapNotNull {
+                val item = data.optJSONObject(it) ?: return@mapNotNull null
+                val id = (item.opt("id") as? String)?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+                CatalogModel(id, ModelCapabilities.parse(item))
+            }.distinctBy { it.id }.sortedBy { it.id }
+            require(data.length() == 0 || models.isNotEmpty()) { "Неизвестная схема каталога" }
+            return models
         }
     }
 }

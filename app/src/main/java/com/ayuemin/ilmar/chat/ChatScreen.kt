@@ -112,7 +112,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },
-        text = { Text("Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\nРасход токенов пока не учитывается.") },
+        text = { Text("Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\n\n${controller.usage(selected.id).describe()}") },
         confirmButton = { TextButton(onClick = { showStats = false }) { Text("Закрыть") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("Очистить чат?") },
         text = { Text("Сообщения будут удалены без возможности восстановления.") },
@@ -153,8 +153,9 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
                             Surface(color = if (message.fromUser) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surfaceContainerLow,
                                 shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(0.94f)) {
-                                SelectionContainer {
-                                    Text(message.text, modifier = Modifier.padding(horizontal = 16.dp, vertical = if (compact) 7.dp else 12.dp))
+                                Column(Modifier.padding(horizontal = 16.dp, vertical = if (compact) 7.dp else 12.dp)) {
+                                    if (message.fromUser) SelectionContainer { Text(message.text) }
+                                    else com.ayuemin.ilmar.ui.markdown.RichMessageContent(message.text, MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }

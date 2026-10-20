@@ -44,3 +44,35 @@ The duplicate `В текст` and `Shell` shortcut row was removed at the owner'
 request. Dictation remains available through the composer's microphone; the
 Shell catalogue entry remains. `Включить` is now on the same row as `Выбрать всё`.
 No additional Umnik runtime code was copied in this follow-up.
+
+## Four completed adaptations (2026-10-20)
+
+- MessageBody/MarkdownText/MarkdownTable/IsolatedBlock and rich-block splitting:
+  extracted into `ui/markdown/RichMessageContent.kt` and `MarkdownText.kt`.
+  Umnik-specific guide navigation is omitted. Code copy, basic inline formatting,
+  headings, lists, quotes and horizontally scrollable tables are available.
+- OpenRouterStreamParser/ResponseParser: adapted to Ilmar's cancellable transport
+  and typed GenerationResult. Handles content arrays, complete tool-call fragments,
+  errors in choices, finish reason and usage. Ilmar requires [DONE], preserving its
+  existing protection against incomplete streams. Gson is used only to preserve
+  the exact lexical USD amount, avoiding binary-double rounding.
+- RequestCostLedger: BigDecimal accounting adapted in `UsageLedger`. Actual input,
+  output, cached and reasoning tokens and reported costs are persisted per request.
+  Missing values remain unknown; older messages are not assigned invented usage.
+- Catalog capabilities: supported parameters, reasoning options and context/output
+  limits are parsed and cached per model. Request parameters are revalidated at
+  send time; unsupported/unknown modes stay unavailable. OpenRouter uses its own
+  reasoning object; generic reasoning_effort requires advertised effort values.
+- AgentToolLoopGuard: generic progress/repetition detection adapted separately
+  from Umnik's browser heuristics. JSON keys are canonicalized without collapsing
+  whitespace inside string values. AgentLoopRunner is called from ChatViewModel,
+  uses complete tool rounds, and enforces round/call/time limits. Only registered,
+  configured, chat-selected and globally granted tools can execute, with a fresh
+  check before every call. No SSH/Shell/browser executors or plugin runtime were
+  introduced by this feature set.
+
+SQLite migrates version 1 → 2 by adding request_usage without rebuilding history.
+Completed, failed, cancelled and interrupted requests are tracked without automatic
+retry. Usage request IDs prevent duplicate accounting after restart. Agent tests
+exercise the actual ChatViewModel-to-dispatcher path using an explicitly granted
+fake executor; no fake executor is registered in the production APK.

@@ -87,7 +87,18 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 Switch(compact, { compact = it; prefs.edit().putBoolean("compact_messages", it).apply() })
             }
             "Память и контекст" -> Text("История хранится на устройстве. Очистка и удаление доступны в меню чата. Сжатие контекста и резервные копии пока не подключены.")
-            "Инструменты" -> Text("Исполнители инструментов пока не установлены. Агент, SSH, Shell и браузер недоступны.")
+            "Инструменты" -> {
+                val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
+                val tools = com.ayuemin.ilmar.chat.ToolRegistry.catalogue().filter { it.executorRegistered }
+                if (tools.isEmpty()) Text("Исполнители пока не установлены. SSH, Shell и браузер недоступны.")
+                tools.forEach { tool ->
+                    var granted by remember(tool.id) { mutableStateOf(broker.granted(tool.id)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tool.title, Modifier.weight(1f))
+                        Switch(granted, { granted = it; broker.setGranted(tool.id, it) })
+                    }
+                }
+            }
             "Диагностика" -> {
                 Text("Ilmar · ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}")
                 Text("SHA: ${BuildConfig.BUILD_SHA.take(12)}", style = MaterialTheme.typography.bodySmall)

@@ -135,3 +135,31 @@ followed by the tool checkbox list. The duplicate dictation/Shell shortcut row
 must be absent. Dictation through the composer microphone and the Shell catalog
 entry remain available in their previous states. Verify small screens and large
 font sizes; unavailable tools still cannot be enabled.
+
+## Markdown, usage, capabilities and agent protection
+
+1. Upgrade without clearing app data. Verify old chats and keys. SQLite version 2
+   adds request_usage; no existing message table is recreated.
+2. Ask for headings, bold/italic, lists, links, a quote, a Markdown table and a
+   fenced code block. Verify copy returns code without Markdown fences. Long
+   code/tables must scroll horizontally. Plain user messages remain plain text.
+3. Refresh the provider's models to fetch capabilities. Check Reasoning/Tools and
+   context/output limits in catalog rows. Reasoning is enabled only for supported
+   protocol/metadata combinations. Toggle it per chat and select only advertised
+   effort values; unknown models must not send invented parameters.
+4. After completed streaming replies, inspect Chat → Statistics. Input/output,
+   total, cached, reasoning tokens and cost come from provider usage. Missing
+   values say no data. Restart and verify persisted totals. Cancel/retry/offline
+   failures must not fabricate a zero cost or duplicate successful usage.
+5. Agent mode requires advertised tools support, an installed executor, a global
+   permission and per-chat selection. Production has no SSH/Shell/browser
+   executors yet. Automated tests use a fake registered tool to prove normal tool
+   rounds, revoked-permission rejection, repeated-cycle stopping and step limits.
+6. Confirm malformed/error SSE never saves a partial assistant message as a
+   successful completion. A completed earlier agent round can still have a
+   reported charge even when a later tool/round fails; statistics retain it.
+7. Recheck stop, clear/delete during generation, process termination and retry.
+   Unknown interrupted charges remain unknown. No automatic paid retry occurs.
+
+Full CommonMark compliance, syntax highlighting, external tool installation and
+production device acceptance are not claimed by the unit test suite.

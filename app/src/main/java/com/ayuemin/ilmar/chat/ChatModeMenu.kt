@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 internal class ChatModePreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_chat_modes", Context.MODE_PRIVATE)
     fun enabled(id: Long, mode: String) = prefs.getBoolean("${id}_$mode", false)
+    fun choice(id: Long, key: String) = prefs.getString("${id}_$key", "auto") ?: "auto"
+    fun setChoice(id: Long, key: String, value: String) { prefs.edit().putString("${id}_$key", value).apply() }
     fun setEnabled(id: Long, mode: String, enabled: Boolean) { prefs.edit().putBoolean("${id}_$mode", enabled).apply() }
 }
 
@@ -23,6 +25,18 @@ internal class ChatModePreferences(context: Context) {
 @Composable
 internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
     onAttachText: () -> Unit, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val registry = remember { com.ayuemin.ilmar.model.ProviderRegistry(context) }
+    val model = registry.modelForChat(id)
+    val connection = registry.snapshot().providers.find { it.id == model?.providerId }
+    val capabilities = model?.let { registry.capabilities(it.id) } ?: com.ayuemin.ilmar.model.ModelCapabilities()
+    val canReason = connection?.let { capabilities.supportsReasoning(it.endpoint) } == true
+    var reasoning by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Размышление") && canReason) }
+    var effort by remember(id, model?.id) { mutableStateOf(preferences.choice(id, "reasoning_effort")) }
+    var reasoningSettings by remember { mutableStateOf(false) }
+    val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
+    val canAgent = capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty()
+    var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
     val available = ToolRegistry.availableIds()
@@ -39,14 +53,31 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
             Text("Вставить: текстовый файл. Камера и генерация изображений пока не подключены.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                ComposerToggleTile(Icons.Outlined.Psychology, 0, 3, levelDescription = "Размышление пока не подключено",
-                    checked = false, enabled = false, modifier = Modifier.weight(1f), onCheckedChange = {})
+                ComposerToggleTile(Icons.Outlined.Psychology, if (reasoning) 2 else 0, 3, levelDescription = "Размышление",
+                    checked = reasoning, enabled = canReason, modifier = Modifier.weight(1f),
+                    onOpenSettings = { reasoningSettings = !reasoningSettings }, onCheckedChange = {
+                        reasoning = it; preferences.setEnabled(id, "Размышление", it)
+                    })
                 ComposerToggleTile(Icons.Outlined.Language, 0, 4, levelDescription = "Интернет пока не подключён",
                     checked = false, enabled = false, modifier = Modifier.weight(1f), onCheckedChange = {})
-                ComposerToggleTile(Icons.Outlined.SmartToy, 0, 5, indicatorText = "АГЕНТ", levelDescription = "Агент пока не подключён",
-                    checked = false, enabled = false, modifier = Modifier.weight(1f), onCheckedChange = {})
+                ComposerToggleTile(Icons.Outlined.SmartToy, if (agent) 5 else 0, 5, indicatorText = "АГЕНТ", levelDescription = "Агент",
+                    checked = agent, enabled = canAgent, modifier = Modifier.weight(1f), onCheckedChange = {
+                        agent = it; preferences.setEnabled(id, "Агент", it)
+                    })
             }
-            Text("Размышление, интернет и агент станут доступны после подключения соответствующих возможностей.",
+            if (reasoningSettings && canReason) {
+                Text("Глубина размышления", style = MaterialTheme.typography.labelLarge)
+                (listOf("auto") + capabilities.efforts).distinct().forEach { value ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = effort == value, onClick = { effort = value; preferences.setChoice(id, "reasoning_effort", value) })
+                        Text(if (value == "auto") "Автоматически" else value)
+                    }
+                }
+            }
+            Text(if (!capabilities.known) "Каталог не сообщил возможности модели. Обнови список в разделе «Модели»."
+                else "Reasoning: ${if (canReason) "доступен" else "не подтверждён"}. Tool calling: ${if (capabilities.tools) "поддерживается" else "не подтверждён"}.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!canAgent) Text("Для агента нужны поддержка tools, установленный инструмент, разрешение в настройках и выбор для чата.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             ComposerSectionHeader(Icons.Outlined.Storage, "Инструменты", toolsExpanded) { toolsExpanded = !toolsExpanded }
             if (toolsExpanded) {

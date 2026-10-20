@@ -4,14 +4,34 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 1) {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
+        createUsage(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future migrations must preserve existing chats.
+        if (oldVersion < 2) createUsage(db)
+    }
+
+    private fun createUsage(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS request_usage (id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, status TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cached_tokens INTEGER, reasoning_tokens INTEGER, cost_usd TEXT)")
+    }
+
+    fun recordUsage(chatId: Long, requestId: String, usage: com.ayuemin.ilmar.model.TokenUsage, status: String) {
+        writableDatabase.execSQL("INSERT OR IGNORE INTO request_usage SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM messages WHERE chat_id = ?)",
+            arrayOf<Any?>(requestId, chatId, status, usage.input, usage.output, usage.total, usage.cached, usage.reasoning, usage.costUsd, chatId))
+    }
+
+    fun usage(chatId: Long): UsageLedger {
+        val records = mutableListOf<UsageRecord>()
+        readableDatabase.rawQuery("SELECT status, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, cost_usd FROM request_usage WHERE chat_id = ?", arrayOf(chatId.toString())).use { rows ->
+            fun nullable(index: Int): Long? = if (rows.isNull(index)) null else rows.getLong(index)
+            while (rows.moveToNext()) records += UsageRecord(com.ayuemin.ilmar.model.TokenUsage(
+                nullable(1), nullable(2), nullable(3), nullable(4), nullable(5), if (rows.isNull(6)) null else rows.getString(6)), rows.getString(0))
+        }
+        return UsageLedger(records)
     }
 
     fun load(): List<ChatSession> {
@@ -37,7 +57,12 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     }
 
     fun clearMessages(chatId: Long) {
-        writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
+        writableDatabase.beginTransaction()
+        try {
+            writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.setTransactionSuccessful()
+        } finally { writableDatabase.endTransaction() }
     }
 
     fun rename(chatId: Long, title: String) {
@@ -48,6 +73,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         writableDatabase.beginTransaction()
         try {
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM chats WHERE id = ?", arrayOf(chatId))
             writableDatabase.setTransactionSuccessful()
         } finally {
@@ -71,3 +97,4 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         }
     }
 }
+

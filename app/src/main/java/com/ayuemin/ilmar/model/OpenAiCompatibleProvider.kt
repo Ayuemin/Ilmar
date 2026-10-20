@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
 
 interface ChatProvider {
     suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String
+    suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>,
+        options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult =
+        GenerationResult(stream(endpoint, model, apiKey, history, onDelta))
 }
 
 class ProviderFailure(message: String, val httpStatus: Int? = null) : IOException(message) {
@@ -40,13 +43,14 @@ class OpenAiCompatibleProvider(
         .retryOnConnectionFailure(false).build()
 ) : ChatProvider {
     override suspend fun stream(endpoint: String, model: String, apiKey: String,
-        history: List<ChatMessage>, onDelta: (String) -> Unit): String {
+        history: List<ChatMessage>, onDelta: (String) -> Unit): String =
+        generate(endpoint, model, apiKey, history, GenerationOptions(), onDelta).text
+
+    override suspend fun generate(endpoint: String, model: String, apiKey: String,
+        history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
         require(ProviderRegistry.validEndpoint(endpoint)) { "Требуется корректный HTTPS URL" }
         require(model.isNotBlank()) { "Укажи модель" }
-        val payload = JSONObject().put("model", model).put("stream", true)
-            .put("messages", JSONArray().apply { history.forEach {
-                put(JSONObject().put("role", if (it.fromUser) "user" else "assistant").put("content", it.text))
-            } }).toString()
+        val payload = GenerationPayload.build(model, history, options).toString()
         val request = Request.Builder().url(ChatEndpoint.resolve(endpoint))
             .header("Authorization", "Bearer $apiKey").header("Accept", "text/event-stream")
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
@@ -63,7 +67,7 @@ class OpenAiCompatibleProvider(
                             if (!it.isSuccessful) throw ProviderFailure.http(it.code)
                             val body = it.body ?: throw IOException("Пустой ответ")
                             body.charStream().buffered().use { reader ->
-                                SseReader.read(reader) { delta -> if (continuation.isActive) onDelta(delta) }
+                                SseReader.readResult(reader) { delta -> if (continuation.isActive) onDelta(delta) }
                             }
                         })
                     } catch (e: Exception) {
@@ -73,35 +77,5 @@ class OpenAiCompatibleProvider(
                 }
             })
         }
-    }
-}
-
-internal object SseReader {
-    fun read(reader: BufferedReader, onDelta: (String) -> Unit): String {
-        val result = StringBuilder()
-        val event = mutableListOf<String>()
-        var done = false
-        fun dispatch() {
-            if (event.isEmpty()) return
-            val data = event.joinToString("\n").trim()
-            event.clear()
-            if (data == "[DONE]") { done = true; return }
-            val json = JSONObject(data)
-            if (json.has("error")) throw IOException("Ошибка потока")
-            val choice = json.optJSONArray("choices")?.optJSONObject(0)
-            val delta = choice?.optJSONObject("delta")?.opt("content") as? String
-            if (!delta.isNullOrEmpty()) { result.append(delta); onDelta(delta) }
-        }
-        while (!done) {
-            val line = reader.readLine() ?: break
-            when {
-                line.isEmpty() -> dispatch()
-                line.startsWith("data:") -> event.add(line.substring(5).trimStart())
-            }
-        }
-        if (!done) dispatch()
-        if (!done) throw EOFException("Нет окончания SSE")
-        if (result.isBlank()) throw IOException("Пустой ответ")
-        return result.toString()
     }
 }

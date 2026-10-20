@@ -81,6 +81,14 @@ fun ModelCatalogBrowser(controller: ModelCatalogViewModel, selectedModelId: Stri
                                 Text(model.name.substringAfterLast('/'), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(model.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val caps = registry.capabilities(model.id)
+                                Text(listOfNotNull(
+                                    if (caps.parameters.any { it.contains("reasoning") }) "Reasoning" else null,
+                                    if (caps.tools) "Tools" else null,
+                                    caps.contextLength?.let { "Контекст: $it" },
+                                    caps.maxOutputTokens?.let { "Вывод: $it" }
+                                ).joinToString(" · ").ifEmpty { "Возможности не сообщены" },
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!registry.isAvailable(model.id)) Text("Нет в текущем каталоге", style = MaterialTheme.typography.labelSmall)
                             }
                             IconButton(onClick = {

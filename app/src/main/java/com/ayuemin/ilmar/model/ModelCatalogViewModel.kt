@@ -27,8 +27,8 @@ class ModelCatalogViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             try {
                 val (provider, key) = registry.catalogTarget(providerId)
-                val names = client.load(provider.endpoint, key)
-                registry.applyCatalog(providerId, provider.endpoint, names)
+                val names = client.loadDetailed(provider.endpoint, key)
+                registry.applyCatalogDetails(providerId, provider.endpoint, names)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 val message = when (e) {
