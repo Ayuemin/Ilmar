@@ -104,28 +104,32 @@ private fun ToolSelectionPanel(
 ) {
     val tools = ToolRegistry.catalogue().map { it.id }
     val available = ToolRegistry.availableIds()
-    var chosen by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) }.toSet()) }
-    var applied by remember(id) { mutableStateOf(chosen) }
+    var applied by remember(id) { mutableStateOf(tools.filter { preferences.enabled(id, "tool_" + it) && it in available }.toSet()) }
+    var chosen by remember(id) { mutableStateOf(applied) }
     val allSelected = tools.isNotEmpty() && tools.all { it in chosen }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = allSelected, onCheckedChange = { value ->
                 chosen = if (value) tools.toSet() else emptySet()
             })
-            Text("Все", modifier = Modifier.weight(1f))
+            Text("Выбрать всё", modifier = Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                enabled = applied.isNotEmpty() || (chosen.isNotEmpty() && chosen.all { it in available }),
+                enabled = chosen.isNotEmpty() && chosen.all { it in available },
                 onClick = {
-                    if (applied.isNotEmpty()) {
-                        tools.forEach { preferences.setEnabled(id, "tool_" + it, false) }
-                        applied = emptySet()
-                        chosen = emptySet()
-                    } else {
-                        tools.forEach { preferences.setEnabled(id, "tool_" + it, it in chosen) }
-                        applied = chosen
-                    }
+                    tools.forEach { preferences.setEnabled(id, "tool_" + it, it in chosen) }
+                    applied = chosen
                 }
-            ) { Text(if (applied.isNotEmpty()) "Выключить" else "Включить") }
+            ) { Text("Включить") }
+            OutlinedButton(
+                enabled = applied.isNotEmpty(),
+                onClick = {
+                    tools.forEach { preferences.setEnabled(id, "tool_" + it, false) }
+                    applied = emptySet()
+                    chosen = emptySet()
+                }
+            ) { Text("Выключить все") }
         }
         Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
         tools.forEach { name ->
@@ -134,10 +138,6 @@ private fun ToolSelectionPanel(
                     checked = name in chosen,
                     onCheckedChange = { value ->
                         chosen = if (value) chosen + name else chosen - name
-                        if (applied.isNotEmpty() && value && name in available) {
-                            preferences.setEnabled(id, "tool_" + name, true)
-                            applied = applied + name
-                        }
                     }
                 )
                 OutlinedButton(onClick = { onDetails(name) }, modifier = Modifier.weight(1f)) {
@@ -147,7 +147,7 @@ private fun ToolSelectionPanel(
             }
         }
         }
-        Text("Доступных к исполнению инструментов: " + available.size + ". Выбор не предоставляет разрешения: их проверяет исполнитель перед каждым действием.",
+        Text(if (available.isEmpty()) "Инструменты пока не подключены. Отметки — только выбор; включение недоступно до установки исполнителя и настройки разрешений." else "Доступно: " + available.size + ". Отметки не включают инструменты до нажатия «Включить». Разрешения проверяются перед исполнением.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
