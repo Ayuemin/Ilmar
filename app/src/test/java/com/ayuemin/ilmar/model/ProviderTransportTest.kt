@@ -94,4 +94,54 @@ class ProviderTransportTest {
         assertFalse(error.message.orEmpty().contains("fake-key"))
         assertEquals(1, server.requestCount)
     }
+
+    @Test fun compactDisablesDefaultReasoningAndCommitsOnlyValidatedSummary() = runBlocking {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        app.deleteDatabase("ilmar_chats.db")
+        com.ayuemin.ilmar.settings.RuntimeLimits.install(app)
+        com.ayuemin.ilmar.settings.RuntimeLimits.reset()
+        val db = com.ayuemin.ilmar.chat.ChatStore(app)
+        try {
+            db.create(1, "Compact")
+            repeat(4) { db.append(1, ChatMessage("message $it " + "x".repeat(600), it % 2 == 0), null) }
+            val original = db.load().single().messages
+            val memory = com.ayuemin.ilmar.memory.ContextStore(db)
+            val summary = """{"goal":["continue"],"facts":[],"decisions":[],"progress":[],"files":[],"tests":[],"errors":[],"next":[],"uncertain":[]}"""
+            // Reproduce a model spending the entire completion budget on default reasoning.
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                    val payload = org.json.JSONObject(request.body.readUtf8())
+                    val disabled = payload.optJSONObject("reasoning")?.opt("enabled") == false
+                    val delta = if (disabled) org.json.JSONObject().put("content", summary)
+                        else org.json.JSONObject().put("reasoning", "internal reasoning")
+                    val choice = org.json.JSONObject().put("delta", delta).put("finish_reason", if (disabled) "stop" else "length")
+                    return MockResponse().setHeader("Content-Type", "text/event-stream").setBody(
+                        "data: " + org.json.JSONObject().put("choices", org.json.JSONArray().put(choice)) + "\n\ndata: [DONE]\n\n")
+                }
+            }
+            val caps = ModelCapabilities(setOf("max_tokens"), contextLength = 8192, maxOutputTokens = 1024)
+            val target = ModelTarget(ProviderConnection("p", "OpenRouter", "https://openrouter.ai/api/v1"), RegisteredModel("m", "p", "model"), "fake-key")
+            val provider = OpenAiCompatibleProvider(client)
+            val engine = com.ayuemin.ilmar.memory.ContextEngine(1, memory, com.ayuemin.ilmar.attachments.AttachmentStore(app),
+                com.ayuemin.ilmar.memory.ContextPolicy(recent = 2, automatic = false), caps, target,
+                { history, options, _, _, _ -> provider.generate(server.url("/api/v1").toString(), "model", "fake-key", history, options) {} })
+            engine.prepare(original, emptyList(), emptyList(), force = true)
+            assertEquals(summary, memory.active(1)!!.text)
+            assertEquals(original, db.load().single().messages)
+            assertEquals(1, server.requestCount)
+        } finally { db.close() }
+    }
+
+    @Test fun emptyReasoningCompletionIsAnExplicitFailureWithFinishAndUsage() = runBlocking {
+        server.enqueue(MockResponse().setBody("""data: {"choices":[{"delta":{"reasoning":"hidden"},"finish_reason":"length"}],"usage":{"completion_tokens":1024,"completion_tokens_details":{"reasoning_tokens":1024}}}
+
+data: [DONE]
+
+"""))
+        val error = runCatching { OpenAiCompatibleProvider(client).generate(server.url("/").toString(), "m", "fake-key", history, GenerationOptions()) {} }.exceptionOrNull() as ProviderFailure
+        assertTrue(error.message!!, error.message!!.contains("лимит вывода"))
+        assertTrue(error.details!!, error.details!!.contains("finish_reason=length"))
+        assertTrue(error.details!!.contains("reasoning_tokens=1024"))
+        assertEquals(1, server.requestCount)
+    }
 }

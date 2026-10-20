@@ -9,7 +9,7 @@ data class TokenUsage(val input: Long? = null, val output: Long? = null, val tot
 data class ModelToolCall(val id: String, val name: String, val arguments: String)
 data class GenerationResult(val text: String, val usage: TokenUsage = TokenUsage(),
     val finishReason: String? = null, val toolCalls: List<ModelToolCall> = emptyList())
-data class ReasoningConfig(val encoding: String, val effort: String? = null)
+data class ReasoningConfig(val encoding: String, val effort: String? = null, val enabled: Boolean = true)
 data class ToolSchema(val name: String, val description: String, val parameters: JSONObject)
 data class GenerationOptions(val reasoning: ReasoningConfig? = null,
     val tools: List<ToolSchema> = emptyList(), val toolHistory: List<JSONObject> = emptyList(),
@@ -43,7 +43,7 @@ internal object GenerationPayload {
             if (options.includeUsage) put("stream_options", JSONObject().put("include_usage", true))
             options.reasoning?.let {
                 when (it.encoding) {
-                    "openrouter" -> put("reasoning", JSONObject().put("enabled", true).apply { it.effort?.let { effort -> put("effort", effort) } })
+                    "openrouter" -> put("reasoning", JSONObject().put("enabled", it.enabled).apply { it.effort?.let { effort -> put("effort", effort) } })
                     "effort" -> { require(!it.effort.isNullOrBlank()); put("reasoning_effort", it.effort) }
                     else -> error("Неподдерживаемый режим reasoning")
                 }
