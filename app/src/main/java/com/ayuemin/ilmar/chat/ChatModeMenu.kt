@@ -36,13 +36,13 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
     var reasoningSettings by remember { mutableStateOf(false) }
     val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
     var toolRevision by remember { mutableIntStateOf(0) }
-    val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty() }
+    val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && (ToolRegistry.authorized(id, preferences, broker).isNotEmpty() || preferences.enabled(id, "tool_Браузер")) }
     var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
     var search by remember(id) { mutableStateOf(preferences.enabled(id, "Поиск")) }
     var searchSettings by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
-    val available = ToolRegistry.availableIds().filter { broker.granted(it) }.toSet()
+    val available = ToolRegistry.availableIds().filter { it == "Браузер" || broker.granted(it) }.toSet()
     var chosen by remember(id) { mutableStateOf(available.filter { preferences.enabled(id, "tool_$it") }.toSet()) }
     var applied by remember(id) { mutableStateOf(chosen) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
