@@ -50,7 +50,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                                 onCheckedChange = { chosen = if (it) available else emptySet() })
                             Text("Выбрать всё")
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(enabled = chosen.isNotEmpty() && chosen.all { it in available }, onClick = {
                                 tools.forEach { preferences.setEnabled(id, "tool_${it.id}", it.id in chosen) }; applied = chosen
                             }) { Text("Включить") }

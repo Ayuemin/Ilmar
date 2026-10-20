@@ -19,6 +19,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      ILMAR_BUILD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

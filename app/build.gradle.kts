@@ -14,7 +14,7 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.1.0-chat-preview"
-        buildConfigField("String", "BUILD_SHA", "\"${System.getenv("GITHUB_SHA") ?: "local"}\"")
+        buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

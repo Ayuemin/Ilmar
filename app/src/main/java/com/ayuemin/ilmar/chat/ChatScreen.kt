@@ -126,6 +126,9 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 }
             }
             if (inThisChat) LinearProgressIndicator(Modifier.fillMaxWidth())
+            else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
+                Text("Перейти к активному ответу")
+            }
             (state.errors[selected.id] ?: speechError)?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
