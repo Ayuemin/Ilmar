@@ -21,12 +21,12 @@ internal object ToolRegistry {
     }
     fun unregister(id: String) { installed.remove(id) }
     fun catalogue(): List<Descriptor> {
-        val base = listOf("SSH", "Shell", "Браузер").map { Descriptor(it, it, false, false) }
+        val base = listOf("SSH", "Shell").map { Descriptor(it, it, false, false) } + Descriptor("Браузер", "Браузер", true, true)
         return base.filterNot { installed.containsKey(it.id) } + installed.values.map { it.descriptor.copy(configured = it.ready()) }.sortedBy { it.id }
     }
     fun canExecute(id: String, enabledForChat: Boolean, permissionGranted: Boolean): Boolean =
         enabledForChat && permissionGranted && installed[id]?.ready?.invoke() == true
-    fun availableIds(): Set<String> = installed.filterValues { it.ready() }.keys.toSet()
+    fun availableIds(): Set<String> = installed.filterValues { it.ready() }.keys.toSet() + "Браузер"
     fun authorized(chatId: Long, modes: ChatModePreferences, broker: ToolPermissionBroker): List<BoundTool> =
         installed.values.filter { canExecute(it.descriptor.id, modes.enabled(chatId, "tool_${it.descriptor.id}"), broker.granted(it.descriptor.id)) }.map { entry ->
             BoundTool(entry.schema) { arguments ->
