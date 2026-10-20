@@ -9,7 +9,11 @@ import org.json.JSONObject
 
 internal object BrowserTools {
     fun forChat(chat: Long, modes: ChatModePreferences, providerAvailable: Boolean, supportsTools: Boolean, vision: Boolean = false, context: android.content.Context? = null, run: String = ""): List<BoundTool> {
-        fun authorized() = SearchRouting.resolve(modes.enabled(chat, "Поиск"), SearchRouting.source(modes.choice(chat, "search_source")), providerAvailable, supportsTools) == SearchRoute.BROWSER
+        fun authorized(): Boolean {
+            val agentBrowser = modes.enabled(chat, "Агент") && modes.enabled(chat, "tool_Браузер") && supportsTools
+            if (agentBrowser) return true
+            return SearchRouting.resolve(modes.enabled(chat, "Поиск"), SearchRouting.source(modes.choice(chat, "search_source")), providerAvailable, supportsTools) == SearchRoute.BROWSER
+        }
         fun field(type: String) = JSONObject().put("type", type)
         fun tool(name: String, description: String, fields: JSONObject = JSONObject(), required: List<String> = emptyList()): BoundTool {
             val schema = JSONObject().put("type", "object").put("properties", fields).put("required", JSONArray(required)).put("additionalProperties", false)
