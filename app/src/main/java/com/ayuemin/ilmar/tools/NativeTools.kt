@@ -101,11 +101,12 @@ internal object NativeTools {
                 }
             }
         }
-        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/html/xml/yaml/py/js/kt/svg), сохрани как вложение. По умолчанию одинаковое имя+содержимое возвращает прежний file_id. Для намеренной новой версии даже с тем же содержимым укажи mode=new_version. Старые файлы не перезаписываются; вернёт version и previous_file_id. Для нескольких намеренных версий в одной задаче используй разные version_key; при повторе той же версии сохраняй version_key.",
+        register("create_file", "Создать файл", "Создай UTF-8 файл (txt/md/csv/json/jsonl/html/xml/yaml/py/js/kt/svg), сохрани как вложение. По умолчанию одинаковое имя+содержимое возвращает прежний file_id. Для намеренной новой версии даже с тем же содержимым укажи mode=new_version. Старые файлы не перезаписываются; вернёт version и previous_file_id. Для нескольких намеренных версий в одной задаче используй разные version_key; при повторе той же версии сохраняй version_key.",
             field("name").put("content", JSONObject().put("type", "string")).put("mode", JSONObject().put("type", "string").put("enum", JSONArray(listOf("reuse", "new_version")))).put("version_key", JSONObject().put("type", "string")), listOf("name", "content")) { chat, args ->
             val name = args.getString("name"); val content = args.getString("content")
             val mode = args.optString("mode", "reuse"); require(mode in setOf("reuse", "new_version")) { "mode: reuse или new_version" }
             val versionKey = args.optString("version_key").takeIf { it.isNotBlank() }
+            require(!args.has("version_key") || versionKey != null) { "version_key не должен быть пустым" }
             require(versionKey == null || mode == "new_version" && versionKey.length <= 128) { "version_key до 128 символов используется только с new_version" }
             val mime = generatedMime(name)
             val bytes = content.toByteArray(Charsets.UTF_8); require(bytes.size <= Limits.bytes("create_kib")) { "Файл превышает глобальный лимит создания (${Limits.get("create_kib")} КиБ). Измени расширенные лимиты." }
@@ -166,7 +167,7 @@ internal object NativeTools {
         return when (name.substringAfterLast('.', "").lowercase()) {
             "md" -> "text/markdown"
             "py" -> "text/x-python"; "js" -> "text/javascript"; "kt" -> "text/x-kotlin"; "yaml", "yml" -> "application/yaml"; "txt" -> "text/plain"
-            "csv" -> "text/csv"; "json" -> "application/json"; "html", "htm" -> "text/html"; "xml" -> "application/xml"; "svg" -> "image/svg+xml"
+            "csv" -> "text/csv"; "json" -> "application/json"; "jsonl", "ndjson" -> "application/x-ndjson"; "html", "htm" -> "text/html"; "xml" -> "application/xml"; "svg" -> "image/svg+xml"
             else -> error("Создание этого формата не поддерживается")
         }
     }

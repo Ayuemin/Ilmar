@@ -144,4 +144,44 @@ data: [DONE]
         assertTrue(error.details!!.contains("reasoning_tokens=1024"))
         assertEquals(1, server.requestCount)
     }
+
+    @Test fun stoppingArchiveCancelsRealEmbeddingHttpButLeavesGenerationJobRunning() = runBlocking {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        app.deleteDatabase("ilmar_chats.db")
+        app.getSharedPreferences("ilmar_embeddings", 0).edit().clear().commit()
+        app.getSharedPreferences("ilmar_models", 0).edit().clear().commit()
+        app.getSharedPreferences("ilmar_ui", 0).edit().clear().commit()
+        app.getSharedPreferences("ilmar_context", 0).edit().clear().commit()
+        val registry = ProviderRegistry(app, com.ayuemin.ilmar.chat.MemorySecrets())
+        registry.saveConnection(null, "Embedding", server.url("/v1").toString(), listOf("embed"), "key")
+        val connection = registry.snapshot().providers.single()
+        com.ayuemin.ilmar.memory.EmbeddingPreferences(app).save(com.ayuemin.ilmar.memory.EmbeddingConfig(true, connection.id, "embed"))
+        com.ayuemin.ilmar.chat.ChatStore(app).use { db ->
+            db.create(1, "Archive")
+            repeat(8) { db.append(1, ChatMessage("Meaningful fact $it", true), null) }
+        }
+        val headers = CompletableDeferred<Unit>(); val failed = CountDownLatch(1)
+        val observed = client.newBuilder().eventListener(object : EventListener() {
+            override fun responseHeadersEnd(call: Call, response: Response) { headers.complete(Unit) }
+            override fun callFailed(call: Call, ioe: IOException) { failed.countDown() }
+        }).build()
+        server.enqueue(MockResponse().setBodyDelay(3, TimeUnit.SECONDS).setBody("{\"data\":[]}"))
+        val indexScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val retrieval = com.ayuemin.ilmar.memory.ArchiveRetrieval(app, registry, com.ayuemin.ilmar.memory.EmbeddingClient(observed))
+        val generationGate = CompletableDeferred<Unit>()
+        val generation = launch { generationGate.await() }
+        try {
+            retrieval.schedule(indexScope, 1, {}, force = true)
+            withTimeout(5000) { headers.await() }
+            retrieval.cancel(1)
+            assertTrue(failed.await(2, TimeUnit.SECONDS))
+            withTimeout(5000) { indexScope.coroutineContext[Job]!!.children.toList().joinAll() }
+            assertTrue(generation.isActive)
+            generationGate.complete(Unit); generation.join()
+            assertEquals(1, server.requestCount)
+            com.ayuemin.ilmar.chat.ChatStore(app).use { db ->
+                assertEquals("cancelled", db.readableDatabase.rawQuery("SELECT status FROM embedding_requests", null).use { assertTrue(it.moveToFirst()); it.getString(0) })
+            }
+        } finally { indexScope.cancel(); generation.cancelAndJoin() }
+    }
 }

@@ -59,6 +59,7 @@ class ChatViewModel @JvmOverloads constructor(
         }
         com.ayuemin.ilmar.memory.EmbeddingLedger(store).interruptOpen()
         memory.tasks.interruptOpen()
+        val interruptedDetails = activeDiagnostics()
         val interrupted = runtime.getLong("active_chat", -1)
         runtime.getString("active_request", null)?.let { pending ->
             if (interrupted >= 0) store.recordUsage(interrupted, pending, TokenUsage(), "interrupted", runtime.getString("active_purpose", "answer") ?: "answer")
@@ -66,10 +67,10 @@ class ChatViewModel @JvmOverloads constructor(
         runtime.edit().remove("active_request").commit()
         if (interrupted >= 0) memory.interrupt(interrupted)
         val errors = if (chats.any { it.id == interrupted && it.messages.lastOrNull()?.fromUser == true }) {
-            diagnostics.record("INTERRUPTED", interrupted)
+            diagnostics.record("INTERRUPTED", interrupted, interruptedDetails)
             mapOf(interrupted to "Ответ прерван при закрытии приложения. Можно повторить запрос.")
         } else emptyMap()
-        runtime.edit().remove("active_chat").commit()
+        runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
         mutable.value = ChatState(chats, chats.first().id, errors = errors, attachments = store.drafts())
         val referenced = (chats.flatMap { it.messages }.flatMap { it.attachments } + mutable.value.attachments.values.flatten())
             .flatMap { listOf(it.id) + it.images }.toSet()
@@ -208,7 +209,9 @@ class ChatViewModel @JvmOverloads constructor(
             try {
                 val taskSession = memory.tasks.begin(chatId, history)
                 cleanupSession = taskSession
-                diagnostics.record("START", chatId, taskSession.json())
+                val contextPolicy = contextPreferences.load()
+                runtime.edit().putString("active_task", taskSession.taskId).putString("active_run", taskSession.runId).putString("active_parent_run", taskSession.parentRunId).commit()
+                diagnostics.record("START", chatId, taskSession.json().put("limits", org.json.JSONObject(Limits.fields.associate { it.key to Limits.get(it.key) })))
                 val started = System.currentTimeMillis()
                 val roundUsage = mutableListOf<UsageRecord>()
                 val capabilities = registry.capabilities(target.model.id)
@@ -224,11 +227,11 @@ class ChatViewModel @JvmOverloads constructor(
                     com.ayuemin.ilmar.model.ModelTarget(compactConnection, compactModel, "") else target
                 val compactCaps = registry.capabilities(compactTarget.model.id)
                 val result = kotlinx.coroutines.withContext(contextDispatcher) {
-                    com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPreferences.load(), capabilities, target,
+                    com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPolicy, capabilities, target,
                         status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
                         compactTarget = compactTarget, compactCaps = compactCaps,
                         event = { code, details ->
-                            diagnostics.record(code, chatId, details)
+                            diagnostics.record(code, chatId, details.put("task_id", taskSession.taskId).put("run_id", taskSession.runId).put("parent_run_id", taskSession.parentRunId ?: org.json.JSONObject.NULL))
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
@@ -242,24 +245,32 @@ class ChatViewModel @JvmOverloads constructor(
                                         throw com.ayuemin.ilmar.memory.ContextFailure("Модель Compact недоступна. Проверь её провайдера и ключ в настройках памяти.")
                                     }
                                 } else target
+                                val callCaps = if (purpose == "compact") compactCaps else capabilities
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
                                 val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
                                     .put("estimated_input", estimatedInput).put("messages", projectedHistory.size).put("tools", options.tools.map { it.name }.joinToString())
+                                    .put("working_window_tokens", contextPolicy.limit(callCaps)).put("physical_window_tokens", callCaps.contextLength ?: org.json.JSONObject.NULL)
+                                    .put("reserved_output_tokens", options.maxOutput ?: org.json.JSONObject.NULL).put("output_parameter", options.outputParameter ?: org.json.JSONObject.NULL)
+                                    .put("automatic_compact", contextPolicy.automatic).put("recent_messages_target", contextPolicy.recent)
+                                    .put("compact_model", compactTarget.model.name).put("compact_window_tokens", contextPolicy.limit(compactCaps)).put("cache_requested", options.ephemeralCache)
+                                    .put("estimated_saved_tokens", saved).put("context_policy", contextPolicy.diagnosticJson())
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory, options) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
                                     .put("finish_reason", completion.finishReason).put("input_tokens", completion.usage.input).put("output_tokens", completion.usage.output)
-                                    .put("cost_usd", completion.usage.costUsd).put("tool_calls", completion.toolCalls.map { it.name }.joinToString()))
+                                    .put("cost_usd", completion.usage.costUsd ?: org.json.JSONObject.NULL).put("cached_tokens", completion.usage.cached ?: org.json.JSONObject.NULL)
+                                    .put("reasoning_tokens", completion.usage.reasoning ?: org.json.JSONObject.NULL).put("usage", com.ayuemin.ilmar.model.usageJson(completion.usage))
+                                    .put("tool_calls", completion.toolCalls.map { it.name }.joinToString()))
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
                                 if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
                                 completion
                             } catch (e: CancellationException) {
                                 recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
                             } catch (e: Exception) {
-                                diagnostics.failure("MODEL_ERROR", chatId, e, org.json.JSONObject().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
+                                diagnostics.failure("MODEL_ERROR", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
                                 recordCall(chatId, requestId, (e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), "failed", purpose); throw e
                             }
                         }).run(history, compactOnly, reasoning, tools)
@@ -293,13 +304,13 @@ class ChatViewModel @JvmOverloads constructor(
                     is ProviderFailure -> "PROVIDER_ERROR"
                     else -> "REQUEST_ERROR"
                 }
-                diagnostics.failure(code, chatId, e)
+                diagnostics.failure(code, chatId, e, cleanupSession?.json() ?: org.json.JSONObject())
                 mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.memory.ContextFailure) e.message ?: "Не удалось подготовить контекст" else if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is com.ayuemin.ilmar.agent.AgentFailure) "Агент остановлен: ${e.message}"
                     else if (e is IllegalStateException || e is IllegalArgumentException) e.message ?: "Проверь параметры запроса; подробности в диагностике."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
-                runtime.edit().remove("active_chat").commit()
+                runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
                 request = null
             }
@@ -309,7 +320,7 @@ class ChatViewModel @JvmOverloads constructor(
             // Cancellation before the lazy body starts skips its finally block.
             if (!closed && request === job) {
                 cleanupSession?.let { memory.tasks.finish(it, "PAUSED") }
-                runtime.edit().remove("active_chat").commit()
+                runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
                 request = null
             }
@@ -319,9 +330,12 @@ class ChatViewModel @JvmOverloads constructor(
     fun stop() {
         val id = mutable.value.activeChatId ?: return
         request?.cancel()
-        diagnostics.record("CANCELLED", id)
+        diagnostics.record("CANCELLED", id, activeDiagnostics())
         mutable.update { it.copy(errors = it.errors + (id to "Ответ остановлен. Можно повторить запрос.")) }
     }
+    private fun activeDiagnostics() = org.json.JSONObject().put("task_id", runtime.getString("active_task", null) ?: org.json.JSONObject.NULL)
+        .put("run_id", runtime.getString("active_run", null) ?: org.json.JSONObject.NULL).put("parent_run_id", runtime.getString("active_parent_run", null) ?: org.json.JSONObject.NULL)
+        .put("request_id", runtime.getString("active_request", null) ?: org.json.JSONObject.NULL)
     private fun recordCall(chatId: Long, requestId: String, usage: TokenUsage, status: String, purpose: String = "answer", saved: Int = 0, completion: com.ayuemin.ilmar.model.GenerationResult? = null) {
         if (closed) return
         store.recordUsage(chatId, requestId, usage, status, purpose, saved, completion)

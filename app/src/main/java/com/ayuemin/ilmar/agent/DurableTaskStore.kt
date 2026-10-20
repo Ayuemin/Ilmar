@@ -31,7 +31,7 @@ internal class DurableTaskStore(private val store: ChatStore) {
         }
         val anchor = user?.id ?: 0L
         val linked = db.rawQuery("SELECT task_id FROM agent_task_messages WHERE chat_id=? AND message_id=?", arrayOf(chat.toString(), anchor.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
-        val existing = linked ?: if (prior != null && (ContinuationPolicy.isControl(user?.text.orEmpty()) || prior.second == "AWAITING_USER")) prior.first
+        val existing = linked ?: if (prior != null && (ContinuationPolicy.isControl(user?.text.orEmpty()) || ContinuationPolicy.isBriefReply(user?.text.orEmpty()) || prior.second == "AWAITING_USER")) prior.first
             else db.rawQuery("SELECT id FROM agent_tasks WHERE chat_id=? AND anchor_message_id=?", arrayOf(chat.toString(), anchor.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
         val task = existing ?: UUID.randomUUID().toString().also {
             db.execSQL("INSERT INTO agent_tasks VALUES(?,?,?,?,?,?)", arrayOf(it, chat, anchor, user?.text?.take(2000).orEmpty(), "RUNNING", System.currentTimeMillis()))
@@ -107,14 +107,14 @@ internal class DurableTaskStore(private val store: ChatStore) {
             if (it.moveToFirst()) JSONObject().put("task_id", it.getString(0)).put("goal", it.getString(1)).put("status", it.getString(2)) else null
         } ?: return null
         val steps = JSONArray()
-        db.rawQuery("SELECT id,tool_name,status,result,file_refs FROM agent_steps WHERE task_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 16", arrayOf(task.getString("task_id"))).use { rows ->
+        db.rawQuery("SELECT id,tool_name,status,result,file_refs,execution_id FROM agent_steps WHERE task_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 16", arrayOf(task.getString("task_id"))).use { rows ->
             while (rows.moveToNext()) {
                 val raw = rows.getString(3)
                 val result = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
                 val summary = result?.optString("name")?.takeIf { it.isNotBlank() }?.let { it + if (result.has("version") && !result.isNull("version")) " · v${result.optInt("version")}" else "" }
                     ?: result?.opt("result")?.toString() ?: raw?.takeUnless { it.startsWith("{") }?.take(160).orEmpty()
                 steps.put(JSONObject().put("step_id", rows.getString(0)).put("tool", rows.getString(1)).put("status", rows.getString(2))
-                .put("result", rows.getString(3)?.take(240) ?: JSONObject.NULL).put("file_refs", JSONArray(rows.getString(4))).put("summary", summary))
+                .put("result", rows.getString(3)?.take(240) ?: JSONObject.NULL).put("file_refs", JSONArray(rows.getString(4))).put("summary", summary).put("trace_id", rows.getString(5).substringBefore(':')))
             }
         }
         return task.put("steps", steps)
@@ -124,6 +124,10 @@ internal class DurableTaskStore(private val store: ChatStore) {
         if (state.getString("task_id") != session.taskId || state.getJSONArray("steps").length() == 0) return ""
         state.put("goal", state.optString("goal").take(160))
         val steps = state.getJSONArray("steps")
+        repeat(steps.length()) { i ->
+            val step = steps.getJSONObject(i); step.remove("step_id")
+            if (step.optString("status") == "SUCCEEDED") step.remove("result")
+        }
         state.put("shown_steps", steps.length())
         while (steps.length() > 1 && ContextEstimate.text(state.toString()) > maxTokens) steps.remove(steps.length() - 1)
         state.put("shown_steps", steps.length())

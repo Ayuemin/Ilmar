@@ -42,7 +42,11 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
             val old = db.rawQuery("SELECT payload FROM plans WHERE chat=?", arrayOf(chat.toString())).use { if (it.moveToFirst()) JSONArray(it.getString(0)) else JSONArray() }
             var upgraded = false
             // Upgrade legacy plan rows in place without changing text/status/order.
-            repeat(old.length()) { i -> if (old.getJSONObject(i).optString("id").isBlank()) { old.getJSONObject(i).put("id", java.util.UUID.randomUUID().toString()); upgraded = true } }
+            val seen = mutableSetOf<String>()
+            repeat(old.length()) { i ->
+                val step = old.getJSONObject(i); val id = step.opt("id") as? String
+                if (id.isNullOrBlank() || !seen.add(id)) { val fresh = java.util.UUID.randomUUID().toString(); step.put("id", fresh); seen.add(fresh); upgraded = true }
+            }
             val result = if (steps == null) old else {
                 require(steps.length() <= Limits.get("plan_steps") && steps.toString().length <= Limits.bytes("argument_kib")) { "План превышает глобальный лимит" }
                 val used = mutableSetOf<String>()

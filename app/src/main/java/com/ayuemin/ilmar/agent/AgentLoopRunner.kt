@@ -55,7 +55,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 val replay = if (tool != null) replayConfirmed(call.name, call.arguments) else null
                 val output = if (replay != null) {
                     onProgress("${call.name}: используется подтверждённый результат без повторного действия")
-                    replay.result
+                    val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
+                    confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
                 } else {
                     // Planned calls are not execution intents. Persist only this call immediately before entering its executor.
                     history[groupStart].getJSONArray("_started_calls").put(call.id)
@@ -76,7 +77,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output).apply { replay?.let { put("_reused_from", it.executionId) } }
                 // The result must survive a crash before the next tool starts.
                 onCheckpoint(traceId, history.drop(groupStart))
-                if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
+                if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, replay?.result ?: output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))
             val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(history, Limits.get("trace_tokens"), preserveTrace = true)

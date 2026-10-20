@@ -8,6 +8,8 @@ import java.io.EOFException
 import java.io.IOException
 
 /** Adapted from Umnik's stream parser. Ilmar still requires [DONE] before accepting a result. */
+internal class StreamInterruption(val reportedUsage: TokenUsage) : EOFException("Поток прерван до завершения")
+
 internal object SseReader {
     fun read(reader: BufferedReader, onDelta: (String) -> Unit): String = readResult(reader, onDelta).text
     fun readResult(reader: BufferedReader, onDelta: (String) -> Unit): GenerationResult {
@@ -71,7 +73,7 @@ internal object SseReader {
             when { line.isEmpty() -> dispatch(); line.startsWith("data:") -> event.add(line.substring(5).trimStart()) }
         }
         if (!done) dispatch()
-        if (!done) throw EOFException("Поток прерван до завершения")
+        if (!done) throw StreamInterruption(usage)
         val tools = calls.values.map {
             if (it.id.isBlank() || it.name.isBlank()) throw IOException("Неполный вызов инструмента")
             ModelToolCall(it.id, it.name, it.arguments.toString())

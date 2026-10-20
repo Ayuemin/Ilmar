@@ -73,7 +73,7 @@ class OpenAiCompatibleProvider(
                             }
                         })
                     } catch (e: Exception) {
-                        Result.failure(e as? ProviderFailure ?: ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат", details = com.ayuemin.ilmar.diagnostics.Redaction.text(e.message.orEmpty().let { detail -> if (apiKey.isBlank()) detail else detail.replace(apiKey, "[REDACTED]") })))
+                        Result.failure(e as? ProviderFailure ?: ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат", details = com.ayuemin.ilmar.diagnostics.Redaction.text(e.message.orEmpty().let { detail -> if (apiKey.isBlank()) detail else detail.replace(apiKey, "[REDACTED]") }), reportedUsage = (e as? StreamInterruption)?.reportedUsage))
                     }
                     continuation.resumeWith(result)
                 }

@@ -12,6 +12,9 @@ internal data class ContextPolicy(val window: Int = 0, val output: Int = 0, val 
     val taskTokens: Int = 0, val taskUsd: String? = null, val automatic: Boolean = true) {
     fun limit(caps: ModelCapabilities) = (if (window == 0) minOf(caps.contextLength ?: 32768L, 32768L) else minOf(window.toLong(), caps.contextLength ?: window.toLong())).coerceIn(128, Int.MAX_VALUE.toLong()).toInt()
     fun reserve(caps: ModelCapabilities) = (if (output == 0) minOf(caps.maxOutputTokens ?: 8192L, (limit(caps) / 4).toLong()) else minOf(output.toLong(), caps.maxOutputTokens ?: output.toLong())).coerceAtLeast(1).toInt()
+    fun diagnosticJson() = JSONObject().put("window_setting_tokens", window).put("window_zero_meaning", "automatic_up_to_32768")
+        .put("output_setting_tokens", output).put("output_zero_meaning", "automatic").put("recent_messages", recent).put("automatic_compact", automatic)
+        .put("task_token_budget", taskTokens).put("task_token_zero_meaning", "limit_disabled").put("task_usd_budget", taskUsd ?: JSONObject.NULL).put("usd_null_meaning", "limit_disabled")
     fun validate() {
         require((window == 0 || window in 2048..Int.MAX_VALUE) && (output == 0 || output in 256..1000000) && (window == 0 || output < window / 2)) { "Резерв ответа должен быть меньше половины контекста" }
         require(recent in 0..10000 && (taskTokens == 0 || taskTokens in 2048..Int.MAX_VALUE)) { "Проверь число последних сообщений и бюджет задачи" }

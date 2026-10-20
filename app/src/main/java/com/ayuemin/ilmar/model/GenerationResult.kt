@@ -55,3 +55,8 @@ internal object GenerationPayload {
         }
     }
 }
+
+internal fun usageJson(usage: TokenUsage) = JSONObject().put("input_tokens", usage.input ?: JSONObject.NULL)
+    .put("output_tokens", usage.output ?: JSONObject.NULL).put("total_tokens", usage.total ?: JSONObject.NULL)
+    .put("cached_tokens", usage.cached ?: JSONObject.NULL).put("reasoning_tokens", usage.reasoning ?: JSONObject.NULL)
+    .put("cost_usd", usage.costUsd ?: JSONObject.NULL)

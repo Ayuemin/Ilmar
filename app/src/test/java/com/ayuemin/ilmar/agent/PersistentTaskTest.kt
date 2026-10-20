@@ -50,6 +50,7 @@ class PersistentTaskTest {
             if (round++ == 0) GenerationResult("", toolCalls = listOf(ModelToolCall("other-model-id", "create_file", "{ \"content\": \"data\", \"name\": \"a.txt\" }")))
             else {
                 assertEquals("file-42", JSONObject(options.toolHistory.last().getString("content")).getString("file_id"))
+                assertTrue(JSONObject(options.toolHistory.last().getString("content")).getBoolean("_reused_confirmed"))
                 assertFalse(options.toolHistory.last().has("_reused_from")); GenerationResult("done")
             }
         }
@@ -70,6 +71,7 @@ class PersistentTaskTest {
         val first = perform()
         db.append(1, ChatMessage("далее", true), null); val continued = perform()
         assertEquals(first.taskId, continued.taskId); assertEquals(1, effects)
+        db.append(1, ChatMessage("да", true), null); assertEquals(first.taskId, perform().taskId); assertEquals(1, effects)
         db.append(1, ChatMessage("New task: write the same operation intentionally", true), null); val new = perform()
         assertNotEquals(first.taskId, new.taskId); assertEquals(2, effects)
     }

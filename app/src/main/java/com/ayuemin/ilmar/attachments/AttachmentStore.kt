@@ -62,7 +62,7 @@ class AttachmentStore(context: Context) {
                 }
                 ext == "xlsx" || mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> text = XlsxText.read(original)
                 ext == "docx" || mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> text = docxText(original)
-                mime.startsWith("text/") || ext in setOf("txt", "md", "csv", "json", "xml", "yaml", "yml", "log", "kt", "py", "js", "html") || mime == "application/json" -> {
+                mime.startsWith("text/") || ext in setOf("txt", "md", "csv", "json", "jsonl", "ndjson", "xml", "yaml", "yml", "log", "kt", "py", "js", "html") || mime in setOf("application/json", "application/jsonl", "application/x-ndjson", "application/ndjson") -> {
                     require(original.length() <= Limits.bytes("text_kib")) { "Текстовый файл превышает глобальный лимит" }
                     val bytes = original.readBytes(); require(bytes.none { it == 0.toByte() }) { "Файл не является текстовым" }
                     text = Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
