@@ -30,11 +30,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             var settings by remember { mutableStateOf(false) }
             MaterialTheme(colorScheme = darkColorScheme(
-                background = Color(0xFF14151C), surface = Color(0xFF14151C),
-                onBackground = Color(0xFFF2F0F8), onSurface = Color(0xFFF2F0F8)
+                background = Color(0xFF050404), surface = Color(0xFF080605),
+                surfaceContainerLow = Color(0xFF1B100D), surfaceContainer = Color(0xFF291A15),
+                primary = Color(0xFFF0B198), onPrimary = Color(0xFF21120E),
+                outline = Color(0xFF8D6257), outlineVariant = Color(0xFF60443C),
+                onSurfaceVariant = Color(0xFFC9A99C),
+                onBackground = Color(0xFFF6EDE9), onSurface = Color(0xFFF6EDE9)
             )) {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-                    color = Color(0xFF14151C)) {
+                    color = Color(0xFF050404)) {
                     if (settings) SettingsScreen(onBack = { settings = false })
                     else ChatScreen(onSettings = { settings = true })
                 }
