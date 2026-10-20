@@ -45,14 +45,22 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
         // Leave old ciphertext untouched: migration never needs plaintext or a new Keystore key.
     }
 
+    fun saveProvider(id: String?, name: String, endpoint: String, key: String) {
+        val existingNames = snapshot().models.filter { it.providerId == id }.map { it.name }
+        saveConnection(id, name, endpoint, existingNames, key)
+    }
+
+    @Synchronized
     fun saveConnection(id: String?, name: String, endpoint: String, modelNames: List<String>, key: String) {
         require(name.isNotBlank()) { "Укажи название подключения" }
         require(validEndpoint(endpoint)) { "Требуется корректный HTTPS адрес API" }
         val names = modelNames.map(String::trim).filter(String::isNotEmpty).distinct()
-        require(names.isNotEmpty()) { "Добавь хотя бы один ID модели" }
         val old = snapshot()
         val providerId = id ?: UUID.randomUUID().toString()
         val connection = ProviderConnection(providerId, name.trim(), endpoint.trim())
+        if (old.providers.any { it.id == providerId && it.endpoint != connection.endpoint }) {
+            prefs.edit().remove("loaded_$providerId").commit()
+        }
         val models = names.map { modelName ->
             old.models.find { it.providerId == providerId && it.name == modelName }
                 ?: RegisteredModel(UUID.randomUUID().toString(), providerId, modelName)
@@ -61,12 +69,48 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
         if (key.isNotBlank()) credentials.saveApiKey(key.trim(), providerId)
         val allModels = old.models.filterNot { it.providerId == providerId } + models
         write(RegistrySnapshot(old.providers.filterNot { it.id == providerId } + connection,
-            allModels, old.defaultModelId?.takeIf { default -> allModels.any { it.id == default } } ?: allModels.first().id))
+            allModels, old.defaultModelId?.takeIf { default -> allModels.any { it.id == default } } ?: allModels.firstOrNull()?.id))
     }
 
-    fun setDefault(modelId: String) {
+    fun catalogTarget(providerId: String): Pair<ProviderConnection, String> {
+        val connection = snapshot().providers.find { it.id == providerId } ?: error("Подключение недоступно")
+        val key = credentials.loadApiKey(providerId) ?: error("Добавь ключ в подключениях")
+        return connection to key
+    }
+
+    fun catalogLoaded(providerId: String) = prefs.getBoolean("loaded_$providerId", false)
+
+    @Synchronized
+    fun applyCatalog(providerId: String, expectedEndpoint: String, names: List<String>) {
         val old = snapshot()
-        require(old.models.any { it.id == modelId })
+        val connection = old.providers.find { it.id == providerId } ?: error("Подключение удалено")
+        check(connection.endpoint == expectedEndpoint) { "Адрес подключения изменился. Обнови список снова." }
+        val ids = names.map(String::trim).filter(String::isNotBlank).distinct()
+        // Keep old IDs/selection/favorites even if a model disappears; mark it unavailable instead.
+        val current = old.models.filter { it.providerId == providerId }
+        val merged = current + ids.filter { name -> current.none { it.name == name } }.map {
+            RegisteredModel(UUID.randomUUID().toString(), providerId, it)
+        }
+        val all = old.models.filterNot { it.providerId == providerId } + merged
+        val present = merged.filter { it.name in ids }.map { it.id }.toSet()
+        val unavailable = prefs.getStringSet("unavailable", emptySet()).orEmpty()
+            .filterNot { id -> current.any { it.id == id } }.toSet() + merged.filter { it.id !in present }.map { it.id }
+        write(old.copy(models = all, defaultModelId = old.defaultModelId ?: present.firstOrNull()))
+        check(prefs.edit().putStringSet("unavailable", unavailable).putBoolean("loaded_$providerId", true).commit())
+    }
+
+    fun isAvailable(modelId: String) = modelId !in prefs.getStringSet("unavailable", emptySet()).orEmpty()
+    fun isFavorite(modelId: String) = modelId in prefs.getStringSet("favorites", emptySet()).orEmpty()
+    @Synchronized fun toggleFavorite(modelId: String) {
+        require(snapshot().models.any { it.id == modelId })
+        val favorites = prefs.getStringSet("favorites", emptySet()).orEmpty().toMutableSet()
+        if (!favorites.add(modelId)) favorites.remove(modelId)
+        check(prefs.edit().putStringSet("favorites", favorites).commit())
+    }
+
+    @Synchronized fun setDefault(modelId: String) {
+        val old = snapshot()
+        require(old.models.any { it.id == modelId } && isAvailable(modelId))
         write(old.copy(defaultModelId = modelId))
     }
 
@@ -91,7 +135,7 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
     }
 
     fun select(chatId: Long, modelId: String?) {
-        if (modelId != null) require(snapshot().models.any { it.id == modelId })
+        if (modelId != null) require(snapshot().models.any { it.id == modelId } && isAvailable(modelId))
         check(modes.edit().apply {
             if (modelId == null) remove("${chatId}_registered_model")
             else putString("${chatId}_registered_model", modelId)
@@ -107,6 +151,7 @@ class ProviderRegistry(context: Context, private val credentials: SecretStore = 
 
     fun target(chatId: Long): ModelTarget {
         val model = modelForChat(chatId) ?: error("Выбери доступную модель в настройках чата")
+        check(isAvailable(model.id)) { "Модель больше не доступна в каталоге провайдера. Выбери другую." }
         val connection = snapshot().providers.find { it.id == model.providerId }
             ?: error("Подключение модели недоступно")
         require(validEndpoint(connection.endpoint)) { "Исправь HTTPS адрес в настройках подключения" }

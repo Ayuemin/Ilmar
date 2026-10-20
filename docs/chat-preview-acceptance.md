@@ -107,3 +107,23 @@ The composer displays the model ID without its organization prefix (for example
 line. Full IDs remain unchanged in storage and requests. For legacy default
 connection names, OpenRouter/OpenAI are identified from their exact known host;
 custom connection names are respected.
+
+## Provider catalog and Umnik menu
+
+- Connections contain only provider name, API URL and key. Add a provider without
+  selecting any model; it must appear in Settings → Models and the chat picker.
+- Expand a provider: first use fetches GET /models from that same provider using
+  its key. Later opens reuse the saved list; Refresh requests it explicitly.
+- Verify full ID copy, favorites per provider, favorite-only filtering, search,
+  chat-local selection and global default. Restart and check favorite/selection
+  persistence. Offline/401/malformed responses must retain the saved catalog.
+- A model missing after refresh stays visible but unavailable; its stable ID and
+  favorite remain saved. The app must not silently substitute another model.
+- Drawer: Projects is above history with an explicit future-feature explanation;
+  New chat and Settings are on one fixed bottom row. Check long histories.
+- Menu +: Umnik action tiles, compact mode toggles, expandable tools. Text file
+  insertion and system dictation work; unavailable camera/image/agent/tools are
+  disabled. Text import stays in the draft, is limited to UTF-8/64 KiB and never
+  makes an automatic API request. Try denied access, binary and oversized files.
+- Check a small screen, enlarged font and keyboard with both model and action
+  sheets open. Successful CI does not constitute phone acceptance.

@@ -56,6 +56,22 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     var searchOpen by remember(selected.id) { mutableStateOf(false) }
     var query by remember(selected.id) { mutableStateOf("") }
     var speechError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    var attachmentChatId by remember { mutableStateOf<Long?>(null) }
+    val attachmentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = attachmentChatId
+        if (uri != null && target != null) scope.launch {
+            try {
+                val text = readTextAttachment(context.contentResolver, uri)
+                if (controller.state.value.chats.any { it.id == target }) {
+                    val previous = controller.state.value.drafts[target].orEmpty()
+                    controller.setDraft(target, listOf(previous, text).filter(String::isNotBlank).joinToString("\n\n"))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: IllegalArgumentException) { speechError = e.message }
+            catch (_: Exception) { speechError = "Не удалось прочитать текстовый файл UTF-8" }
+        }
+    }
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -63,7 +79,6 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
         }
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
     val messages = (selected.messages + if (inThisChat && state.streamingText.isNotEmpty())
         listOf(ChatMessage(state.streamingText, false)) else emptyList())
@@ -79,8 +94,22 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     LaunchedEffect(messages.size, state.streamingText.length) {
         if (following.value && !searchOpen && messages.isNotEmpty()) list.scrollToItem(messages.lastIndex)
     }
-    if (showModes) ChatModeMenu(selected.id, chatModes) { showModes = false }
-    if (showModels) ChatProviderDialog(selected.id, controller.registry, onSettings,
+    val dictate = {
+        try {
+            speechError = null
+            speechLauncher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            })
+        } catch (_: android.content.ActivityNotFoundException) { speechError = "Распознавание речи недоступно" }
+    }
+    if (showModes) ChatModeMenu(selected.id, chatModes,
+        onAttachText = {
+            attachmentChatId = selected.id
+            try { attachmentLauncher.launch(arrayOf("text/*", "application/json")) }
+            catch (_: android.content.ActivityNotFoundException) { speechError = "Выбор файлов недоступен" }
+        },
+        onDictate = dictate, onDismiss = { showModes = false })
+    if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },
         text = { Text("Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\nРасход токенов пока не учитывается.") },
@@ -168,14 +197,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                             }
                             Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp))
                         }
-                        IconButton(onClick = {
-                            try {
-                                speechError = null
-                                speechLauncher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                })
-                            } catch (_: android.content.ActivityNotFoundException) { speechError = "Распознавание речи недоступно" }
-                        }) { Icon(Icons.Default.Mic, "Распознать речь") }
+                        IconButton(onClick = dictate) { Icon(Icons.Default.Mic, "Распознать речь") }
                         if (sending) IconButton(onClick = controller::stop) { Icon(Icons.Default.Stop, "Остановить ответ") }
                         else IconButton(enabled = draft.isNotBlank(), onClick = {
                             val text = draft; controller.setDraft(selected.id, ""); speechError = null; following.value = true; controller.send(text)

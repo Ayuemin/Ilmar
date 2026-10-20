@@ -14,6 +14,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ayuemin.ilmar.diagnostics.Diagnostics
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ayuemin.ilmar.model.ModelCatalogViewModel
+import com.ayuemin.ilmar.ui.ModelCatalogBrowser
 import com.ayuemin.ilmar.model.ChatEndpoint
 import com.ayuemin.ilmar.model.ProviderConnection
 import com.ayuemin.ilmar.model.ProviderRegistry
@@ -24,6 +27,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
     val registry = remember { ProviderRegistry(context) }
+    val catalog: ModelCatalogViewModel = viewModel()
     var revision by remember { mutableIntStateOf(0) }
     val data = remember(revision) { registry.snapshot() }
     var page by remember(initialPage) { mutableStateOf(initialPage) }
@@ -35,11 +39,25 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
     var confirmClear by remember { mutableStateOf(false) }
     if (page != null) BackHandler { page = null }
     if (editorOpen) ConnectionEditor(editing, registry, onDismiss = { editorOpen = false }, onSaved = {
-        editorOpen = false; revision++
+        editorOpen = false; revision++; catalog.changed()
     })
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Очистить диагностику?") },
         confirmButton = { TextButton(onClick = { diagnostics.clear(); events = ""; confirmClear = false }) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } })
+    if (page == "Модели") {
+        Column(Modifier.fillMaxSize().imePadding().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { page = null }) { Icon(Icons.Default.ArrowBack, "Назад") }
+                Text("Модели", style = MaterialTheme.typography.titleLarge)
+            }
+            Text("Выбери модель по умолчанию или добавь её в избранное.", style = MaterialTheme.typography.bodySmall)
+            val catalogState by catalog.state.collectAsState()
+            ModelCatalogBrowser(catalog, remember(catalogState.revision) { catalog.registry.snapshot().defaultModelId },
+                onChoose = { catalog.registry.setDefault(it); catalog.changed(); revision++ },
+                onConnections = { page = "Подключения" }, modifier = Modifier.weight(1f))
+        }
+        return
+    }
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -48,8 +66,8 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
         }
         when (page) {
             null -> {
-                SettingsCard("Подключения", "API-сервисы, ключи и зарегистрированные модели") { page = "Подключения" }
-                SettingsCard("Модель по умолчанию", data.models.find { it.id == data.defaultModelId }?.name ?: "Не выбрана") { page = "Модель по умолчанию" }
+                SettingsCard("Подключения", "Провайдеры, адреса API и ключи") { page = "Подключения" }
+                SettingsCard("Модели", "Каталоги провайдеров, избранное и модель по умолчанию") { page = "Модели" }
                 SettingsCard("Интерфейс", "Компактность сообщений") { page = "Интерфейс" }
                 SettingsCard("Память и контекст", "Локальная история") { page = "Память и контекст" }
                 SettingsCard("Инструменты", "Состояние подключений") { page = "Инструменты" }
@@ -63,23 +81,6 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                     }
                 }
                 Button(onClick = { editing = null; editorOpen = true }) { Text("Добавить подключение") }
-            }
-            "Модель по умолчанию" -> {
-                if (data.models.isEmpty()) Text("Сначала добавь подключение и модели.")
-                data.models.forEach { model ->
-                    val ready = registry.hasKey(model.providerId)
-                    Surface(onClick = { registry.setDefault(model.id); revision++ }, enabled = ready,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
-                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = model.id == data.defaultModelId, enabled = ready, onClick = { registry.setDefault(model.id); revision++ })
-                            Column {
-                                Text(model.name)
-                                Text(data.providers.find { it.id == model.providerId }?.name.orEmpty() + if (ready) "" else " · нужен ключ",
-                                    style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
             }
             "Интерфейс" -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Компактные сообщения", Modifier.weight(1f))
@@ -114,7 +115,6 @@ private fun ConnectionEditor(connection: ProviderConnection?, registry: Provider
     onDismiss: () -> Unit, onSaved: () -> Unit) {
     var name by remember { mutableStateOf(connection?.name.orEmpty()) }
     var endpoint by remember { mutableStateOf(connection?.endpoint.orEmpty()) }
-    var models by remember { mutableStateOf(registry.snapshot().models.filter { it.providerId == connection?.id }.joinToString("\n") { it.name }) }
     var key by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmKeyRemoval by remember { mutableStateOf(false) }
@@ -134,14 +134,13 @@ private fun ConnectionEditor(connection: ProviderConnection?, registry: Provider
                 if (ProviderRegistry.validEndpoint(endpoint)) {
                     Text("Адрес запросов: ${ChatEndpoint.resolve(endpoint)}", style = MaterialTheme.typography.bodySmall)
                 }
-                OutlinedTextField(models, { models = it }, label = { Text("ID моделей — по одному на строку") }, minLines = 2)
                 OutlinedTextField(key, { key = it }, label = { Text(if (keyPresent) "Новый ключ (необязательно)" else "API-ключ") },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)
                 if (keyPresent) TextButton(onClick = { confirmKeyRemoval = true }) { Text("Удалить сохранённый ключ") }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }, confirmButton = { TextButton(onClick = {
-            try { registry.saveConnection(connection?.id, name, endpoint, models.lines(), key); key = ""; onSaved() }
+            try { registry.saveProvider(connection?.id, name, endpoint, key); key = ""; onSaved() }
             catch (_: java.security.GeneralSecurityException) { error = "Не удалось сохранить ключ в защищённом хранилище" }
             catch (e: IllegalArgumentException) { error = e.message }
             catch (_: Exception) { error = "Не удалось сохранить подключение" }

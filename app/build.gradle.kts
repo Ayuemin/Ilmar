@@ -12,8 +12,8 @@ android {
         applicationId = "com.ayuemin.ilmar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.0-chat-preview.2"
+        versionCode = 4
+        versionName = "0.1.0-model-catalog"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
