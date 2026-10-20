@@ -33,7 +33,7 @@ class ModelCatalogViewModel(application: Application) : AndroidViewModel(applica
             catch (e: Exception) {
                 val message = when (e) {
                     is ProviderFailure -> e.message.orEmpty()
-                    is IllegalStateException -> "Настрой API-ключ в подключениях"
+                    is IllegalStateException -> e.message ?: "Проверь настройки подключения"
                     is IllegalArgumentException -> "Каталог требует стандартный базовый адрес API"
                     else -> "Не удалось обновить список моделей. Сохранённый список доступен."
                 }
