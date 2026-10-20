@@ -39,6 +39,17 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     var showModels by remember { mutableStateOf(false) }
     var modelRevision by remember { mutableIntStateOf(0) }
     val selectedModel = remember(selected.id, modelRevision) { controller.registry.modelForChat(selected.id) }
+    val selectedProvider = remember(selectedModel, modelRevision) {
+        controller.registry.snapshot().providers.find { it.id == selectedModel?.providerId }?.let { connection ->
+            if (connection.id == "legacy" && connection.name == "Основное подключение") {
+                when (runCatching { java.net.URI(connection.endpoint).host?.lowercase() }.getOrNull()) {
+                    "openrouter.ai" -> "OpenRouter"
+                    "api.openai.com" -> "OpenAI"
+                    else -> connection.name
+                }
+            } else connection.name
+        }
+    }
     var overflow by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
@@ -146,9 +157,15 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                         IconButton(onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }
                         TextButton(onClick = { showModels = true }, modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp)) {
-                            Text(selectedModel?.name ?: "Выбрать модель", maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.weight(1f, fill = false))
+                            Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.Start) {
+                                Text(selectedModel?.name?.substringAfterLast('/') ?: "Выбрать модель", maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+                                selectedProvider?.let { providerName ->
+                                    Text(providerName, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                             Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp))
                         }
                         IconButton(onClick = {

@@ -101,3 +101,9 @@ between Add (+) and the microphone. The chat header contains the chat title.
 Verify that tapping the selector opens the model bottom sheet, that the current
 chat selection persists, and that long names truncate without displacing the
 microphone/send buttons on a small screen or with enlarged fonts.
+
+The composer displays the model ID without its organization prefix (for example
+`deepseek-v4.1-flash`), with the configured provider name on a smaller second
+line. Full IDs remain unchanged in storage and requests. For legacy default
+connection names, OpenRouter/OpenAI are identified from their exact known host;
+custom connection names are respected.
