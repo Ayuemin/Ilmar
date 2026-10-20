@@ -15,7 +15,7 @@ data class GenerationOptions(val reasoning: ReasoningConfig? = null,
     val tools: List<ToolSchema> = emptyList(), val toolHistory: List<JSONObject> = emptyList(),
     val includeUsage: Boolean = false, val attachmentContent: Map<Long, JSONArray> = emptyMap(), val systemPrefix: String = "",
     val retrieval: String = "", val maxOutput: Int? = null, val outputParameter: String? = null, val ephemeralCache: Boolean = false,
-    val responseSchema: JSONObject? = null, val requestId: String? = null)
+    val responseSchema: JSONObject? = null, val requestId: String? = null, val webSearch: String? = null)
 
 internal fun nonNegativeLong(json: JSONObject?, key: String): Long? =
     json?.opt(key)?.toString()?.toLongOrNull()?.takeIf { it >= 0 }
@@ -39,6 +39,12 @@ internal object GenerationPayload {
                 require(schema.toString().length <= 16000 && schema.optString("type") == "object") { "Требуется JSON schema объекта до 16 тысяч символов" }
                 put("response_format", JSONObject().put("type", "json_schema").put("json_schema",
                     JSONObject().put("name", "response").put("strict", true).put("schema", schema)))
+            }
+            when (options.webSearch) {
+                "OPENROUTER" -> put("plugins", JSONArray().put(JSONObject().put("id", "web").put("max_results", 3)))
+                "CHAT_COMPLETIONS" -> put("web_search_options", JSONObject().put("search_context_size", "low"))
+                "NATIVE", null -> Unit
+                else -> error("Неподдерживаемый протокол веб-поиска")
             }
             if (options.includeUsage) put("stream_options", JSONObject().put("include_usage", true))
             options.reasoning?.let {

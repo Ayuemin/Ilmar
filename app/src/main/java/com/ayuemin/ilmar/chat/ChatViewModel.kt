@@ -217,8 +217,16 @@ class ChatViewModel @JvmOverloads constructor(
                 val capabilities = registry.capabilities(target.model.id)
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
-                val tools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
+                val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
+                    com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
+                val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
+                    modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
+                val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
+                val tools = agentTools + if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools) else emptyList()
+                diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
+                    .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
                 val compactModel = registry.snapshot().models.find { it.id == compactId }
                 val compactConnection = registry.snapshot().providers.find { it.id == compactModel?.providerId }
@@ -255,8 +263,11 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("automatic_compact", contextPolicy.automatic).put("recent_messages_target", contextPolicy.recent)
                                     .put("compact_model", compactTarget.model.name).put("compact_window_tokens", contextPolicy.limit(compactCaps)).put("cache_requested", options.ephemeralCache)
                                     .put("estimated_saved_tokens", saved).put("context_policy", contextPolicy.diagnosticJson())
+                                    .put("search_route", if (purpose == "answer") searchRoute.name else "OFF")
+                                    .put("search_protocol", if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) searchProtocol?.name else org.json.JSONObject.NULL)
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
-                                val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory, options) { delta ->
+                                val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
+                                    if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) options.copy(webSearch = searchProtocol!!.name) else options) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
@@ -309,6 +320,7 @@ class ChatViewModel @JvmOverloads constructor(
                     else if (e is IllegalStateException || e is IllegalArgumentException) e.message ?: "Проверь параметры запроса; подробности в диагностике."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { com.ayuemin.ilmar.browser.BrowserRuntime.stop(chatId) }
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }

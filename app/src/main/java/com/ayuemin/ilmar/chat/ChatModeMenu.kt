@@ -38,9 +38,8 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
     var toolRevision by remember { mutableIntStateOf(0) }
     val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty() }
     var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
-    val canSearch = capabilities.tools && broker.granted("web_search") &&
-        com.ayuemin.ilmar.tools.SearchRegistry(context).ready()
-    var search by remember(id) { mutableStateOf(preferences.enabled(id, "tool_web_search") && preferences.enabled(id, "Агент")) }
+    var search by remember(id) { mutableStateOf(preferences.enabled(id, "Поиск")) }
+    var searchSettings by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
     val available = ToolRegistry.availableIds().filter { broker.granted(it) }.toSet()
@@ -62,18 +61,18 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                     onOpenSettings = { reasoningSettings = !reasoningSettings }, onCheckedChange = {
                         reasoning = it; preferences.setEnabled(id, "Размышление", it)
                     })
-                ComposerToggleTile(Icons.Outlined.Language, if (search) 3 else 0, 4, levelDescription = "Поиск через настроенный API",
-                    checked = search && agent, enabled = canSearch, modifier = Modifier.weight(1f), onCheckedChange = {
-                        search = it; preferences.setEnabled(id, "tool_web_search", it)
-                        chosen = if (it) chosen + "web_search" else chosen - "web_search"; applied = chosen
-                        if (it) { agent = true; preferences.setEnabled(id, "Агент", true) }
-                        toolRevision++
+                ComposerToggleTile(Icons.Outlined.Language, if (search) 3 else 0, 4, levelDescription = "Поиск в интернете",
+                    checked = search, enabled = true, modifier = Modifier.weight(1f),
+                    onOpenSettings = { searchSettings = !searchSettings }, onCheckedChange = {
+                        search = it; preferences.setEnabled(id, "Поиск", it)
+                        if (it) searchSettings = true
                     })
                 ComposerToggleTile(Icons.Outlined.SmartToy, if (agent) 5 else 0, 5, indicatorText = "АГЕНТ", levelDescription = "Агент",
                     checked = agent, enabled = canAgent, modifier = Modifier.weight(1f), onCheckedChange = {
                         agent = it; preferences.setEnabled(id, "Агент", it)
                     })
             }
+            if (searchSettings) com.ayuemin.ilmar.browser.SearchControls(id, preferences, connection?.id, onDismiss)
             if (reasoningSettings && canReason) {
                 Text("Глубина размышления", style = MaterialTheme.typography.labelLarge)
                 (listOf("auto") + capabilities.efforts).distinct().forEach { value ->
