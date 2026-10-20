@@ -104,6 +104,21 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
                     draft = ""
                     scope.launch { drawerState.close() }
                 },
+                onRename = { id, title ->
+                    store.rename(id, title)
+                    chats = chats.map { if (it.id == id) it.copy(title = title) else it }
+                },
+                onDelete = { id ->
+                    if (streamingChatId == id) activeRequest?.cancel()
+                    store.delete(id)
+                    chats = chats.filterNot { it.id == id }
+                    if (chats.isEmpty()) {
+                        val nextId = id + 1
+                        store.create(nextId, "Новый чат")
+                        chats = listOf(ChatSession(nextId, "Новый чат"))
+                    }
+                    if (selectedId == id) { selectedId = chats.first().id; draft = "" }
+                },
                 onSettings = { scope.launch { drawerState.close() }; onSettings() }
             )
         }
