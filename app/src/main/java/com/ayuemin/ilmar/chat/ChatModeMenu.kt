@@ -29,11 +29,11 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
     var depth by remember(id) { mutableStateOf(preferences.choice(id, "depth")) }
     var searchEngine by remember(id) { mutableStateOf(preferences.choice(id, "search_engine")) }
     var toolsExpanded by remember(id) { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Режимы чата") },
-        text = {
-            Column(Modifier.heightIn(max = 510.dp).verticalScroll(rememberScrollState())) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+            Text("Режимы чата", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(12.dp))
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
                 listOf("Агент", "Поиск", "Размышление").forEach { name ->
                     var checked by remember(id, name) { mutableStateOf(preferences.enabled(id, name)) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -91,9 +91,9 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences, onDismiss:
                 }
 
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
-    )
+            }
+        }
+    }
 }
 
 @Composable
