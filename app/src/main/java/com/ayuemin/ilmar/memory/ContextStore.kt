@@ -7,9 +7,11 @@ import org.json.JSONObject
 
 internal data class Capsule(val id: Long, val through: Long, val text: String, val hash: String, val created: Long,
     val before: Int, val after: Int, val active: Boolean)
-internal data class MemorySnapshot(val rules: String, val capsules: List<Capsule>, val checkpoint: String?)
+internal data class MemorySnapshot(val rules: String, val capsules: List<Capsule>, val checkpoint: String?, val task: JSONObject? = null, val plan: org.json.JSONArray = org.json.JSONArray())
 internal class ContextStore(private val store: ChatStore) {
     val tasks = com.ayuemin.ilmar.agent.DurableTaskStore(store)
+    fun factualSnapshot(chat: Long): MemorySnapshot = snapshot(chat).copy(task = tasks.snapshot(chat), plan = com.ayuemin.ilmar.tools.ToolDataStore(store.appContext).use { org.json.JSONArray(it.plan(chat, null)) })
+    fun planNote(chat: Long, tokens: Int): String = com.ayuemin.ilmar.tools.ToolDataStore(store.appContext).use { it.planNote(chat, tokens) }
     fun unresolvedExecution(chat: Long, trace: String, name: String, args: String): Boolean = store.unresolvedExecution(chat, trace, name, args)
     fun recoveryNote(chat: Long): String = store.recoveryNote(chat)
     fun saveToolTrace(chat: Long, id: String, messages: List<JSONObject>) = store.saveToolTrace(chat, id, messages)

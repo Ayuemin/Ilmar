@@ -35,15 +35,51 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
             JSONArray().apply { while (rows.moveToNext()) put(JSONObject().put("id", rows.getLong(0)).put("text", rows.getString(1))) }.toString()
         }
     }
-    fun plan(chat: Long, steps: JSONArray?): String {
-        if (steps != null) {
-            require(steps.length() <= Limits.get("plan_steps") && steps.toString().length <= Limits.bytes("argument_kib")) { "План превышает глобальный лимит" }
-            repeat(steps.length()) { i -> val step = steps.getJSONObject(i)
-                require(step.getString("text").length in 1..500 && step.getString("status") in setOf("pending", "in_progress", "completed")) }
-            require((0 until steps.length()).count { steps.getJSONObject(it).getString("status") == "in_progress" } <= 1)
-            writableDatabase.execSQL("INSERT OR REPLACE INTO plans VALUES(?,?)", arrayOf<Any>(chat, steps.toString()))
+    @Synchronized fun plan(chat: Long, steps: JSONArray?): String {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val old = db.rawQuery("SELECT payload FROM plans WHERE chat=?", arrayOf(chat.toString())).use { if (it.moveToFirst()) JSONArray(it.getString(0)) else JSONArray() }
+            var upgraded = false
+            // Upgrade legacy plan rows in place without changing text/status/order.
+            repeat(old.length()) { i -> if (old.getJSONObject(i).optString("id").isBlank()) { old.getJSONObject(i).put("id", java.util.UUID.randomUUID().toString()); upgraded = true } }
+            val result = if (steps == null) old else {
+                require(steps.length() <= Limits.get("plan_steps") && steps.toString().length <= Limits.bytes("argument_kib")) { "План превышает глобальный лимит" }
+                val used = mutableSetOf<String>()
+                JSONArray().apply { repeat(steps.length()) { i ->
+                    val input = steps.getJSONObject(i)
+                    require(input.keys().asSequence().all { it in setOf("id", "text", "status") }) { "Неизвестное поле шага" }
+                    val text = input.getString("text"); require(text.length in 1..500)
+                    val id = input.optString("id")
+                    val previous = (0 until old.length()).map { old.getJSONObject(it) }.firstOrNull {
+                        it.getString("id") !in used && if (id.isNotBlank()) it.getString("id") == id else it.getString("text") == text
+                    }
+                    require(id.isBlank() || previous != null) { "Неизвестный или повторяющийся ID шага; для нового шага не передавай id" }
+                    val stable = previous?.getString("id") ?: java.util.UUID.randomUUID().toString()
+                    require(used.add(stable)) { "Повторяющийся ID шага" }
+                    val status = if (input.has("status")) input.getString("status") else previous?.getString("status") ?: "pending"
+                    require(status in setOf("pending", "in_progress", "completed")) { "Неизвестный статус шага" }
+                    put(JSONObject().put("id", stable).put("text", text).put("status", status))
+                } }
+            }
+            require((0 until result.length()).count { result.getJSONObject(it).getString("status") == "in_progress" } <= 1)
+            if (upgraded || steps != null) db.execSQL("INSERT OR REPLACE INTO plans VALUES(?,?)", arrayOf(chat, result.toString()))
+            db.setTransactionSuccessful()
+            return result.toString()
+        } finally { db.endTransaction() }
+    }
+    fun planNote(chat: Long, maxTokens: Int): String {
+        val plan = JSONArray(plan(chat, null))
+        if (plan.length() == 0) return ""
+        val all = (0 until plan.length()).map { plan.getJSONObject(it) }
+        val selected = all.sortedBy { when (it.getString("status")) { "in_progress" -> 0; "pending" -> 1; else -> 2 } }
+        var note = "\nФактический план todo из SQLite; не заменяй его сводкой модели. Всего шагов ${all.size}, завершено ${all.count { it.getString("status") == "completed" }}. Полный план: todo без steps.\n"
+        for (step in selected) {
+            val line = "${step.getString("id")}: ${step.getString("status")} · ${step.getString("text").take(160)}\n"
+            if (com.ayuemin.ilmar.memory.ContextEstimate.text(note + line) > maxTokens) break
+            note += line
         }
-        return readableDatabase.rawQuery("SELECT payload FROM plans WHERE chat=?", arrayOf(chat.toString())).use { if (it.moveToFirst()) it.getString(0) else "[]" }
+        return note
     }
     private val cacheLock = kotlinx.coroutines.sync.Mutex()
     suspend fun cached(id: String, load: suspend () -> String): String = cacheLock.withLock {

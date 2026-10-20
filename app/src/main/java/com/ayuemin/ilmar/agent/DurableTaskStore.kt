@@ -108,14 +108,25 @@ internal class DurableTaskStore(private val store: ChatStore) {
         } ?: return null
         val steps = JSONArray()
         db.rawQuery("SELECT id,tool_name,status,result,file_refs FROM agent_steps WHERE task_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 16", arrayOf(task.getString("task_id"))).use { rows ->
-            while (rows.moveToNext()) steps.put(JSONObject().put("step_id", rows.getString(0)).put("tool", rows.getString(1)).put("status", rows.getString(2))
-                .put("result", rows.getString(3)?.take(240) ?: JSONObject.NULL).put("file_refs", JSONArray(rows.getString(4))))
+            while (rows.moveToNext()) {
+                val raw = rows.getString(3)
+                val result = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
+                val summary = result?.optString("name")?.takeIf { it.isNotBlank() }?.let { it + if (result.has("version") && !result.isNull("version")) " · v${result.optInt("version")}" else "" }
+                    ?: result?.opt("result")?.toString() ?: raw?.takeUnless { it.startsWith("{") }?.take(160).orEmpty()
+                steps.put(JSONObject().put("step_id", rows.getString(0)).put("tool", rows.getString(1)).put("status", rows.getString(2))
+                .put("result", rows.getString(3)?.take(240) ?: JSONObject.NULL).put("file_refs", JSONArray(rows.getString(4))).put("summary", summary))
+            }
         }
         return task.put("steps", steps)
     }
-    fun note(session: TaskSession): String {
+    fun note(session: TaskSession, maxTokens: Int = 1024): String {
         val state = snapshot(session.chat) ?: return ""
         if (state.getString("task_id") != session.taskId || state.getJSONArray("steps").length() == 0) return ""
+        state.put("goal", state.optString("goal").take(160))
+        val steps = state.getJSONArray("steps")
+        state.put("shown_steps", steps.length())
+        while (steps.length() > 1 && ContextEstimate.text(state.toString()) > maxTokens) steps.remove(steps.length() - 1)
+        state.put("shown_steps", steps.length())
         return "\nФактическое состояние задачи из SQLite (отдельно от сводки модели):\n${state}\nSUCCEEDED подтверждён исполнителем; одинаковое побочное действие в этой задаче использует сохранённый результат. UNKNOWN не повторять без проверки. ANSWERED означает завершение ответа, а не доказанное достижение цели.\n"
     }
     companion object {
@@ -127,6 +138,12 @@ internal class DurableTaskStore(private val store: ChatStore) {
             db.execSQL("CREATE TABLE IF NOT EXISTS agent_steps(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,operation_key TEXT NOT NULL,tool_name TEXT NOT NULL,arguments TEXT NOT NULL,status TEXT NOT NULL,result TEXT,file_refs TEXT NOT NULL,execution_id TEXT NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(task_id,operation_key))")
             db.execSQL("CREATE TABLE IF NOT EXISTS agent_execution_links(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,run_id TEXT NOT NULL,step_id TEXT NOT NULL)")
             db.execSQL("CREATE TABLE IF NOT EXISTS agent_model_calls(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,run_id TEXT NOT NULL,purpose TEXT NOT NULL,reserved_tokens INTEGER NOT NULL,reserved_cost TEXT,status TEXT NOT NULL,usage TEXT)")
+            createIndexes(db)
+        }
+        fun createIndexes(db: SQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS agent_runs_task ON agent_runs(task_id,started_at)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS agent_links_task ON agent_execution_links(task_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS agent_calls_task ON agent_model_calls(task_id)")
         }
         fun clear(db: SQLiteDatabase, chat: Long) {
             listOf("agent_model_calls", "agent_execution_links", "agent_steps", "agent_runs", "agent_task_messages").forEach { table -> db.execSQL("DELETE FROM $table WHERE task_id IN (SELECT id FROM agent_tasks WHERE chat_id=?)", arrayOf(chat)) }

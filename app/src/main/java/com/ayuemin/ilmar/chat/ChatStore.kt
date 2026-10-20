@@ -4,7 +4,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 9), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 10), java.io.Closeable {
+    internal val appContext: Context = context.applicationContext
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -26,6 +27,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 7) createTaskExecutions(db)
         if (oldVersion < 8) com.ayuemin.ilmar.memory.SemanticArchive.createEconomyTables(db)
         if (oldVersion < 9) com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
+        if (oldVersion < 10) com.ayuemin.ilmar.agent.DurableTaskStore.createIndexes(db)
     }
 
     private fun createTaskExecutions(db: SQLiteDatabase) {

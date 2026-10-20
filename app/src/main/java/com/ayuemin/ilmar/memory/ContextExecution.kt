@@ -20,7 +20,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
         { history, options, purpose, input, saved -> invoke(history, options, purpose, input, saved) }, compactCaps, compactTarget,
         notice = { status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
         failure = { event("COMPACT_ERROR", JSONObject().put("message", it.message).put("exception", it.javaClass.simpleName).put("stack", it.stackTraceToString())) },
-        semanticSearch = semanticSearch, factualState = { memory.tasks.note(activeSession) })
+        semanticSearch = semanticSearch, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
         val modelCaps = if (purpose == "compact") compactCaps else caps
         budget.before(input, options.maxOutput ?: policy.reserve(modelCaps), history.any { m -> m.attachments.any { it.images.isNotEmpty() } }, options.outputParameter != null, modelCaps)
@@ -50,7 +50,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 status(engine.lastNotice ?: "Compact сохранён · оценка контекста ${projection.estimatedInput} + ${projection.output} / ${projection.limit}")
                 null
             } else AgentLoopRunner(
-                onCheckpoint = { id, partial -> memory.tasks.checkpoint(activeSession, id, partial) },
+                onCheckpoint = { id, partial -> memory.tasks.checkpoint(activeSession, id, partial); event("TASK_CHECKPOINT", activeSession.json().put("trace_id", id).put("messages_count", partial.size)) },
                 onRound = { id, round ->
                     memory.saveToolTrace(chat, id, round)
                     event(if (round.any { it.optString("role") == "tool" && runCatching { JSONObject(it.optString("content")).has("error") }.getOrDefault(false) }) "TOOL_ROUND_ERROR" else "TOOL_ROUND",

@@ -59,7 +59,7 @@ internal fun AttachmentList(items: List<ChatAttachment>, onRemove: ((String) -> 
                     bitmap?.let { Image(it.asImageBitmap(), item.name, Modifier.size(56.dp).padding(end = 8.dp)) }
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(item.name, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                    Text(item.name + (item.version?.let { " · v$it" } ?: ""), style = MaterialTheme.typography.bodySmall, maxLines = 2)
                     Text("${item.size / 1024} КБ" + if (item.images.size > 1) " · ${item.images.size} стр." else "",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

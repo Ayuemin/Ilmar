@@ -27,7 +27,7 @@ data class ChatState(
     val activeChatId: Long? = null, val streamingText: String = "",
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
     val contextStatus: Map<Long, String> = emptyMap(),
-    val archiveStatus: Map<Long, String> = emptyMap(),
+    val archiveStatus: Map<Long, String> = emptyMap(), val taskRevision: Map<Long, Long> = emptyMap(),
     val errors: Map<Long, String> = emptyMap(), val drafts: Map<Long, String> = emptyMap()
 )
 
@@ -81,7 +81,7 @@ class ChatViewModel @JvmOverloads constructor(
     internal suspend fun semanticSearch(chatId: Long, query: String) = archive.search(chatId, query, Long.MAX_VALUE)
     internal fun stopArchive(chatId: Long) { archive.cancel(chatId); mutable.update { it.copy(archiveStatus = it.archiveStatus + (chatId to "Индексация остановлена. Сохранённые пакеты будут использованы при продолжении.")) } }
     internal fun embeddingUsage(chatId: Long) = com.ayuemin.ilmar.memory.EmbeddingLedger(store).summary(chatId)
-    internal fun memorySnapshot(chatId: Long) = memory.snapshot(chatId)
+    internal fun memorySnapshot(chatId: Long) = memory.factualSnapshot(chatId)
     internal fun memorySearch(chatId: Long, query: String) = memory.search(chatId, query)
     internal fun setRules(chatId: Long, text: String) { if (mutable.value.activeChatId == null) memory.setRules(chatId, text) }
     internal fun deleteCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) memory.delete(chatId, id) }
@@ -229,7 +229,7 @@ class ChatViewModel @JvmOverloads constructor(
                         compactTarget = compactTarget, compactCaps = compactCaps,
                         event = { code, details ->
                             diagnostics.record(code, chatId, details)
-                            if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR") mutable.update { it.copy(chats = store.load()) }
+                            if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
