@@ -44,7 +44,7 @@ internal class SpeechController(private val context: Context, private val scope:
         initializing = false
         ready = status == TextToSpeech.SUCCESS
         if (ready) pendingSystem?.let { pendingSystem = null; speak(it) }
-        else { pendingSystem = null; playing = false; error = "Системный синтез речи недоступен. Проверь установленный движок TTS." }
+        else if (pendingSystem != null) { pendingSystem = null; playing = false; error = "Системный синтез речи недоступен. Проверь установленный движок TTS." }
     } }
     fun stop() {
         pendingSystem = null; generation++; task?.cancel(); task = null; engine?.stop(); player?.release(); player = null
