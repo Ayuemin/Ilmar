@@ -117,4 +117,27 @@ class ChatViewModelTest {
         val reservation = rows.single { it.optString("event") == "TASK_MODEL_RESERVATION" }
         assertEquals(request.getString("request_id"), reservation.getString("request_id")); assertEquals(request.getString("run_id"), reservation.getString("run_id"))
     }
+    @Test fun genericProviderSearchRunsWithoutAgentAndDoesNotRetryPaidFailure() = runTest(dispatcher) {
+        val connection = registry.snapshot().providers.single()
+        com.ayuemin.ilmar.browser.ProviderSearchPreferences(app).save(connection.id, com.ayuemin.ilmar.browser.ProviderSearchProtocol.CHAT_COMPLETIONS)
+        val modes = ChatModePreferences(app)
+        val vm = ChatViewModel(app, object : ChatProvider {
+            var calls = 0
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String = error("typed")
+            override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
+                calls++; assertEquals(1, calls)
+                assertEquals("CHAT_COMPLETIONS", options.webSearch)
+                assertTrue(options.tools.isEmpty())
+                throw ProviderFailure("Ошибка API: HTTP 429")
+            }
+        }, registry, dispatcher)
+        val chat = vm.state.value.selectedId
+        modes.setEnabled(chat, "Поиск", true); modes.setEnabled(chat, "Агент", false)
+        modes.setChoice(chat, "search_source", "provider")
+        vm.send("Find a current fact"); advanceUntilIdle()
+        assertTrue(vm.state.value.errors[chat]!!.contains("429"))
+        assertEquals(1, vm.state.value.chats.single().messages.size)
+        assertFalse(modes.enabled(chat, "Агент"))
+    }
+
 }
