@@ -16,6 +16,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
 import com.ayuemin.ilmar.browser.BrowserRuntime
 import com.ayuemin.ilmar.browser.BrowserHost
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     color = Color(0xFF000000)) {
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                     val browserState by BrowserRuntime.state.collectAsState()
-                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().zIndex(if (browserState.visible) 1f else 0f)) {
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().zIndex(if (browserState.visible) 1f else 0f).alpha(if (browserState.visible) 1f else 0f)) {
                         BrowserHost(onResumeTask = controller::resumeBrowserTask)
                     }
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().zIndex(if (browserState.visible) 0f else 1f)) {
