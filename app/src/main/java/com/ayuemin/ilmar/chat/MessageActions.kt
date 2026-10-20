@@ -53,6 +53,7 @@ internal fun MessageActions(message: ChatMessage, busy: Boolean, onAskAgain: () 
                 Text(DateFormat.getDateTimeInstance().format(Date(details.createdAt)))
                 Text("Время выполнения: ${details.durationMs / 1000.0} с · запросов: ${details.requests}")
                 Text(UsageLedger(listOf(UsageRecord(details.usage, "completed"))).describe().substringAfter('\n').substringBefore("\nДанные сообщает"))
+                if (details.incompleteUsage) Text("Usage неполный: указана только известная часть токенов и стоимости.", style = MaterialTheme.typography.bodySmall)
                 Text("Включает модельные раунды этого ответа. В ветке сохранены метаданные исходного ответа; повторного списания за копию нет.", style = MaterialTheme.typography.bodySmall)
             }
         }

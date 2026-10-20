@@ -43,6 +43,29 @@ class MessageBranchTest {
             assertEquals(0, store.usage(2).calls); assertEquals(1, store.usage(1).calls)
         } finally { store.close() }
     }
+    @Test fun v2UpgradeKeepsUsageAndDraftAttachmentsSurviveReopenUntilSent() {
+        app.openOrCreateDatabase("ilmar_chats.db", 0, null).use { db ->
+            db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE request_usage (id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, status TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cached_tokens INTEGER, reasoning_tokens INTEGER, cost_usd TEXT)")
+            db.execSQL("INSERT INTO chats VALUES(1, 'Old')")
+            db.execSQL("INSERT INTO messages(chat_id,text,from_user) VALUES(1, 'history', 1)")
+            db.execSQL("INSERT INTO request_usage(id,chat_id,status,cost_usd) VALUES('r',1,'completed','0.2')")
+            db.version = 2
+        }
+        val item = ChatAttachment("local", "file.txt", "text/plain", 1, "text")
+        val first = ChatStore(app)
+        try { assertEquals("history", first.load().single().messages.single().text)
+            assertEquals("0.2", first.usage(1).costUsd)
+            first.saveDraft(1, listOf(item))
+        } finally { first.close() }
+        val second = ChatStore(app)
+        try { assertEquals(listOf(item), second.drafts()[1])
+            second.append(1, ChatMessage("", true, attachments = second.drafts()[1]!!), null)
+            assertTrue(second.drafts().isEmpty())
+            assertEquals(item, second.load().single().messages.last().attachments.single())
+        } finally { second.close() }
+    }
     @Test fun askingOldQuestionUsesOnlyItsPrefixAndKeepsOriginalConversation() = runTest(dispatcher) {
         val registry = ProviderRegistry(app, MemorySecrets())
         registry.saveConnection(null, "Test", "https://example.com/v1", listOf("m"), "key")

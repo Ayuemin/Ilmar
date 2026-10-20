@@ -118,6 +118,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
                 put("attachments", com.ayuemin.ilmar.attachments.ChatAttachment.encode(message.attachments)); put("reply_info", message.info?.json())
             }
             val messageId = writableDatabase.insertOrThrow("messages", null, values)
+            if (message.fromUser) writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id = ?", arrayOf(chatId))
             if (newTitle != null) writableDatabase.execSQL(
                 "UPDATE chats SET title = ? WHERE id = ?", arrayOf(newTitle, chatId)
             )

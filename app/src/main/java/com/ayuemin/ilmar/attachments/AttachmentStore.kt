@@ -92,8 +92,11 @@ class AttachmentStore(context: Context) {
             }
         }
         val adjusted = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
-        try { target.outputStream().use { adjusted.compress(Bitmap.CompressFormat.JPEG, 85, it) } }
-        finally { if (adjusted !== decoded) adjusted.recycle(); decoded.recycle() }
+        val flattened = Bitmap.createBitmap(adjusted.width, adjusted.height, Bitmap.Config.RGB_565)
+        try {
+            val canvas = Canvas(flattened); canvas.drawColor(Color.WHITE); canvas.drawBitmap(adjusted, 0f, 0f, null)
+            target.outputStream().use { flattened.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        } finally { flattened.recycle(); if (adjusted !== decoded) adjusted.recycle(); decoded.recycle() }
     }
     private fun docxText(source: File): String {
         ZipInputStream(source.inputStream()).use { zip ->

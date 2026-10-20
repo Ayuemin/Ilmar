@@ -75,6 +75,9 @@ class ChatViewModel @JvmOverloads constructor(
                 val item = attachmentStore.import(uri)
                 if (mutable.value.chats.any { it.id == chatId }) {
                     val items = mutable.value.attachments[chatId].orEmpty() + item
+                    if (items.sumOf { it.text?.length ?: 0 } > 128 * 1024) {
+                        releaseAttachments(listOf(item)); throw IllegalArgumentException("Общий текст вложений одного сообщения: не больше 128 тысяч символов")
+                    }
                     store.saveDraft(chatId, items)
                     mutable.update { it.copy(attachments = it.attachments + (chatId to items)) }
                 } else releaseAttachments(listOf(item))
@@ -147,7 +150,6 @@ class ChatViewModel @JvmOverloads constructor(
         val pending = ChatMessage(text.trim(), true, attachments = mutable.value.attachments[chat.id].orEmpty())
         val title = if (chat.messages.isEmpty()) text.trim().ifBlank { pending.attachments.first().name }.take(40) else null
         val message = store.append(chat.id, pending, title)
-        store.saveDraft(chat.id, emptyList())
         mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chat.id) c.copy(title = title ?: c.title, messages = c.messages + message) else c }, attachments = it.attachments - chat.id, drafts = it.drafts - chat.id) }
         generate(chat.id)
     }
@@ -199,7 +201,7 @@ class ChatViewModel @JvmOverloads constructor(
                 if (mutable.value.activeChatId == chatId && mutable.value.chats.any { it.id == chatId }) {
                     val ledger = UsageLedger(roundUsage)
                     val info = ReplyInfo(target.model.name, target.connection.name, System.currentTimeMillis(), System.currentTimeMillis() - started,
-                        TokenUsage(ledger.input, ledger.output, ledger.total, ledger.cached, ledger.reasoning, ledger.costUsd), ledger.calls)
+                        TokenUsage(ledger.input, ledger.output, ledger.total, ledger.cached, ledger.reasoning, ledger.costUsd), ledger.calls, roundUsage.any { it.usage.input == null || it.usage.output == null || it.usage.costUsd == null })
                     val saved = store.append(chatId, ChatMessage(reply, false, info = info), null)
                     mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = c.messages + saved) else c }) }
                     diagnostics.record("SUCCESS", chatId)
@@ -210,7 +212,7 @@ class ChatViewModel @JvmOverloads constructor(
                 throw e
             } catch (e: Exception) {
                 diagnostics.record("NETWORK_ERROR", chatId)
-                mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message else if (e is IllegalStateException || e is IllegalArgumentException)
+                mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is IllegalStateException || e is IllegalArgumentException)
                     "Агент остановлен: лимит, повторяющиеся вызовы или недоступный инструмент. Проверь режим и разрешения."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
