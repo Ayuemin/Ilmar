@@ -49,6 +49,29 @@ class AgentRecoveryTest {
         assertEquals("saved", checkpoints[1].last().getString("content"))
     }
 
+    @Test fun executionCheckpointKeepsUnknownAndSeparatesFailedCallsAcrossTraces() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = com.ayuemin.ilmar.chat.ChatStore(context)
+        val chat = System.currentTimeMillis()
+        db.create(chat, "Checkpoint test")
+        fun group(result: String?): List<JSONObject> {
+            val call = JSONObject().put("id", "same-model-id").put("function",
+                JSONObject().put("name", "calculator").put("arguments", "{}"))
+            val assistant = JSONObject().put("role", "assistant").put("tool_calls", org.json.JSONArray().put(call))
+            return if (result == null) listOf(assistant) else listOf(assistant,
+                JSONObject().put("role", "tool").put("tool_call_id", "same-model-id").put("content", result))
+        }
+        try {
+            db.checkpointExecutions(chat, "first", group(null))
+            assertEquals("UNKNOWN", db.executionStatus(chat, "first:same-model-id"))
+            db.checkpointExecutions(chat, "first", group("ok"))
+            assertEquals("SUCCEEDED", db.executionStatus(chat, "first:same-model-id"))
+            db.checkpointExecutions(chat, "second", group("{\\"error\\":\\"TOOL_TIMEOUT\\"}"))
+            assertEquals("FAILED", db.executionStatus(chat, "second:same-model-id"))
+            assertEquals("SUCCEEDED", db.executionStatus(chat, "first:same-model-id"))
+        } finally { db.delete(chat); db.close() }
+    }
+
     @Test fun longTaskCanProceedPastOldEightRoundLimitAndOptionalBudgetsCanBeDisabled() = runTest {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         RuntimeLimits.install(context); RuntimeLimits.reset()
