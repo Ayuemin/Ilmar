@@ -8,6 +8,9 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
 
 /** Minimal OpenAI-compatible chat-completions adapter. Never logs credentials. */
@@ -39,6 +42,11 @@ class OpenAiCompatibleProvider {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "text/event-stream")
         }
+        val job = currentCoroutineContext()[Job]
+        val activeConnection = AtomicReference(connection)
+        val cancellation = job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) {
+            activeConnection.getAndSet(null)?.disconnect()
+        }
         try {
             connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
@@ -60,7 +68,8 @@ class OpenAiCompatibleProvider {
             coroutineContext.ensureActive()
             if (!finished) throw java.io.EOFException("Поток ответа прерван до завершения")
         } finally {
-            connection.disconnect()
+            cancellation?.dispose()
+            activeConnection.getAndSet(null)?.disconnect()
         }
     }
 
