@@ -12,6 +12,7 @@ internal interface BrowserPage {
     suspend fun read(): JSONObject
     suspend fun scroll(down: Boolean): JSONObject
     fun stop()
+    fun resume() = Unit
 }
 internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false)
 
@@ -23,8 +24,8 @@ internal object BrowserRuntime {
     val state = mutable.asStateFlow()
     fun attach(value: BrowserPage) { page = value }
     fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi() } }
-    fun show(chat: Long) { if (mutable.value.chat == chat) mutable.value = mutable.value.copy(visible = true) }
-    fun hide() { mutable.value = mutable.value.copy(visible = false) }
+    fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true) } }
+    fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
     suspend fun command(chat: Long, operation: String, argument: String = ""): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")

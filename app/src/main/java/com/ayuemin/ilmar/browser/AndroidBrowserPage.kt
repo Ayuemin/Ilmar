@@ -12,6 +12,7 @@ import kotlin.coroutines.resume
 @SuppressLint("SetJavaScriptEnabled")
 internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
     private var pending: CompletableDeferred<Unit>? = null
+    private var navigationUrl: String? = null
     init {
         view.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
@@ -42,7 +43,12 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
                     WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("Blocked".toByteArray()))
                 }
             }
-            override fun onPageFinished(view: WebView, url: String?) { pending?.complete(Unit) }
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                if (pending != null) navigationUrl = url
+            }
+            override fun onPageFinished(view: WebView, url: String?) {
+                if (url == navigationUrl && url == view.url) pending?.complete(Unit)
+            }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) pending?.completeExceptionally(IllegalStateException("Ошибка загрузки страницы (${error.errorCode})"))
             }
@@ -61,11 +67,13 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
     override suspend fun open(url: String): JSONObject {
         withContext(Dispatchers.IO) { BrowserAddress.publicHost(url) }
         stop()
-        val navigation = CompletableDeferred<Unit>(); pending = navigation
+        val navigation = CompletableDeferred<Unit>(); pending = navigation; navigationUrl = url
+        resume()
         try { view.loadUrl(url); navigation.await(); delay(300); return read() }
         finally { if (pending === navigation) pending = null }
     }
     override suspend fun read(): JSONObject {
+        resume()
         require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
         val evaluation = suspendCancellableCoroutine<String> { continuation ->
             view.evaluateJavascript(BrowserSnapshot.SCRIPT) { value -> if (continuation.isActive) continuation.resume(value) }
@@ -78,5 +86,6 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         view.scrollBy(0, (view.height.coerceAtLeast(800) * if (down) 0.8 else -0.8).toInt())
         delay(200); return read()
     }
-    override fun stop() { pending?.cancel(); pending = null; view.stopLoading() }
+    override fun resume() { view.onResume(); view.resumeTimers() }
+    override fun stop() { pending?.cancel(); pending = null; navigationUrl = null; view.stopLoading(); view.onPause(); view.pauseTimers() }
 }
