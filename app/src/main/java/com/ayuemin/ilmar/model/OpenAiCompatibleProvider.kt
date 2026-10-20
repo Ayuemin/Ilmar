@@ -44,7 +44,7 @@ class OpenAiCompatibleProvider {
         }
         val job = currentCoroutineContext()[Job]
         val activeConnection = AtomicReference(connection)
-        val cancellation = job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) {
+        val cancellation = job?.invokeOnCompletion {
             activeConnection.getAndSet(null)?.disconnect()
         }
         try {
