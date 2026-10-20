@@ -71,9 +71,9 @@ fun ChatScreen(onSettings: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val selected = chats.first { it.id == selectedId }
     val messageListState = rememberLazyListState()
-    LaunchedEffect(selectedId, selected.messages.size, streamingText.length) {
+    LaunchedEffect(selectedId, selected.messages.size, streamingText.length, searchOpen, searchQuery) {
         val visibleCount = selected.messages.size + if (sending && streamingChatId == selectedId && streamingText.isNotEmpty()) 1 else 0
-        if (visibleCount > 0) messageListState.scrollToItem(visibleCount - 1)
+        if (visibleCount > 0 && (!searchOpen || searchQuery.isBlank())) messageListState.scrollToItem(visibleCount - 1)
     }
     if (showModes) ChatModeMenu(selectedId, chatModes) { showModes = false }
     if (providerOpen) ChatProviderDialog(selectedId, chatModes, prefs) { providerOpen = false }
