@@ -18,6 +18,7 @@ internal interface BrowserPage {
     fun resume() = Unit
     fun saveSession() = Unit
 }
+internal data class BrowserFrame(val bytes: ByteArray, val url: String, val pageId: String, val capturedAt: Long)
 internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false, val waitingUser: Boolean = false, val pageId: String = "")
 
 /** A foreground browser with an exclusive human-control gate. Commands cannot read another chat's page. */
@@ -76,7 +77,8 @@ internal object BrowserRuntime {
             }
         }
     }
-    suspend fun screenshot(chat: Long): ByteArray = lock.withLock {
+    suspend fun screenshot(chat: Long): ByteArray = captureFrame(chat).bytes
+    suspend fun captureFrame(chat: Long): BrowserFrame = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             require(mutable.value.chat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
             val browser = page ?: error("Браузер не готов")
@@ -85,7 +87,8 @@ internal object BrowserRuntime {
             require(!state.optBoolean("requires_user")) { "Нельзя снимать страницу ввода пароля или CAPTCHA; передай её пользователю" }
             val bytes = withTimeout(5000) { browser.screenshot() }
             require(!mutable.value.waitingUser && mutable.value.chat == chat) { "Снимок отменён: управление передано пользователю" }
-            bytes
+            require(browser.read().optString("page_id") == state.optString("page_id")) { "Страница изменилась во время снимка" }
+            BrowserFrame(bytes, state.optString("url"), state.optString("page_id"), System.currentTimeMillis())
         }
     }
     suspend fun stop(chat: Long) = withContext(Dispatchers.Main.immediate) {

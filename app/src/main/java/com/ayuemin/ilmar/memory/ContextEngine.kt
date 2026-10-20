@@ -78,7 +78,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         }
         var estimated = ContextEstimate.messages(recent) + ContextEstimate.text(stable) + toolSize + ContextEstimate.text(retrieval)
         if (estimated + output > limit) { retrieval = ""; estimated = ContextEstimate.messages(recent) + ContextEstimate.text(stable) + toolSize }
-        val imageBytes = recent.flatMap { it.attachments }.flatMap { it.images }.sumOf { files.file(it).length() }
+        val imageBytes = recent.flatMap { it.attachments }.filterNot { it.browserObservation }.flatMap { it.images }.sumOf { files.file(it).length() }
         if ((estimated + output > limit || imageBytes > com.ayuemin.ilmar.settings.RuntimeLimits.mib("request_images_mib")) && policy.automatic) {
             val available = limit - output - ContextEstimate.text(stable) - toolSize - 128
             recent = fitMessages(recent, available)

@@ -45,7 +45,7 @@ class BrowserVisionTest {
                             assertTrue(input >= firstInput + 4096)
                             val body = GenerationPayload.build("vision", history, options)
                             val messages = body.getJSONArray("messages"); val last = messages.getJSONObject(messages.length() - 1)
-                            assertEquals("user", last.getString("role")); assertTrue(last.toString().contains("data:image/jpeg;base64,AQID"))
+                            assertEquals("user", last.getString("role")); assertEquals("data:image/jpeg;base64,AQID", last.getJSONArray("content").getJSONObject(1).getJSONObject("image_url").getString("url"))
                             assertEquals("tool", messages.getJSONObject(messages.length() - 2).getString("role"))
                             GenerationResult("", toolCalls = listOf(ModelToolCall("calc", "calculator", "{}")))
                         }
