@@ -108,7 +108,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             try { attachmentLauncher.launch(arrayOf("text/*", "application/json")) }
             catch (_: android.content.ActivityNotFoundException) { speechError = "Выбор файлов недоступен" }
         },
-        onDictate = dictate, onDismiss = { showModes = false })
+        onDismiss = { showModes = false })
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },

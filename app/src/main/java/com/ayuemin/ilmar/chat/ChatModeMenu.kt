@@ -22,7 +22,7 @@ internal class ChatModePreferences(context: Context) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
-    onAttachText: () -> Unit, onDictate: () -> Unit, onDismiss: () -> Unit) {
+    onAttachText: () -> Unit, onDismiss: () -> Unit) {
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
     val available = ToolRegistry.availableIds()
@@ -50,14 +50,14 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             ComposerSectionHeader(Icons.Outlined.Storage, "Инструменты", toolsExpanded) { toolsExpanded = !toolsExpanded }
             if (toolsExpanded) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CompactComposerTool(Icons.Outlined.Mic, "В текст", true, Modifier.weight(1f)) { onDismiss(); onDictate() }
-                    CompactComposerTool(Icons.Outlined.Storage, "Shell", "Shell" in available, Modifier.weight(1f)) {}
-                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = available.isNotEmpty() && chosen.containsAll(available), enabled = available.isNotEmpty(),
                         onCheckedChange = { chosen = if (it) available else emptySet() })
-                    Text("Выбрать всё")
+                    Text("Выбрать всё", modifier = Modifier.weight(1f), maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Button(enabled = chosen.isNotEmpty(), onClick = {
+                        tools.forEach { preferences.setEnabled(id, "tool_${it.id}", it.id in chosen) }; applied = chosen
+                    }) { Text("Включить", maxLines = 1) }
                 }
                 tools.forEach { tool ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -67,9 +67,6 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                         if (tool.id !in available) Text("Не подключён", style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                Button(enabled = chosen.isNotEmpty(), onClick = {
-                    tools.forEach { preferences.setEnabled(id, "tool_${it.id}", it.id in chosen) }; applied = chosen
-                }) { Text("Включить") }
                 OutlinedButton(enabled = applied.isNotEmpty(), onClick = {
                     tools.forEach { preferences.setEnabled(id, "tool_${it.id}", false) }; applied = emptySet(); chosen = emptySet()
                 }) { Text("Выключить все") }

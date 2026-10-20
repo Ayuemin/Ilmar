@@ -127,3 +127,11 @@ custom connection names are respected.
   makes an automatic API request. Try denied access, binary and oversized files.
 - Check a small screen, enlarged font and keyboard with both model and action
   sheets open. Successful CI does not constitute phone acceptance.
+
+## Tool-selection layout follow-up
+
+Check that expanding Tools shows Select all with Enable to its right on one row,
+followed by the tool checkbox list. The duplicate dictation/Shell shortcut row
+must be absent. Dictation through the composer microphone and the Shell catalog
+entry remain available in their previous states. Verify small screens and large
+font sizes; unavailable tools still cannot be enabled.
