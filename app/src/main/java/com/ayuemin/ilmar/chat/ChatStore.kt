@@ -63,6 +63,25 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         readableDatabase.rawQuery("SELECT status FROM task_executions WHERE chat_id=? AND execution_id=?",
             arrayOf(chatId.toString(), executionId)).use { if (it.moveToFirst()) it.getString(0) else null }
 
+    /** Durable, factual recovery note. UNKNOWN calls must never be assumed safe to repeat. */
+    fun recoveryNote(chatId: Long): String {
+        val lines = mutableListOf<String>()
+        readableDatabase.rawQuery(
+            "SELECT trace_id, tool_name, status, result FROM task_executions WHERE chat_id=? ORDER BY updated_at DESC LIMIT 16",
+            arrayOf(chatId.toString())
+        ).use { rows ->
+            while (rows.moveToNext()) {
+                val status = rows.getString(2)
+                val result = if (status == "SUCCEEDED") rows.getString(3)?.take(160) else null
+                lines += "${rows.getString(0).take(12)} / ${rows.getString(1)}: $status" +
+                    if (result != null) " · подтверждённый результат: $result" else ""
+            }
+        }
+        return if (lines.isEmpty()) "" else "Состояние инструментов, сохранённое на устройстве (не сводка модели):\\n" +
+            lines.joinToString("\\n") +
+            "\\nUNKNOWN означает неопределённый исход: НЕ повторяй побочные действия автоматически. Сначала проверь результат через безопасное чтение. SUCCEEDED не выполняй повторно."
+    }
+
     private fun createToolTraces(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE tool_traces(id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, payload TEXT NOT NULL)")
     }
