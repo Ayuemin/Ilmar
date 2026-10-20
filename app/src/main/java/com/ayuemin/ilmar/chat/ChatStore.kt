@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 6), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 7), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
         db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, from_user INTEGER NOT NULL, FOREIGN KEY(chat_id) REFERENCES chats(id))")
@@ -12,6 +12,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         createDetails(db)
         createContext(db)
         createToolTraces(db)
+        createTaskExecutions(db)
         com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
 
@@ -21,7 +22,43 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 4) createContext(db)
         if (oldVersion < 5) createToolTraces(db)
         if (oldVersion < 6) com.ayuemin.ilmar.memory.SemanticArchive.create(db)
+        if (oldVersion < 7) createTaskExecutions(db)
     }
+
+    private fun createTaskExecutions(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE task_executions (execution_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, trace_id TEXT NOT NULL, tool_name TEXT NOT NULL, arguments TEXT NOT NULL, status TEXT NOT NULL, result TEXT, updated_at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX task_executions_chat ON task_executions(chat_id, trace_id)")
+    }
+
+    /** A checkpoint only confirms results actually received from an executor. Unfinished calls remain UNKNOWN. */
+    fun checkpointExecutions(chatId: Long, traceId: String, messages: List<org.json.JSONObject>) {
+        val assistant = messages.firstOrNull() ?: return
+        val calls = assistant.optJSONArray("tool_calls") ?: return
+        val results = messages.drop(1).filter { it.optString("role") == "tool" }
+            .associateBy { it.optString("tool_call_id") }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { !it.moveToFirst() }) return
+            for (i in 0 until calls.length()) {
+                val call = calls.getJSONObject(i)
+                val id = call.getString("id")
+                val function = call.getJSONObject("function")
+                val result = results[id]?.optString("content")
+                // Never downgrade a previously confirmed success on a stale checkpoint.
+                db.execSQL("INSERT OR IGNORE INTO task_executions VALUES(?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(id, chatId, traceId, function.getString("name"), function.getString("arguments"),
+                        "UNKNOWN", null, System.currentTimeMillis()))
+                if (result != null) db.execSQL("UPDATE task_executions SET status='SUCCEEDED', result=?, updated_at=? WHERE execution_id=? AND chat_id=?",
+                    arrayOf<Any>(result, System.currentTimeMillis(), id, chatId))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun executionStatus(chatId: Long, executionId: String): String? =
+        readableDatabase.rawQuery("SELECT status FROM task_executions WHERE chat_id=? AND execution_id=?",
+            arrayOf(chatId.toString(), executionId)).use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun createToolTraces(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE tool_traces(id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, payload TEXT NOT NULL)")
@@ -121,6 +158,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun clearMessages(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
