@@ -17,7 +17,8 @@ internal suspend fun <T> optionalTimeout(seconds: Int, action: suspend () -> T):
     if (seconds == 0) action() else withTimeout(seconds.toLong() * 1000) { action() }
 
 internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds"), private val maxCalls: Int = Limits.get("calls"),
-    private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {}) {
+    private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> },
+    private val onCheckpoint: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {}) {
     suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
         val history = mutableListOf<JSONObject>()
         val repeatThreshold = Limits.get("repeat_threshold")
@@ -39,6 +40,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 .put("tool_calls", JSONArray().apply { result.toolCalls.forEach { call ->
                     put(JSONObject().put("id", call.id).put("type", "function").put("function", JSONObject().put("name", call.name).put("arguments", call.arguments)))
                 } })
+            // Persist the call group before any side-effectful tool can begin.
+            onCheckpoint(traceId, history.drop(groupStart))
             for (call in result.toolCalls) {
                 calls++
                 if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools. Его можно изменить в расширенных настройках.")
@@ -57,6 +60,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", e.message).toString() }
                 if (output.toByteArray(Charsets.UTF_8).size > Limits.bytes("result_kib")) throw AgentFailure("RESULT_LIMIT", "${call.name}: результат превышает глобальный лимит. Увеличь его или читай данные частями.")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output)
+                // The result must survive a crash before the next tool starts.
+                onCheckpoint(traceId, history.drop(groupStart))
                 if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))
