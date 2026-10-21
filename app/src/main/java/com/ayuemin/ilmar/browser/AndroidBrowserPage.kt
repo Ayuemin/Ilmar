@@ -18,6 +18,13 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
     private var requestedChat: Long? = null
     private var clearHistoryAfterOpen = false
     private var downloadHint: JSONObject? = null
+    override fun forget(chat: Long) {
+        sessions.remove(chat)
+        if (sessionChat == chat || requestedChat == chat) {
+            stop(); sessionChat = null; requestedChat = null; clearHistoryAfterOpen = true
+            view.loadUrl("about:blank"); view.clearHistory()
+        }
+    }
     override fun activate(chat: Long) {
         requestedChat = chat
         if (sessionChat == chat) return

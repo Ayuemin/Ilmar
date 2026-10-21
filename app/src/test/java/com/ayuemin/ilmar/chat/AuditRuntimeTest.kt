@@ -69,6 +69,22 @@ class AuditRuntimeTest {
         assertEquals("0.125456789012345678901", ledger.costUsd); assertTrue(ledger.incompleteCost)
         assertEquals(3L, ledger.cached); assertEquals(1L, ledger.reasoning)
     }
+    @Test fun modelLifecycleHasOneStartAndTerminalWithSameRequestAndRound() = runTest(dispatcher) {
+        val vm = controller(object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String {
+                repeat(1000) { onDelta("x") }; return "done"
+            }
+        })
+        vm.send("synthetic question"); advanceUntilIdle()
+        val output=java.io.ByteArrayOutputStream(); com.ayuemin.ilmar.diagnostics.Diagnostics(app).export(output)
+        val rows=output.toString("UTF-8").lineSequence().filter { it.isNotBlank() }.map { org.json.JSONObject(it) }.toList()
+        val start=rows.single { it.optString("event")=="MODEL_START" }.getJSONObject("details")
+        val finish=rows.single { it.optString("event")=="MODEL_FINISH" }.getJSONObject("details")
+        assertEquals(start.getString("request_id"),finish.getString("request_id"))
+        assertEquals(start.getString("round_id"),finish.getString("round_id"))
+        assertEquals("completed",finish.getString("status"))
+        assertFalse(output.toString("UTF-8").contains("synthetic question"))
+    }
     @Test fun deleteRemovesInterventionsAndFollowUpsAreTaskScopedAndOrdered() {
         ChatStore(app).use { db ->
             db.create(42, "Fixture")

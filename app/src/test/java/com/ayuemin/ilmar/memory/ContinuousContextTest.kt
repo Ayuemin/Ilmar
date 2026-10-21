@@ -33,7 +33,7 @@ class ContinuousContextTest {
     @Test fun repeatedCompactionContinuesSameChatPastManyPhysicalWindowsWithoutDeletingOriginals() = runTest {
         memory.setRules(1, "Invariant: never delete protected-42")
         var compactCalls = 0
-        repeat(60) { index ->
+        repeat(120) { index ->
             db.append(1, ChatMessage("Question $index " + "x".repeat(800), true), null)
             val history = db.load().single().messages
             val projected = engine { compactCalls++; GenerationResult(summary) }.prepare(history, emptyList(), emptyList())
@@ -42,7 +42,7 @@ class ContinuousContextTest {
             assertTrue(projected.options.systemPrefix.contains("protected-42"))
             db.append(1, ChatMessage("Answer $index " + "y".repeat(800), false), null)
         }
-        assertTrue(compactCalls > 5); assertEquals(120, db.load().single().messages.size)
+        assertTrue(compactCalls > 5); assertEquals(240, db.load().single().messages.size)
         assertEquals(1L, db.load().single().id); assertTrue(memory.snapshot(1).capsules.size > 1)
         assertTrue(memory.search(1, "Question 1").contains("Question"))
     }

@@ -44,7 +44,7 @@ internal fun CompactStats(gauge: CompactGauge?, ledger: UsageLedger, messageCoun
     @Composable fun Line(label: String, value: String) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            Text(value, style = MaterialTheme.typography.bodySmall)
+            Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
         }
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Контекст и использование") },

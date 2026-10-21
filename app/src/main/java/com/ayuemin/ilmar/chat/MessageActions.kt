@@ -55,9 +55,11 @@ internal fun MessageActions(message: ChatMessage, busy: Boolean, onAskAgain: () 
                 Text(details.model); Text(details.provider)
                 Text(DateFormat.getDateTimeInstance().format(Date(details.createdAt)))
                 Text("Время выполнения: ${details.durationMs / 1000.0} с · запросов: ${details.requests}")
-                Text(UsageLedger(listOf(UsageRecord(details.usage, "completed"))).describe().substringAfter('\n').substringBefore("\nДанные сообщает"))
+                Text("Вход: ${details.usage.input ?: "нет данных"}; выход: ${details.usage.output ?: "нет данных"}")
+                Text("Кэшированные входные: ${details.usage.cached ?: "нет данных"}; reasoning: ${details.usage.reasoning ?: "нет данных"}")
+                Text("Известная стоимость USD: ${details.usage.costUsd ?: "нет данных"}")
                 if (details.incompleteUsage) Text("Usage неполный: указана только известная часть токенов и стоимости.", style = MaterialTheme.typography.bodySmall)
-                        Text("Включает модельные раунды ответа и Compact этого запуска; эмбеддинги, озвучка и отдельные сборы поиска не включены. Старые ответы могли учитывать только генерацию. В ветке сохранены исходные метаданные; копия не создаёт списания.", style = MaterialTheme.typography.bodySmall)
+                Text("Включает модельные раунды ответа и Compact этого запуска; эмбеддинги, озвучка и отдельные сборы поиска не включены. Старые ответы могли учитывать только генерацию. В ветке сохранены исходные метаданные; копия не создаёт списания.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }, confirmButton = { TextButton(onClick = { info = false }) { Text("Закрыть") } })

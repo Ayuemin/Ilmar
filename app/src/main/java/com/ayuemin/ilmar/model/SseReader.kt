@@ -19,13 +19,14 @@ internal object SseReader {
         var done = false
         var finish: String? = null
         var usage = TokenUsage()
+        val responseLimit = Limits.mib("stream_mib")
+        var receivedBytes = 0L
         fun dispatch() {
             if (event.isEmpty()) return
             val data = event.joinToString("\n").trim(); event.clear()
             if (data.isEmpty()) return
             if (data == "[DONE]") { done = true; return }
             val root = JSONObject(data)
-            if (root.has("error") && !root.isNull("error")) throw IOException("Ошибка потока провайдера")
             val exactReportedCost = if (root.optJSONObject("usage")?.has("cost") == true || root.has("cost")) {
                 runCatching {
                     val precise = com.google.gson.JsonParser.parseString(data).asJsonObject
@@ -43,6 +44,7 @@ internal object SseReader {
                     exactReportedCost ?: usage.costUsd)
             }
             exactReportedCost?.let { usage = usage.copy(costUsd = it) }
+            if (root.has("error") && !root.isNull("error")) throw IOException("Ошибка потока провайдера")
             val choice = root.optJSONArray("choices")?.optJSONObject(0) ?: return
             if ((choice.has("error") && !choice.isNull("error")) || choice.optString("finish_reason") == "error")
                 throw IOException("Ошибка генерации внутри потока")
@@ -70,7 +72,9 @@ internal object SseReader {
         }
         try {
         while (!done) {
-            val line = reader.readLine() ?: break
+            val line = boundedLine(reader, responseLimit.toInt()) ?: break
+            receivedBytes += line.toByteArray(Charsets.UTF_8).size.toLong() + 1
+            if (receivedBytes > responseLimit) throw IOException("SSE response exceeds configured limit")
             when { line.isEmpty() -> dispatch(); line.startsWith("data:") -> event.add(line.substring(5).trimStart()) }
         }
         if (!done) dispatch()
@@ -91,6 +95,16 @@ internal object SseReader {
         }
     }
     private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder(), var bytes: Int = 0)
+    private fun boundedLine(reader: BufferedReader, limit: Int): String? {
+        val line = StringBuilder()
+        while (true) {
+            val c = reader.read()
+            if (c == -1) return line.toString().takeIf { it.isNotEmpty() }
+            if (c == '\n'.code) return line.toString().removeSuffix("\r")
+            if (line.length >= limit) throw IOException("SSE event exceeds configured limit")
+            line.append(c.toChar())
+        }
+    }
     private fun merge(current: String, part: String) = current + part
     private fun contentText(value: Any?): String = when (value) {
         is String -> value

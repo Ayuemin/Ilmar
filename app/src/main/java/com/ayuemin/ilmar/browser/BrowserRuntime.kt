@@ -10,6 +10,7 @@ import org.json.JSONObject
 internal interface BrowserPage {
     fun configure(policy: BrowserPolicy) = Unit
     fun activate(chat: Long) = Unit
+    fun forget(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
     suspend fun find(query: String, exact: Boolean): JSONObject = error("Поиск элемента недоступен")
     suspend fun readFull(): JSONObject = read()
@@ -38,6 +39,7 @@ internal object BrowserRuntime {
         sessionOwner = chat
     }
     fun forgetChat(chat: Long) {
+        page?.forget(chat)
         policies.remove(chat)
         if (sessionOwner == chat) sessionOwner = null
         if (mutable.value.chat == chat) { page?.stop(); documentChat = null; mutable.value = BrowserUi(); observations.clear() }

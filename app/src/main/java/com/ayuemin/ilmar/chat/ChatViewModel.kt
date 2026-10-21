@@ -293,14 +293,14 @@ class ChatViewModel @JvmOverloads constructor(
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
                 val searchEngine = com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).engine(target.connection.id)
-                val browserForAgent = !compactOnly && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
+                val browserForAgent = !compactOnly && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
                 val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
                     modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
                 if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER && !permissions.granted("Браузер"))
                     throw com.ayuemin.ilmar.agent.AgentFailure("PERMISSION_REVOKED", "Разреши локальный браузер в настройках инструментов")
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val browserFallback = !compactOnly && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
+                val browserFallback = !compactOnly && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
                     com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO
                 var primarySearchReady = searchRoute != com.ayuemin.ilmar.browser.SearchRoute.PROVIDER
                 val browserControl = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)

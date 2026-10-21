@@ -223,6 +223,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             }
             if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }
             if (selected.id in state.importing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
             state.interventions[selected.id].orEmpty().forEach { item ->
                 var menuOpen by remember(item.id) { mutableStateOf(false) }
                 Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
@@ -242,13 +243,14 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     }
                 }
             }
+            }
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(4.dp)) {
                     com.ayuemin.ilmar.attachments.AttachmentList(state.attachments[selected.id].orEmpty(),
                         onRemove = { controller.removeAttachment(selected.id, it) })
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
+                    TextField(draft, { controller.setDraft(selected.id, it) }, placeholder = { Text("Сообщение") }, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,

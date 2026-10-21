@@ -1,5 +1,7 @@
 # Chat preview acceptance
 
+> Исторические состояния версий сохранены ниже. Изменения после аудита issue #9 и актуальные границы проверки: [issue-9-fixes](issue-9-fixes.md). Старые лимиты и отсутствие функций не являются описанием текущей ветки.
+
 ## Verified baseline
 
 Upstream `bba38ab34026414a99e8b63e9d914253db1c4b26`: Actions run 39400959266

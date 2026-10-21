@@ -26,6 +26,7 @@ internal object RuntimeLimits {
         LimitField("calls", "Агент", "Вызовов tools; 0 — без лимита", 256, 1000000, true),
         LimitField("task_seconds", "Агент", "Время одного запуска задачи, секунд; 0 — без лимита", 0, 604800, true),
         LimitField("model_seconds", "Агент", "Время запроса модели, секунд; 0 — без лимита", 0, 604800, true),
+        LimitField("stream_mib", "Агент", "Максимальный объём SSE-ответа, МиБ", 32, 128),
         LimitField("tool_seconds", "Агент", "Время одного tool, секунд; 0 — без лимита", 120, 86400, true),
         LimitField("repeat_threshold", "Агент", "Повторений без прогресса; 0 — отключить защиту", 3, 1000, true),
         LimitField("argument_kib", "Агент", "Аргументы tool, КиБ", 16384, 65536),

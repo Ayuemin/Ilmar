@@ -67,3 +67,18 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("junit:junit:4.13.2")
 }
+
+dependencyLocking { lockAllConfigurations() }
+
+tasks.register("dependencyInventory") {
+    doLast {
+        val modules = listOf("debugRuntimeClasspath", "debugUnitTestRuntimeClasspath").flatMap { name ->
+            configurations.getByName(name).resolvedConfiguration.resolvedArtifacts.map { it.moduleVersion.id }
+        }.distinctBy { "${it.group}:${it.name}:${it.version}" }.sortedBy { "${it.group}:${it.name}" }
+        val destination = layout.buildDirectory.file("reports/dependency-inventory.json").get().asFile
+        destination.parentFile.mkdirs()
+        destination.writeText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(modules.map {
+            mapOf("name" to "${it.group}:${it.name}", "version" to it.version, "ecosystem" to "Maven")
+        })) + "\n")
+    }
+}
