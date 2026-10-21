@@ -1,6 +1,8 @@
 package com.ayuemin.ilmar.chat
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -47,7 +49,7 @@ internal fun CompactStats(gauge: CompactGauge?, ledger: UsageLedger, messageCoun
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Контекст и использование") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("До следующего Compact", style = MaterialTheme.typography.titleSmall)
                 Line("Заполнение порога", gauge?.let { "${it.percent}%" } ?: "Нет данных")
                 Line("Текущий вход (оценка)", gauge?.input?.toString() ?: "Нет данных")
