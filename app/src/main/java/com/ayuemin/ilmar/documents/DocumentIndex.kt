@@ -25,8 +25,8 @@ internal class DocumentIndex(val document: StructuredDocument, allowFts5: Boolea
         val sections = document.sections.associateBy { it.id }
         rows = document.blocks.map { block ->
             val terms = LexicalTerms.terms(document.text(block))
-            val heading = LexicalTerms.terms(sections.getValue(block.section).path.joinToString(" "))
-            retainedBytes += (terms + heading).sumOf { 80L + 2L * (it.exact.length + it.stem.length) }
+            val heading = LexicalTerms.terms((if (document.metadataTitle) document.title else "") + " " + sections.getValue(block.section).path.joinToString(" "))
+            retainedBytes += (terms + heading).sumOf { 80L + 2L * (it.exact.length + it.stem.length + it.identity.length) }
             require(retainedBytes <= maxBytes) { "DOCUMENT_INDEX_LIMIT: лимит памяти индекса; частичный индекс не используется" }
             terms.map { it.exact }.toSet().forEach { exactDf[it] = (exactDf[it] ?: 0) + 1 }
             terms.map { it.stem }.toSet().forEach { stemDf[it] = (stemDf[it] ?: 0) + 1 }
@@ -62,7 +62,9 @@ internal class DocumentIndex(val document: StructuredDocument, allowFts5: Boolea
     fun search(query: String, limit: Int = 10, options: RetrievalOptions = RetrievalOptions()): SearchResult {
         check(!closed) { "DOCUMENT_SESSION_CLOSED" }
         require(query.isNotBlank() && query.length <= 1000 && limit in 1..10)
-        val original = LexicalTerms.terms(query).filter { it.exactOnly || it.exact !in LexicalTerms.stop }.distinctBy { it.exact }.take(24)
+        val tokens = LexicalTerms.terms(query)
+        val original = tokens.filter { it.exact !in LexicalTerms.stop || tokens.size == 1 && it.exactOnly }.distinctBy { it.identity }.take(24)
+        val comparing = Regex("(?iu)\\b(compare|comparison|versus|vs|сравни\\p{L}*|разниц\\p{L}*|отлич\\p{L}*)\\b").containsMatchIn(query)
         if (original.isEmpty()) return SearchResult(emptyList(), emptyList(), backend)
         data class Variant(val value: String, val stem: Boolean, val weight: Double, val origin: Int)
         val variants = mutableListOf<Variant>()
@@ -104,7 +106,10 @@ internal class DocumentIndex(val document: StructuredDocument, allowFts5: Boolea
             val content = row.terms + if (options.structure) row.heading else emptyList()
             val exactOnly = original.filter { it.exactOnly }
             // Do not let a version/code query select a neighboring product purely through a shared generic word.
-            if (exactOnly.isNotEmpty() && exactOnly.none { q -> content.any { it.exact == q.exact } }) return@mapIndexedNotNull null
+            if (exactOnly.isNotEmpty()) {
+                val matches = exactOnly.count { q -> content.any { it.identity == q.identity } }
+                if (matches == 0 || !comparing && matches != exactOnly.size) return@mapIndexedNotNull null
+            }
             val matched = unique.filter { v -> content.any { (if (v.stem) it.stem else it.exact) == v.value } }
             if (matched.isEmpty()) return@mapIndexedNotNull null // Feedback never creates an unanchored match.
             val normalizedText = LexicalTerms.normalize(document.text(document.blocks[i]))
@@ -136,8 +141,8 @@ internal class DocumentIndex(val document: StructuredDocument, allowFts5: Boolea
             val block = document.blocks[center]
             var first = center; var until = center + 1
             if (options.context) {
-                if (center > 0 && document.blocks[center - 1].section == block.section) first--
-                if (until < rows.size && document.blocks[until].section == block.section) until++
+                if (center > 0 && (!options.structure || document.blocks[center - 1].section == block.section)) first--
+                if (until < rows.size && (!options.structure || document.blocks[until].section == block.section)) until++
             }
             val overlap = hits.indexOfFirst { first < it.until && until > it.first }
             if (overlap >= 0) {

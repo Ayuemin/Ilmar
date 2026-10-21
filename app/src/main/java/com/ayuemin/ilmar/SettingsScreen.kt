@@ -67,6 +67,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
                 SettingsCard("Память и контекст", "История, Compact, кэш и бюджеты") { page = "Память и контекст" }
                 SettingsCard("Инструменты", "Состояние подключений") { page = "Инструменты" }
                 SettingsCard("Расширенные лимиты", "Агент, файлы, интернет, память и журнал — глобально") { page = "Расширенные лимиты" }
+                SettingsCard("Эксперимент: документы", "Локальный отбор веб-фрагментов и сравнение с Fetch") { page = "Эксперимент: документы" }
                 SettingsCard("Диагностика", "Версия и события запросов") { page = "Диагностика" }
             }
             "Подключения" -> {
@@ -85,6 +86,7 @@ fun SettingsScreen(onBack: () -> Unit, initialPage: String? = null) {
             }
             "Память и контекст" -> com.ayuemin.ilmar.memory.ContextSettings(onConnections = { page = "Подключения" })
             "Расширенные лимиты" -> com.ayuemin.ilmar.settings.RuntimeSettings()
+            "Эксперимент: документы" -> com.ayuemin.ilmar.documents.DocumentExperimentSettings()
             "Инструменты" -> {
                 com.ayuemin.ilmar.tools.ToolSettings()
                 val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }

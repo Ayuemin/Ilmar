@@ -79,4 +79,11 @@ class DocumentInfrastructureTest {
             assertTrue(store.all().isEmpty())
         }
     }
+    @Test fun denseHtmlIsRejectedBeforeConstructingAnUnboundedDom() = runTest {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("<b>".repeat(64001).toResponseBody("text/html".toMediaType())).build()
+        }.build()
+        assertTrue(runCatching { WebTools(client).fetchDocument("https://example.com") }.exceptionOrNull()?.message.orEmpty().contains("DOCUMENT_PARSE_LIMIT"))
+    }
 }

@@ -41,7 +41,9 @@ class DocumentSessionTest {
             }
             assertTrue(blocks(initial).intersect(blocks(wider)).isEmpty())
             assertFalse(text(wider).contains("Quota is 25"))
-            assertEquals(0, JSONObject(session.search("quota", 3)).getJSONArray("fragments").length())
+            val seen = JSONObject(session.search("quota", 3))
+            assertEquals(0, seen.getJSONArray("fragments").length())
+            assertEquals(id, seen.getJSONArray("document_ids").getString(0))
             assertTrue(text(JSONObject(session.read(id, section, 0, 0, true))).contains("Quota is 25"))
             DocumentSession(1, "run-b", config, "quota", { true }).use { other -> assertTrue(runCatching { other.outline(id, 0) }.isFailure) }
             assertTrue(runCatching { session.read(id, "f0-9999999999999999", 0, 0, false) }.isFailure)

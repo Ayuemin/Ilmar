@@ -56,3 +56,62 @@ In Local/Compare runs, NativeTools Fetch bypasses the installation cache and use
 TTL timers remove raw source, structure and in-memory indices while a run waits; run finally closes them on success/error/cancel. Process death inherently loses the store, with no disk recovery debris. The existing history projection preserves document/continuation IDs. Main conversation traces may retain selected quotes as existing tool history; raw long pages and indices are never automatically saved as Ilmar memory or passed to archive embeddings. No Context Compact behavior, signing or user database schema changes are required.
 
 Compare formats the legacy and selected variants from one full fetch and emits numeric metadata through diagnostics, delivering only the selected variant to the model. This is not paid usage or end-answer evaluation. Preferences are isolated in `ilmar_document_experiment`, default Legacy; UI and browser experiment policy are completed in stage E. Existing browser permission/confirmation checks remain in force.
+
+## Stage E experiment and measured results
+
+Settings → «Эксперимент: документы» contains Legacy/Local/Compare, the five algorithm switches, initial maximum 3/5/10 and three browser policies. They apply to subsequent tasks and do not grant Fetch/browser access. Legacy and existing browser behavior remain defaults. Limited browser escalation removes general browser search/batches, requires a specific HTTPS URL plus javascript/authentication/interaction reason and native approval, then delegates all original checks/confirmations. It cannot authorize a revoked capability. Disabling automatic browser routing preserves available Fetch/provider tools and bounds provider-search addons rather than accidentally enabling them on every round.
+
+Precision regressions reproduced locally before correction: case-distinct URL paths were conflated and an explicit HTML title was not searchable. URL identity now preserves path case, explicit metadata titles are indexed without treating the first section's fallback title as global, and non-comparison product/version/code queries require all protected identifiers. Explicit compare/versus queries can retrieve separate requested products. Ordinary word case folding remains. Structure-off really uses a flat map/path and omits heading weights. Markdown .MD/query/fragment URLs and equivalent Fetch URLs are normalized for reuse. A pre-DOM cap of 64,000 `<` characters rejects tag-dense HTML before Jsoup allocation; HTTP byte caps, extraction depth/size and index quotas still apply. Errors explicitly deny indexing, never silently index a prefix.
+
+The [corpus](../app/src/test/resources/documents/cases.json) has **12 questions, 10 fixed RU/EN HTML/Markdown/plain documents and 22 gold passages**. The long page has 1,400 ordinary paragraphs before the answer. Separate infrastructure/session tests cover HTTP/structure/index limits, revocation, lifecycle and fresh-run recovery. They do not substitute for a real process-kill test on a phone.
+
+Local result after payload/schema optimization (exact values and per-case timings in [evidence](evidence/local-retrieval.json); CI regenerates full reports):
+
+| Measure | Legacy | Local |
+| --- | ---: | ---: |
+| Gold passages in initial model-facing fixture result | 20/22 | 22/22 |
+| cl100k result tokens, all 12 questions | 8,127 | about 4,664 |
+| Extra document schemas, once per question | 0 | 3,216 |
+| Result + added schemas | 8,127 | about 7,880 |
+| Long-page result + added schemas | 7,282 | about 1,259 |
+| Fetch in each Compare pair / model / browser | 1 / 0 / 0 | 1 / 0 / 0 |
+
+This is **about 3% less serialized input on this corpus**, with most short pages more expensive, and **about 83% less on its one long page**. Per-run UUIDs cause small token-count variation. It is not an estimate of billed savings: existing schemas, system/history, outputs, additional model rounds and proprietary provider search are excluded. There are no generated final answers in this benchmark. Exact gold containment is not semantic answer correctness or completeness. The earlier unoptimized measurement was 10,750 tokens including added schemas, above Legacy; collapsing short sources to one provenance record and shortening the three fixed schema descriptions reduced that overhead without deleting source text.
+
+| Ranking ablation | Recall@3 | Recall@5 | Recall@10 |
+| --- | ---: | ---: | ---: |
+| Default | 1.000 | 1.000 | 1.000 |
+| Feedback on | 1.000 | 1.000 | 1.000 |
+| Structure off | 0.909 | 0.909 | 0.909 |
+| Heat off | 1.000 | 1.000 | 1.000 |
+| Morphology off | 1.000 | 1.000 | 1.000 |
+| Neighbor context off | 0.864 | 0.909 | 0.909 |
+
+These easy fixtures do not establish an independent benefit for heat, morphology or feedback. Typo/synonym alternatives can compensate for disabled stemming. Feedback remains off. The strongest observed requirement is retention of neighbor conditions, and a larger independent evaluation set is needed before enabling Local by default.
+
+Host JVM single-run medians were roughly 5 ms Legacy and 7 ms Local in interceptor fixtures; the long case was roughly 164 ms versus 457 ms, with about 379 ms index construction. These are unpaired warm-up-sensitive host observations, **not phone/network latency estimates**. Maximum accounted retained payload was about 3.09 MB on the long fixture. Host heap snapshots (including Robolectric/other allocations and GC) are recorded separately and do not measure Android incremental RAM or peak memory. The new source/index store creates zero disk files; existing chat traces still retain selected excerpts. Actual APK delta is recorded in the sole Obsidian Roadmap after fetching final CI artifacts.
+
+Reproduction:
+
+```sh
+./gradlew :app:testDebugUnitTest --tests '*Document*Test' --tests '*WebToolsTest'
+npm install --prefix /tmp/ilmar-tokenizer --ignore-scripts --no-audit --no-fund js-tiktoken@1.0.21 base64-js@1.5.1
+NODE_PATH=/tmp/ilmar-tokenizer/node_modules node scripts/measure_document_retrieval.cjs
+```
+
+CI runs the complete unit suite/lint/APKs and the tokenizer script; its `android-check-reports` artifact includes fetch-baseline, retrieval-benchmark and retrieval-tokens. Raw fixture results, source hashes, rank variants, host times, heap snapshots, retained-payload estimates and one-Fetch Compare counters are inspectable. Only synthetic fixtures are written to these reports. The APK has no added runtime dependencies/models/dictionaries; Node tokenizer packages are analysis/CI tools only.
+
+## Remaining device and end-answer acceptance protocol
+
+Use the existing parallel-install `ilmar-phone-acceptance-apk` if testing would conflict with the installed app's signer. Do not uninstall production Ilmar or change its keys to work around signature incompatibility. Device acceptance has not been performed here.
+
+| Test | Procedure / required evidence |
+| --- | --- |
+| Quality and full costs | Same model, main prompt, source URL and context policy in fresh Legacy/Local tasks; ask corpus questions, inspect exact conditions/versions/citations, score final answers; record actual input/output/cache/cost and every model/Fetch/browser call from existing usage/diagnostics. Keep provider search and Compact settings identical. |
+| Source navigation | Ask for outline, a section, then a wider fragment; verify URL/bounds and no second Fetch, explicit repeat versus duplicate-free default. Use pinned GitHub raw corpus URLs over public HTTPS. |
+| Permission | Revoke Fetch after a source is loaded and before another read; verify local access fails and data is cleared. Test revocation during a delayed real response separately. Browser deny/limited/native action confirmations must still hold. |
+| Real process death | Force-stop only the acceptance package, relaunch/recover and try an old document ID. It must be unavailable; existing chat/user data must remain. No document files should survive. |
+| Limits / resources | Measure Android PSS/heap/disk before fetch, after index, after close and TTL; test large/dense HTML and quotas. Heap allocation may remain reserved after objects are released, so retained references and PSS must be interpreted separately. |
+| Compatibility / UI | Check FTS5 runtime result on real devices (fallback is supported), Compose/IME/TalkBack/small screens, APK update/data preservation and signing separately from green CI. |
+
+Known limits: lexical matching is not arbitrary semantic paraphrase understanding; stemmers/typos/synonym groups are small; quoted phrases are literal normalized unit matches; huge indivisible sentences/code/table rows can exceed output budget; current response decoding follows declared HTTP charset or UTF-8, and meta-only legacy encodings are not validated. Search selects at most ten candidate windows per document/query; narrower queries, outline and read may be needed. Actual final-answer quality, cumulative tokens/calls, repeated-search/expansion frequency, device latency/RAM, real process death and install/update acceptance remain open. No blanket efficiency or quality improvement is claimed.

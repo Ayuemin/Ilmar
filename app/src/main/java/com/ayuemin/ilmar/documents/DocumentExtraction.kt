@@ -11,7 +11,7 @@ import java.util.Locale
 internal data class DocumentBlock(val index: Int, val kind: String, val section: String, val start: Int, val end: Int, val paragraph: Int)
 internal data class DocumentSection(val id: String, val level: Int, val title: String, val path: List<String>, val first: Int, val until: Int)
 internal data class StructuredDocument(val version: String, val title: String, val text: String,
-    val blocks: List<DocumentBlock>, val sections: List<DocumentSection>) {
+    val blocks: List<DocumentBlock>, val sections: List<DocumentSection>, val metadataTitle: Boolean = false) {
     fun text(block: DocumentBlock) = text.substring(block.start, block.end)
     val retainedBytes get() = 2L * (text.length + title.length + sections.sumOf { it.title.length + it.path.sumOf(String::length) }) + blocks.size * 64L
 }
@@ -27,10 +27,12 @@ internal object DocumentExtraction {
             parts += Part(kind, text.trim(), level)
         }
         var title = ""
+        var metadataTitle = false
         when {
             source.mediaType.contains("html", true) -> {
                 val html = Jsoup.parse(source.source, source.url)
                 title = html.title()
+                metadataTitle = title.isNotBlank()
                 // A header may contain useful title/conditions. Keep it; do not choose only the first main/article.
                 html.select("script,style,noscript,iframe,svg,template").remove()
                 html.select("nav").filter { it.select("p,table,li").isEmpty() && it.text() == it.select("a").text() }.forEach { it.remove() }
@@ -78,7 +80,7 @@ internal object DocumentExtraction {
                 }
                 walk(html.body())
             }
-            source.mediaType.contains("markdown", true) || source.url.substringBefore('?').endsWith(".md") -> {
+            source.mediaType.contains("markdown", true) || source.url.substringBefore('?').substringBefore('#').endsWith(".md", true) -> {
                 var fence: Char? = null
                 val paragraph = StringBuilder()
                 fun flush() { add(if (fence != null) "code" else "paragraph", paragraph.toString()); paragraph.clear() }
@@ -133,7 +135,7 @@ internal object DocumentExtraction {
         stack.forEach { it.until = blocks.size }
         if (title.isBlank()) title = parts.firstOrNull { it.kind == "heading" }?.text ?: source.url
         return StructuredDocument(com.ayuemin.ilmar.memory.ContextEstimate.hash(source.source), title, text.toString(), blocks,
-            headings.map { DocumentSection(it.id, it.level, it.title, it.path, it.first, it.until) })
+            headings.map { DocumentSection(it.id, it.level, it.title, it.path, it.first, it.until) }, metadataTitle)
     }
     private fun sentences(text: String): List<String> {
         val iterator = BreakIterator.getSentenceInstance(Locale.ROOT).apply { setText(text) }

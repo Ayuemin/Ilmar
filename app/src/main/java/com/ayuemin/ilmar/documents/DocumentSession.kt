@@ -8,6 +8,7 @@ import com.ayuemin.ilmar.tools.WebTools
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.BitSet
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -36,7 +37,8 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
         states.remove(id)?.index?.close(); timers.remove(id)?.cancel()
         if (!closed) store.remove(id)
     }
-    @Synchronized private fun existing(url: String): String? { authorize(); return states.values.firstOrNull { it.entry.fetched.url == url }?.entry?.id }
+    private fun urlKey(url: String) = url.toHttpUrl().newBuilder().fragment(null).build().toString()
+    @Synchronized private fun existing(url: String): String? { authorize(); return states.values.firstOrNull { urlKey(it.entry.fetched.url) == urlKey(url) }?.entry?.id }
     @Synchronized private fun insert(fetched: FetchedDocument): String {
         authorize()
         val entry = store.put(fetched)
@@ -62,7 +64,7 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
     private fun fragment(state: State, first: Int, until: Int, score: Double?): JSONObject {
         val entry = state.entry; val doc = entry.structure
         val start = doc.blocks[first].start; val end = doc.blocks[until - 1].end
-        val section = doc.sections.first { it.id == doc.blocks[first].section }
+        val section = doc.sections.first { it.id == if (config.options.structure) doc.blocks[first].section else "s0" }
         return JSONObject().put("document_id", entry.id).put("fragment_id", "f$first-$until").put("section_id", section.id)
             .put("url", entry.fetched.url).put("title", doc.title.take(240)).put("title_complete", doc.title.length <= 240)
             .put("version", doc.version).put("heading_path", JSONArray(section.path.map { it.take(160) }))
@@ -108,8 +110,15 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
         val result = root().put("document_id", id).put("url", entry.fetched.url).put("title", doc.title.take(240))
             .put("source_complete", true).put("full_text_chars", doc.text.length).put("reused", reused)
             .put("backend", state.index.backend).put("expires_in_seconds", ((entry.created + ttlMillis - android.os.SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0))
-            .put("note", "Полный источник доступен только в текущем запуске. Пустой поиск не доказывает отсутствие факта; доступны outline/search/read.")
-        if (doc.text.length <= 3000) append(result, state, 0, doc.blocks.size)
+            .put("note", "Complete source is local to this run. Use outline/search/read; no match is not proof of absence.")
+        if (doc.text.length <= 3000) {
+            if (doc.blocks.isNotEmpty() && state.sent.cardinality() < doc.blocks.size) {
+                // One provenance record is cheaper than repeating it for every section of a short page.
+                if (state.sent.isEmpty) result.getJSONArray("fragments").put(fragment(state, 0, doc.blocks.size, null)
+                    .put("section_id", "s0").put("heading_path", JSONArray()))
+                else append(result, state, 0, doc.blocks.size)
+            }
+        }
         else searchObject(query.replace(entry.fetched.url, " ").take(1000).ifBlank { doc.title.take(1000) }, config.fragments, id, result)
         val output = checked(result)
         if (config.mode == DocumentMode.COMPARE && !reused) {
@@ -130,7 +139,9 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
             if (root.getJSONArray("fragments").length() >= limit) break
             append(root, state, hit.first, hit.until, hit.score, maxFragments = limit)
         }
-        return root.put("matched_windows", results.size).put("already_delivered_or_no_match", root.getJSONArray("fragments").length() == 0)
+        val empty = root.getJSONArray("fragments").length() == 0
+        if (empty) root.put("document_ids", JSONArray(states.keys.toList())) // Recover navigation after tool-history projection drops old quotes.
+        return root.put("matched_windows", results.size).put("already_delivered_or_no_match", empty)
     }
     @Synchronized fun search(query: String, limit: Int) = checked(searchObject(query, limit))
     @Synchronized fun outline(id: String, offset: Int): String {
@@ -152,7 +163,7 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
     @Synchronized fun read(id: String, section: String, before: Int, after: Int, repeat: Boolean): String {
         val state = state(id); val doc = state.entry.structure
         require(before in 0..10 && after in 0..10 && (config.options.context || before == 0 && after == 0)) { "Расширение контекста выключено или превышает 10 блоков" }
-        val range = doc.sections.find { it.id == section }?.let { it.first to it.until } ?: Regex("f([0-9]+)-([0-9]+)").matchEntire(section)?.let {
+        val range = doc.sections.find { it.id == section && (config.options.structure || it.id == "s0") }?.let { it.first to it.until } ?: Regex("f([0-9]+)-([0-9]+)").matchEntire(section)?.let {
             val first = it.groupValues[1].toIntOrNull(); val until = it.groupValues[2].toIntOrNull()
             require(first != null && until != null && first >= 0 && first < until && until <= doc.blocks.size) { "Некорректные границы фрагмента" }; first to until
         } ?: error("DOCUMENT_SECTION_UNAVAILABLE")

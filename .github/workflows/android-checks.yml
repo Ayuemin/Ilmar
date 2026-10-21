@@ -63,6 +63,11 @@ jobs:
       - name: Summarize actual JUnit results
         run: python3 scripts/summarize_test_results.py
 
+      - name: Measure offline retrieval fixture tokens
+        run: |
+          npm install --prefix /tmp/ilmar-retrieval-tokenizer --ignore-scripts --no-audit --no-fund js-tiktoken@1.0.21 base64-js@1.5.1
+          NODE_PATH=/tmp/ilmar-retrieval-tokenizer/node_modules node scripts/measure_document_retrieval.cjs
+
       - name: Inventory and check dependency advisories
         run: |
           ./gradlew :app:dependencyInventory --no-daemon
@@ -123,6 +128,10 @@ jobs:
             app/build/reports/browser-rounds-comparison.json
             app/build/reports/dependency-inventory.json
             app/build/reports/dependency-advisories.json
+            app/build/reports/fetch-baseline.json
+            app/build/reports/retrieval-benchmark.json
+            app/build/reports/retrieval-tokens.json
+            app/build/reports/retrieval-backend.txt
             app/gradle.lockfile
             gradle/verification-metadata.xml
           retention-days: 14

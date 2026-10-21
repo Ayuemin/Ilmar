@@ -52,6 +52,9 @@ internal class WebTools(private val client: OkHttpClient = OkHttpClient.Builder(
         validatePublicUrl(parsed)
         val response = load(Request.Builder().url(parsed).header("User-Agent", "Ilmar/0.1 URL reader").build(), Limits.bytes("fetch_kib"))
         require(response.first.startsWith("text/") || response.first.contains("json") || response.first.contains("xml")) { "URL должен возвращать текст или HTML" }
+        if (response.first.contains("html")) require(response.second.count { it == '<' } <= 64000) {
+            "DOCUMENT_PARSE_LIMIT: слишком сложный HTML; документ не индексирован"
+        }
         val text = if (response.first.contains("html")) Jsoup.parse(response.second, url).apply {
             select("script,style,noscript,nav,footer,header,iframe,form,svg").remove()
         }.let { doc -> doc.selectFirst("article,main")?.text() ?: doc.body().text() } else response.second

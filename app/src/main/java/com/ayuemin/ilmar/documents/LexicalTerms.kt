@@ -7,7 +7,7 @@ import java.util.Locale
 internal object LexicalTerms {
     private val patterns = java.util.concurrent.ConcurrentHashMap<String, Regex>()
     private fun pattern(value: String) = patterns.getOrPut(value) { Regex(value) }
-    data class Term(val exact: String, val stem: String, val exactOnly: Boolean)
+    data class Term(val exact: String, val stem: String, val exactOnly: Boolean, val identity: String)
     fun normalize(value: String) = Normalizer.normalize(value, Normalizer.Form.NFKC).lowercase(Locale.ROOT)
     private val words = Regex("https?://[^\\s<>\\)]+|[\\p{L}\\p{N}_]+(?:[.\\-/+:][\\p{L}\\p{N}_]+)*")
     fun terms(text: String): List<Term> = words.findAll(text).map { match ->
@@ -15,7 +15,7 @@ internal object LexicalTerms {
         val exact = normalize(raw)
         val exactOnly = raw.any(Char::isDigit) || raw.any { it in "_/:+" } ||
             raw.matches(pattern("[A-ZА-Я]{2,}")) || raw.drop(1).any(Char::isUpperCase)
-        Term(exact, if (exactOnly) exact else stem(exact), exactOnly)
+        Term(exact, if (exactOnly) exact else stem(exact), exactOnly, if (raw.startsWith("https://") || raw.startsWith("http://")) raw else exact)
     }.toList()
     fun stem(value: String): String = when {
         value.matches(pattern("[а-яё]+")) -> russian(value.replace('ё', 'е'))

@@ -299,38 +299,46 @@ class ChatViewModel @JvmOverloads constructor(
                 val roundUsage = mutableListOf<UsageRecord>()
                 var modelRound = 0
                 val capabilities = registry.capabilities(target.model.id)
+                val documentExperiment = com.ayuemin.ilmar.documents.DocumentExperimentPreferences(getApplication()).load()
+                val experimentalBrowserAllowed = documentExperiment.browser != com.ayuemin.ilmar.documents.ExperimentalBrowser.DISABLED
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
                 val searchEngine = com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).engine(target.connection.id)
-                val browserForAgent = !compactOnly && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
-                val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
+                val browserForAgent = !compactOnly && experimentalBrowserAllowed && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
+                val configuredSearchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
                     modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
+                val searchRoute = com.ayuemin.ilmar.documents.ExperimentalBrowserGate.route(configuredSearchRoute, documentExperiment.browser)
+                if (searchRoute != configuredSearchRoute) mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to "Автоматический браузер ограничен экспериментом; разрешённые Fetch и API поиска доступны")) }
                 if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER && !permissions.granted("Браузер"))
                     throw com.ayuemin.ilmar.agent.AgentFailure("PERMISSION_REVOKED", "Разреши локальный браузер в настройках инструментов")
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val documentExperiment = com.ayuemin.ilmar.documents.DocumentExperimentPreferences(getApplication()).load()
                 val documents = if (!compactOnly && documentExperiment.mode != com.ayuemin.ilmar.documents.DocumentMode.LEGACY && agentTools.any { it.schema.name == "fetch_url" })
                     com.ayuemin.ilmar.documents.DocumentSession(chatId, taskSession.runId, documentExperiment,
                         history.lastOrNull { it.fromUser }?.text.orEmpty(),
                         allowed = { permissions.granted("fetch_url") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_fetch_url") },
                         comparison = { data -> diagnostics.record("DOCUMENT_COMPARE", chatId, data.put("run_id", taskSession.runId)) }) else null
                 cleanupDocuments = documents
-                val browserFallback = !compactOnly && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
+                val browserFallback = !compactOnly && experimentalBrowserAllowed && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
                     com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO
                 var primarySearchReady = searchRoute != com.ayuemin.ilmar.browser.SearchRoute.PROVIDER
                 val browserControl = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
                         event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
                         notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
-                val browserTools = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                val rawBrowserTools = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl,
                         fallbackAllowed = browserFallback, primaryReady = { primarySearchReady }, approveAction = browserApproval) else emptyList()
+                val browserTools = com.ayuemin.ilmar.documents.ExperimentalBrowserGate.tools(rawBrowserTools, documentExperiment.browser) { url, reason ->
+                    browserApproval(chatId, "Разрешить эскалацию браузера?", "$url\nПричина: $reason\nОткройте только при необходимости JavaScript, входа или взаимодействия. Ошибка Fetch сама по себе не требует браузера.")
+                }
                 val tools = agentTools + (documents?.let { com.ayuemin.ilmar.documents.DocumentTools.forSession(it) }.orEmpty()) + browserTools
-                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol, browserControl != null)
+                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol,
+                    browserControl != null || documentExperiment.browser != com.ayuemin.ilmar.documents.ExperimentalBrowser.EXISTING)
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
+                    .put("configured_search_route", configuredSearchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
                 val compactModel = registry.snapshot().models.find { it.id == compactId }
