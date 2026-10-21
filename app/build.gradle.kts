@@ -15,7 +15,17 @@ android {
         versionCode = 13
         versionName = "0.1.3-browser-control"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
+        manifestPlaceholders["appLabel"] = "Ilmar"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        create("browserAcceptance") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".browseracceptance"
+            manifestPlaceholders["appLabel"] = "Ilmar · Browser test"
+            matchingFallbacks += listOf("debug")
+        }
     }
 
     buildFeatures { compose = true; buildConfig = true }
