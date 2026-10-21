@@ -30,7 +30,7 @@ internal object BrowserRuntime {
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi() } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi(); lastObservation = null; lastObservationChat = null } }
     fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
@@ -77,7 +77,7 @@ internal object BrowserRuntime {
                 // Preserve page_id, controls and links for safe fresh-ref actions.
                 val previous = lastObservation
                 val response = JSONObject(result.toString())
-                if (previous != null && previous.optString("page_id") == result.optString("page_id") &&
+                if (operation in setOf("scroll", "click", "type", "select", "back") && previous != null && previous.optString("page_id") == result.optString("page_id") &&
                     previous.optString("url") == result.optString("url") && previous.optString("text") == result.optString("text")) {
                     response.put("text", "")
                     response.put("text_unchanged", true)
