@@ -227,17 +227,22 @@ class ChatViewModel @JvmOverloads constructor(
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
+                val searchEngine = com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).engine(target.connection.id)
                 val browserForAgent = !compactOnly && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
                 val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
-                    modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools, browserForAgent)
+                    modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val browserControl = if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                val browserFallback = !compactOnly && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
+                    com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO
+                var primarySearchReady = searchRoute != com.ayuemin.ilmar.browser.SearchRoute.PROVIDER
+                val browserControl = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
                         event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
                         notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
-                val tools = agentTools + if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
-                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl) else emptyList()
+                val tools = agentTools + if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl,
+                        fallbackAllowed = browserFallback, primaryReady = { primarySearchReady }) else emptyList()
                 val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol, browserControl != null)
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
@@ -252,6 +257,8 @@ class ChatViewModel @JvmOverloads constructor(
                     com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPolicy, capabilities, target,
                         status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
                         compactTarget = compactTarget, compactCaps = compactCaps,
+                        internetInstructions = if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER)
+                            "\nИнтернет: сначала используй результаты подключённого поиска поставщика. Движок OpenRouter: ${searchEngine.title}. Если информации достаточно, ответь без браузера. Локальный браузер — дополнительный инструмент только для недостающих сведений, JavaScript, загрузки файлов или действий на конкретной странице. Не открывай браузер для повторения уже полученного поиска и не проводи дополнительные тесты без запроса пользователя.\n" else "",
                         event = { code, details ->
                             diagnostics.record(code, chatId, details.put("task_id", taskSession.taskId).put("run_id", taskSession.runId).put("parent_run_id", taskSession.parentRunId ?: org.json.JSONObject.NULL))
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
@@ -275,6 +282,8 @@ class ChatViewModel @JvmOverloads constructor(
                                 browserControl?.beforeModel(estimatedInput, options.maxOutput ?: contextPolicy.reserve(callCaps), callCaps,
                                     options.observation != null || projectedHistory.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } })
                                 val requestSearch = providerSearchBudget.next(purpose)
+                                if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && !primarySearchReady && requestSearch == null)
+                                    throw com.ayuemin.ilmar.agent.AgentFailure("PRIMARY_SEARCH_DISABLED", "Первичный поиск поставщика выключен лимитом запросов. Увеличь лимит либо явно выбери локальный браузер.")
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
                                 val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
@@ -287,12 +296,13 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("configured_search_route", searchRoute.name)
                                     .put("search_route", if (requestSearch != null) "PROVIDER" else if (purpose == "answer" && browserControl != null) "BROWSER" else "OFF")
                                     .put("search_protocol", requestSearch ?: org.json.JSONObject.NULL)
+                                    .put("search_engine", if (requestSearch == "OPENROUTER") searchEngine.wire ?: "auto" else org.json.JSONObject.NULL)
                                     .put("provider_intrinsic_search", searchProtocol == com.ayuemin.ilmar.browser.ProviderSearchProtocol.NATIVE)
                                     .put("input_breakdown_estimate", com.ayuemin.ilmar.memory.ContextInputMetrics.estimate(projectedHistory, options))
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
                                 providerStarted = true
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
-                                    options.copy(webSearch = requestSearch)) { delta ->
+                                    options.copy(webSearch = requestSearch, webSearchEngine = if (requestSearch == "OPENROUTER") searchEngine.wire else null)) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
@@ -301,6 +311,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("reasoning_tokens", completion.usage.reasoning ?: org.json.JSONObject.NULL).put("usage", com.ayuemin.ilmar.model.usageJson(completion.usage))
                                     .put("tool_calls", completion.toolCalls.map { it.name }.joinToString()))
                                 browserControl?.afterModel(completion.usage, callCaps)
+                                if (requestSearch != null) primarySearchReady = true
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
                                 if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
                                 completion

@@ -51,6 +51,16 @@ class BrowserRunControlTest {
         gate.complete(true)
         assertEquals("PERMISSION_REVOKED", (pending.await().exceptionOrNull() as AgentFailure).code)
     }
+    @Test fun autoFallbackWaitsForProviderResultAndThenRequiresSingleConsent() = runTest {
+        val preferences = modes(603); var ready = false; var prompts = 0
+        val control = BrowserRunControl(603, true, ask = { _, _, _ -> prompts++; true })
+        val tools = BrowserTools.forChat(603, preferences, true, true, control = control, fallbackAllowed = true, primaryReady = { ready })
+        val open = tools.single { it.schema.name == "browser_open" }
+        assertEquals("PRIMARY_SEARCH_REQUIRED", (runCatching { open.beforeExecute(JSONObject()) }.exceptionOrNull() as AgentFailure).code)
+        assertEquals(0, prompts)
+        ready = true; open.beforeExecute(JSONObject()); tools.single { it.schema.name == "browser_read" }.beforeExecute(JSONObject())
+        assertEquals(1, prompts)
+    }
     @Test fun explicitBrowserDoesNotPromptAndBudgetDenialStopsNextAction() = runTest {
         var prompts = 0
         val control = BrowserRunControl(1, false, ask = { _, _, _ -> prompts++; false }, actionLimit = 2, roundLimit = 10, cents = 0)

@@ -11,10 +11,16 @@ internal enum class ProviderSearchProtocol(val title: String) {
     NATIVE("Поиск встроен в модель поставщика"),
     DISABLED("Встроенный поиск недоступен")
 }
+internal enum class ProviderSearchEngine(val title: String, val wire: String?) {
+    AUTO("Автоматически у поставщика", null), EXA("Exa", "exa"), PARALLEL("Parallel", "parallel"),
+    NATIVE("Движок модели", "native"), FIRECRAWL("Firecrawl", "firecrawl"), PERPLEXITY("Perplexity", "perplexity")
+}
 internal class ProviderSearchPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ilmar_provider_search", Context.MODE_PRIVATE)
     fun selected(provider: String) = runCatching { ProviderSearchProtocol.valueOf(prefs.getString(provider, "AUTO")!!) }.getOrDefault(ProviderSearchProtocol.AUTO)
     fun save(provider: String, protocol: ProviderSearchProtocol) { check(prefs.edit().putString(provider, protocol.name).commit()) }
+    fun engine(provider: String) = runCatching { ProviderSearchEngine.valueOf(prefs.getString("$provider.engine", "AUTO")!!) }.getOrDefault(ProviderSearchEngine.AUTO)
+    fun saveEngine(provider: String, engine: ProviderSearchEngine) { check(prefs.edit().putString("$provider.engine", engine.name).commit()) }
 }
 internal object ProviderSearch {
     fun resolve(selection: ProviderSearchProtocol, endpoint: String, caps: ModelCapabilities): ProviderSearchProtocol? {

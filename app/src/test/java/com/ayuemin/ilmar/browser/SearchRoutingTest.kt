@@ -21,9 +21,9 @@ class SearchRoutingTest {
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.AUTO, false, true))
         assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.AUTO, true, false))
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.BROWSER, true, true))
-        assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.AUTO, true, true, explicitBrowser = true))
-        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.PROVIDER, true, true, explicitBrowser = true))
-        assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.AUTO, true, true, explicitBrowser = true))
+        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.AUTO, true, true))
+        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.PROVIDER, true, true))
+        assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.AUTO, true, true))
         assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.PROVIDER, false, false))
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.PROVIDER, false, true) }.isFailure)
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.BROWSER, true, false) }.isFailure)
@@ -46,6 +46,11 @@ class SearchRoutingTest {
         assertFalse(payload("CHAT_COMPLETIONS").has("plugins"))
         assertEquals("low", payload("CHAT_COMPLETIONS").getJSONObject("web_search_options").getString("search_context_size"))
         assertFalse(payload("NATIVE").has("plugins")); assertFalse(payload("NATIVE").has("web_search_options"))
+        for (engine in listOf("exa", "parallel", "native", "firecrawl", "perplexity")) {
+            val body = GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = "OPENROUTER", webSearchEngine = engine))
+            assertEquals(engine, body.getJSONArray("plugins").getJSONObject(0).getString("engine"))
+        }
+        assertFalse(GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = "CHAT_COMPLETIONS", webSearchEngine = "exa")).has("plugins"))
     }
     @Test fun providerProtocolPersistsPerConnectionAndSearchDoesNotEnableAgent() {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -53,6 +58,9 @@ class SearchRoutingTest {
         config.save("a", ProviderSearchProtocol.CHAT_COMPLETIONS); config.save("b", ProviderSearchProtocol.NATIVE)
         assertEquals(ProviderSearchProtocol.CHAT_COMPLETIONS, ProviderSearchPreferences(app).selected("a"))
         assertEquals(ProviderSearchProtocol.NATIVE, ProviderSearchPreferences(app).selected("b"))
+        config.saveEngine("a", ProviderSearchEngine.PARALLEL)
+        assertEquals(ProviderSearchEngine.PARALLEL, ProviderSearchPreferences(app).engine("a"))
+        assertEquals(ProviderSearchEngine.AUTO, ProviderSearchPreferences(app).engine("b"))
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
         modes.setEnabled(91, "Агент", false); modes.setEnabled(91, "Поиск", true); modes.setChoice(91, "search_source", "browser")
         assertFalse(modes.enabled(91, "Агент"))

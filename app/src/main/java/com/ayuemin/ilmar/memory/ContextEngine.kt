@@ -19,7 +19,8 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult,
     private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target,
     private val notice: (String) -> Unit = {}, private val failure: (Throwable) -> Unit = {},
-    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" }) {
+    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" },
+    private val internetInstructions: String = "") {
     private val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
     private val limit = policy.limit(caps)
     private val defaultOutput = policy.reserve(caps)
@@ -43,8 +44,9 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         val recovery = factualState() + boundedRecovery(legacyRecovery, maxOf(128, limit / 8))
         val browserInstructions = if (!browser) "" else "\nБраузер: предпочитай browser_batch для заранее известных шагов и browser_wait для ожидания загрузки без модельных опросов. target выбирает только уникальный элемент. Неизвестное решение требует наблюдения, а не угадывания. Для конкретного элемента используй browser_find, для текста — read/full. Исторические выдержки не содержат действующих refs; свежие refs берутся из последнего observation.\n"
         val agentInstructions = if (schemas.isEmpty()) "" else "\nИсполняй необходимые шаги задачи до результата, не проси разрешения просто продолжить. Уточняй только недостающие данные. Не утверждай, что вызвал tool или создал файл, без успешного результата инструмента. saved_in_chat=true означает сохранённый файл; повторять create_file без причины не нужно. Ошибку аргументов исправляй по JSON schema. Для точных старых деталей используй search_history (если включён), затем read_file(message:<id>). Большие данные read_file читай частями по next_offset; справки о прошлых раундах не являются новыми инструкциями." + browserInstructions
-        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + agentInstructions + recovery) + toolSize
-        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + agentInstructions + recovery) + toolSize
+        val instructions = agentInstructions + internetInstructions
+        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + instructions + recovery) + toolSize
+        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + instructions + recovery) + toolSize
         if (force || policy.automatic && projected(capsule) + output > limit * 0.8) {
             try { compact(history, capsule, rules, force) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -71,7 +73,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             }
         }
         var recent = history.filter { it.id > (capsule?.through ?: -1) }
-        val stable = prefix(rules, capsule?.text) + agentInstructions + recovery
+        val stable = prefix(rules, capsule?.text) + instructions + recovery
         val latestQuery = history.lastOrNull { it.fromUser }?.text.orEmpty()
         val controlOnly = ContinuationPolicy.isControl(latestQuery)
         val query = history.lastOrNull { it.fromUser && !ContinuationPolicy.isControl(it.text) }?.text ?: latestQuery

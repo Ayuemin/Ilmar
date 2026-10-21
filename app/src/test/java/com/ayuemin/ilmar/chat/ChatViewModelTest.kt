@@ -162,8 +162,8 @@ class ChatViewModelTest {
         assertTrue(vm.state.value.errors.isEmpty()); assertEquals(2, flags.size)
         return flags
     }
-    @Test fun autoWithExplicitBrowserNeverAddsProviderSearchToModelRounds() = runTest(dispatcher) {
-        assertEquals(listOf(null, null), browserSearchRoundFlags("auto"))
+    @Test fun autoUsesProviderSearchBeforeOfferingBrowserFallback() = runTest(dispatcher) {
+        assertEquals(listOf("CHAT_COMPLETIONS", null), browserSearchRoundFlags("auto"))
     }
     @Test fun intentionalMixedBrowserSearchAddsProviderSearchOnlyWithinConfiguredQuota() = runTest(dispatcher) {
         assertEquals(listOf("CHAT_COMPLETIONS", null), browserSearchRoundFlags("provider"))

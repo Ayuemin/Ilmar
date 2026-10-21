@@ -15,6 +15,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private val session: TaskSession? = null,
     private val observation: () -> ChatMessage? = { null },
     private val consumeObservation: () -> Unit = {},
+    private val internetInstructions: String = "",
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private var budget = TaskBudget(policy, caps)
     private lateinit var activeSession: TaskSession
@@ -22,7 +23,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
         { history, options, purpose, input, saved -> invoke(history, options, purpose, input, saved) }, compactCaps, compactTarget,
         notice = { com.ayuemin.ilmar.browser.BrowserRuntime.invalidateObservations(chat); status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
         failure = { event("COMPACT_ERROR", JSONObject().put("message", it.message).put("exception", it.javaClass.simpleName).put("stack", it.stackTraceToString())) },
-        semanticSearch = semanticSearch, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
+        semanticSearch = semanticSearch, internetInstructions = internetInstructions, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
         val modelCaps = if (purpose == "compact") compactCaps else caps
         budget.before(input, options.maxOutput ?: policy.reserve(modelCaps), options.observation != null || history.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } }, options.outputParameter != null, modelCaps)

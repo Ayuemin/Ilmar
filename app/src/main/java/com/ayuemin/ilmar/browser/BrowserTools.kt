@@ -8,7 +8,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal object BrowserTools {
-    fun forChat(chat: Long, modes: ChatModePreferences, providerAvailable: Boolean, supportsTools: Boolean, vision: Boolean = false, context: android.content.Context? = null, run: String = "", control: BrowserRunControl? = null): List<BoundTool> {
+    fun forChat(chat: Long, modes: ChatModePreferences, providerAvailable: Boolean, supportsTools: Boolean, vision: Boolean = false, context: android.content.Context? = null, run: String = "", control: BrowserRunControl? = null,
+        fallbackAllowed: Boolean = false, primaryReady: () -> Boolean = { true }): List<BoundTool> {
         val policy = BrowserPolicy.load()
         BrowserRuntime.configure(chat, policy)
         val modeKey = listOf(modes.enabled(chat, "Агент"), modes.enabled(chat, "tool_Браузер"), modes.enabled(chat, "Поиск"), modes.choice(chat, "search_source"))
@@ -18,10 +19,13 @@ internal object BrowserTools {
             if (modeKey != listOf(modes.enabled(chat, "Агент"), modes.enabled(chat, "tool_Браузер"), modes.enabled(chat, "Поиск"), modes.choice(chat, "search_source"))) return false
             val agentBrowser = modes.enabled(chat, "Агент") && modes.enabled(chat, "tool_Браузер") && supportsTools
             if (agentBrowser) return true
-            return SearchRouting.resolve(modes.enabled(chat, "Поиск"), SearchRouting.source(modes.choice(chat, "search_source")), providerAvailable, supportsTools) == SearchRoute.BROWSER
+            val source = SearchRouting.source(modes.choice(chat, "search_source"))
+            val route = SearchRouting.resolve(modes.enabled(chat, "Поиск"), source, providerAvailable, supportsTools)
+            return route == SearchRoute.BROWSER || fallbackAllowed && source == SearchSource.AUTO && route == SearchRoute.PROVIDER
         }
         suspend fun prepare() {
             if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Режим браузера изменён; остановлено без повторного действия")
+            if (!primaryReady()) throw AgentFailure("PRIMARY_SEARCH_REQUIRED", "Сначала нужен ответ подключённого поиска поставщика; браузер доступен после него для сложных случаев")
             guard.beforeAction()
             if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Режим браузера изменён во время подтверждения")
         }
