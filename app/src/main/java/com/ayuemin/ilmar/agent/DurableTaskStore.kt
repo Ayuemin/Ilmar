@@ -68,6 +68,7 @@ internal class DurableTaskStore(private val store: ChatStore) {
             val result = db.rawQuery("SELECT result FROM task_executions WHERE execution_id=?", arrayOf(execution)).use { if (it.moveToFirst()) it.getString(0) else null }
             val refs = JSONArray()
             if (status == "SUCCEEDED" && fn.getString("name") == "create_file") runCatching { JSONObject(result!!).optString("file_id").takeIf { it.isNotBlank() }?.let { refs.put(it) } }
+            if (status == "SUCCEEDED" && fn.getString("name") == "browser_download") runCatching { JSONObject(result!!).optString("download_id").takeIf { it.isNotBlank() }?.let { refs.put(it) } }
             db.execSQL("INSERT OR IGNORE INTO agent_steps VALUES(?,?,?,?,?,?,?,?,?,?)", arrayOf(step, session.taskId, key, fn.getString("name"), fn.getString("arguments"), status, result, refs.toString(), execution, System.currentTimeMillis()))
             db.execSQL("UPDATE agent_steps SET status=?,result=?,file_refs=?,execution_id=?,updated_at=? WHERE id=? AND status<>'SUCCEEDED'", arrayOf(status, result, refs.toString(), execution, System.currentTimeMillis(), step))
             db.execSQL("INSERT OR IGNORE INTO agent_execution_links VALUES(?,?,?,?)", arrayOf(execution, session.taskId, session.runId, step))

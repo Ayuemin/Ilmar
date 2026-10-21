@@ -33,7 +33,7 @@ internal object ToolHistoryProjection {
                 val results = group.filter { it.optString("role") == "tool" }.joinToString("; ") { item ->
                     val content = item.optString("content")
                     val data = runCatching { JSONObject(content) }.getOrNull()
-                    if (data == null) content.take(180) else listOf("file_id", "name", "error", "memory_id", "trace_id", "result").mapNotNull { key -> data.opt(key)?.let { "$key=$it" } }.joinToString().ifBlank { content.take(180) }
+                    if (data == null) content.take(180) else listOf("file_id", "download_id", "location", "user_only", "name", "error", "memory_id", "trace_id", "result").mapNotNull { key -> data.opt(key)?.let { "$key=$it" } }.joinToString().ifBlank { content.take(180) }
                 }
                 older.add(0, if (assistant.optString("role") == "user") assistant.optString("content") else "Инструменты: $names; trace_id=${assistant.optString("_trace_id")}; результат: $results")
             }

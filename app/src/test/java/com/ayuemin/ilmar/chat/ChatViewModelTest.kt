@@ -213,7 +213,7 @@ class ChatViewModelTest {
             override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String = error("typed")
             override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
                 calls++; assertNull(options.webSearch)
-                assertEquals(setOf("browser_batch", "browser_find", "browser_wait", "browser_search", "browser_open", "browser_read", "browser_scroll", "browser_back", "browser_click", "browser_type", "browser_select", "browser_takeover"), options.tools.map { it.name }.toSet())
+                assertEquals(setOf("browser_download", "browser_batch", "browser_find", "browser_wait", "browser_search", "browser_open", "browser_read", "browser_scroll", "browser_back", "browser_click", "browser_type", "browser_select", "browser_takeover"), options.tools.map { it.name }.toSet())
                 return if (calls == 1) GenerationResult("", finishReason = "tool_calls", toolCalls = listOf(ModelToolCall("browse", "browser_search", "{\"query\":\"test fact\"}")))
                 else { assertTrue(options.toolHistory.any { it.optString("content").contains("Verified test fact") }); GenerationResult("Source-backed answer", finishReason = "stop") }
             }

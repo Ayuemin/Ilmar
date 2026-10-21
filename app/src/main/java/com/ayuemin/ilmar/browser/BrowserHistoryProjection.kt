@@ -57,7 +57,7 @@ internal object BrowserHistoryProjection {
             val page = raw?.optJSONObject("observation") ?: raw
             val summary = JSONObject().put("historical", true).put("tool", name)
                 .put("trace_id", traces[message.optString("tool_call_id")].orEmpty())
-            for (key in listOf("error", "_awaiting_user", "action_performed", "completed_steps", "halt_reason")) raw?.opt(key)?.let { summary.put(key, it) }
+            for (key in listOf("error", "_awaiting_user", "action_performed", "completed_steps", "halt_reason", "download_id", "status", "location", "user_only", "content_available_to_model")) raw?.opt(key)?.let { summary.put(key, it) }
             page?.opt("url")?.let { summary.put("url", it) }
             if (!tiny) summary.put("excerpt", page?.optString("text").orEmpty().take(120))
             // No historical refs: they must never look like current actionable elements.

@@ -21,6 +21,7 @@ internal interface BrowserPage {
     fun stop()
     fun resume() = Unit
     fun saveSession() = Unit
+    fun downloadHeaders(url: String): Map<String, String> = emptyMap()
 }
 internal data class BrowserFrame(val bytes: ByteArray, val url: String, val pageId: String, val capturedAt: Long)
 internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false, val waitingUser: Boolean = false, val pageId: String = "")
@@ -37,6 +38,12 @@ internal object BrowserRuntime {
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
     fun invalidateObservations(chat: Long) { if (lastObservationChat == chat) observations.clear() }
+    suspend fun downloadHeaders(chat: Long, url: String): Map<String, String> = lock.withLock {
+        withContext(Dispatchers.Main.immediate) {
+            require(!mutable.value.waitingUser) { "Сначала верни управление из браузера" }
+            if (documentChat == chat && mutable.value.chat == chat) page?.downloadHeaders(url).orEmpty() else emptyMap()
+        }
+    }
     fun attach(value: BrowserPage) { page = value }
     fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null; policies.clear() } }
     fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
@@ -67,6 +74,7 @@ internal object BrowserRuntime {
             val url = when (operation) { "search" -> BrowserAddress.search(argument); "open" -> argument; else -> null }
             if (url != null) BrowserAddress.parse(url)
             if (lastObservationChat != chat || operation == "open" || operation == "search") { observations.clear(); lastObservationChat = chat }
+            val previousOwner = documentChat
             if (url != null) { documentChat = null; browser.activate(chat) }
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
             try {
@@ -86,7 +94,7 @@ internal object BrowserRuntime {
                         else -> error("Неизвестная команда браузера")
                     }
                 }
-                if (url != null) documentChat = chat
+                if (url != null && (result.has("text") || result.optBoolean("download_available") && previousOwner == chat)) documentChat = chat
                 if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
                     show(chat)
                     return@withContext awaitingUser().toString()

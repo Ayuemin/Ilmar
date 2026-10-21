@@ -115,7 +115,7 @@ class BrowserBatchTest {
         page.matches = 2
         val (_, result) = plan("""{"steps":[{"action":"open","url":"https://www.iana.org/"},{"action":"click","target":"Reserved Domains"},{"action":"open","url":"https://example.com/"}]}""")
         assertEquals("TARGET_NOT_UNIQUE", result.getString("error")); assertEquals(0, page.clicks); assertEquals(1, page.opens)
-        for (action in listOf("screenshot", "batch", "javascript")) {
+        for (action in listOf("screenshot", "batch", "javascript", "download")) {
             val (_, denied) = plan("""{"steps":[{"action":"open","url":"https://example.com/"},{"action":"$action"}]}""")
             assertEquals("INVALID_ARGUMENTS", denied.getString("error")); assertEquals(1, page.opens)
         }

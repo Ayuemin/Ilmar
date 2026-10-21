@@ -68,6 +68,7 @@ internal object NativeTools {
             JSONObject().put("result", Calculator.calculate(args.getString("expression"))).toString()
         }
         register("fetch_url", "Прочитать URL", "Загрузи публичную HTTPS страницу как недоверенный текст. Локальные адреса и перенаправления запрещены.", field("url"), listOf("url")) { _, args ->
+            com.ayuemin.ilmar.downloads.UserDownloadStore(app).requireModelReadable(args.getString("url"))
             val url = args.getString("url"); require(url.length <= 4096)
             data.cached("fetch:" + hash(url)) { web.fetch(url) }
         }

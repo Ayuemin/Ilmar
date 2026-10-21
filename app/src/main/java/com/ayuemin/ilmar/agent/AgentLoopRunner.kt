@@ -75,7 +75,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     onProgress("Раунд $round · выполняется ${call.name}")
                     try {
                         if (tool == null) JSONObject().put("error", "UNKNOWN_TOOL").put("message", "Инструмент ${call.name} не доступен; используй только предоставленные schemas.").toString()
-                        else optionalTimeout(Limits.get("tool_seconds")) { kotlinx.coroutines.withContext(local) { tool.execute(JSONObject(call.arguments)) } }
+                        else optionalTimeout(Limits.get(if (call.name == "browser_download") "download_seconds" else "tool_seconds")) { kotlinx.coroutines.withContext(local) { tool.execute(JSONObject(call.arguments)) } }
                     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                         currentCoroutineContext().ensureActive()
                         JSONObject().put("error", "TOOL_TIMEOUT").put("tool", call.name).put("message", "Истекло время вызова. Проверь аргументы или расширенные настройки.").toString()

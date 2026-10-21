@@ -43,6 +43,7 @@ internal object BrowserTools {
                 prepare()
                 guard.actionStarted("browser_$name")
                 val argument = when (name) { "open" -> args.getString("url"); "search" -> args.getString("query"); "scroll" -> args.getString("direction"); else -> "" }
+                if (name == "open" && context != null) com.ayuemin.ilmar.downloads.UserDownloadStore(context).requireModelReadable(argument)
                 val output = if (name == "screenshot") BrowserVision.capture(requireNotNull(context), chat, run)
                 else BrowserRuntime.command(chat, name, argument, args)
                 guard.actionResult("browser_$name", output, modelVisible = !com.ayuemin.ilmar.agent.LocalToolExecutor.insideStep())
@@ -67,6 +68,6 @@ internal object BrowserTools {
             beforeExecute = { args -> if (runCatching { BrowserBatch.validate(args, policy) }.isSuccess) prepare() }, execute = { args ->
                 BrowserBatch.validate(args, policy); prepare()
                 BrowserBatch.execute(args, policy).also { guard.actionResult("browser_batch", it) }
-            })) else emptyList()) + if (vision && context != null) listOf(tool("screenshot", "Снимок текущего экрана для зрения на сложной странице. Изображение прикладывается к следующему запросу, сохраняется в чате; используй только при необходимости. Нельзя снимать экран во время ввода пароля/CAPTCHA пользователем.")) else emptyList()
+            })) else emptyList()) + (if (context != null) listOf(BrowserDownload.tool(context, chat, guard, ::prepare, ::authorized)) else emptyList()) + if (vision && context != null) listOf(tool("screenshot", "Снимок текущего экрана для зрения на сложной странице. Изображение прикладывается к следующему запросу, сохраняется в чате; используй только при необходимости. Нельзя снимать экран во время ввода пароля/CAPTCHA пользователем.")) else emptyList()
     }
 }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.ayuemin.ilmar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.1.4-browser-economy"
+        versionCode = 15
+        versionName = "0.1.5-provider-first-downloads"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         manifestPlaceholders["appLabel"] = "Ilmar"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -22,8 +22,8 @@ android {
     buildTypes {
         create("browserAcceptance") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".browseracceptance"
-            manifestPlaceholders["appLabel"] = "Ilmar · Browser test"
+            applicationIdSuffix = ".internetacceptance"
+            manifestPlaceholders["appLabel"] = "Ilmar · Internet test"
             matchingFallbacks += listOf("debug")
         }
     }
