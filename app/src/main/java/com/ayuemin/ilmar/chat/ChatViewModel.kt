@@ -262,6 +262,8 @@ class ChatViewModel @JvmOverloads constructor(
                             if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
+                            var providerStarted = false
+                            val notSent = TokenUsage(input = 0, output = 0, total = 0, costUsd = "0")
                             try {
                                 val callTarget = if (purpose == "compact" && compactId != null) {
                                     try { registry.targetModel(compactId) } catch (_: Exception) {
@@ -283,6 +285,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("search_route", if (purpose == "answer") searchRoute.name else "OFF")
                                     .put("search_protocol", if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) searchProtocol?.name else org.json.JSONObject.NULL)
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
+                                providerStarted = true
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
                                     if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) options.copy(webSearch = searchProtocol!!.name) else options) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
@@ -297,11 +300,12 @@ class ChatViewModel @JvmOverloads constructor(
                                 if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
                                 completion
                             } catch (e: CancellationException) {
-                                recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
+                                recordCall(chatId, requestId, if (providerStarted) TokenUsage() else notSent, if (providerStarted) "cancelled" else "not_sent", purpose); throw e
                             } catch (e: Exception) {
-                                diagnostics.failure("MODEL_ERROR", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
-                                browserControl?.afterModel((e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), if (purpose == "compact") compactCaps else capabilities)
-                                recordCall(chatId, requestId, (e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), "failed", purpose); throw e
+                                diagnostics.failure(if (providerStarted) "MODEL_ERROR" else "MODEL_NOT_SENT", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
+                                val usage = if (providerStarted) (e as? ProviderFailure)?.reportedUsage ?: TokenUsage() else notSent
+                                if (providerStarted) browserControl?.afterModel(usage, if (purpose == "compact") compactCaps else capabilities)
+                                recordCall(chatId, requestId, usage, if (providerStarted) "failed" else "not_sent", purpose); throw e
                             }
                         }).run(history, compactOnly, reasoning, tools)
                 }

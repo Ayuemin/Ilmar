@@ -18,7 +18,7 @@ internal class BrowserObservations {
             // Only exact fields are omitted. Changed fields remain complete; no lossy text diff.
             result.put("representation", "DOM_DELTA").put("base_snapshot_id", old.getString("snapshot_id"))
             for (field in listOf("text", "controls", "links")) {
-                if (page.has(field) && old.opt(field).toString() == page.opt(field).toString()) {
+                if (page.has(field) && old.opt(field)?.toString() == page.opt(field)?.toString()) {
                     if (field == "text") result.put("text", "") else result.remove(field)
                     result.put("${field}_unchanged", true)
                 }

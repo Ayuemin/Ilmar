@@ -20,6 +20,7 @@ class UsageLedger(private val records: List<UsageRecord>) {
     private val partialTokens = records.any { it.usage.input == null || it.usage.output == null }
     fun describe(): String = buildString {
         append("Учтено запросов: $calls; прерванных/ошибок: $failed\n")
+        if (records.any { it.status == "not_sent" }) append("Не отправлено провайдеру: ${records.count { it.status == "not_sent" }}; нулевой usage этих попыток установлен локально.\n")
         append("Compact: $compactCalls запросов; стоимость: ${compactCost ?: "нет данных"} USD\n")
         append("Сокращение входа по оценке: $estimatedSaved токенов (не денежная экономия)\n")
         append("Вход: ${input ?: "нет данных"}; выход: ${output ?: "нет данных"}\n")

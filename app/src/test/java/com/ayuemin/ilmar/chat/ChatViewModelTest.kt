@@ -140,6 +140,34 @@ class ChatViewModelTest {
         assertFalse(modes.enabled(chat, "Агент"))
     }
 
+    @Test fun browserBudgetCancelledBeforeSendingModelHasKnownZeroUsage() = runTest(dispatcher) {
+        val limits = com.ayuemin.ilmar.settings.RuntimeLimits
+        limits.install(app)
+        limits.save(limits.fields.associate { it.key to if (it.key == "browser_budget_cents") 1 else it.default })
+        try {
+            val connection = registry.snapshot().providers.single()
+            registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel("m", ModelCapabilities(setOf("tools"), known = true))))
+            val provider = FakeProvider()
+            val vm = ChatViewModel(app, provider, registry, dispatcher)
+            val chat = vm.state.value.selectedId
+            ChatModePreferences(app).apply { setEnabled(chat, "Поиск", true); setChoice(chat, "search_source", "browser") }
+            vm.send("Find a fact"); runCurrent()
+            val pending = com.ayuemin.ilmar.browser.BrowserPrompts.pending.value
+            assertNotNull(pending); assertEquals(0, provider.calls)
+            com.ayuemin.ilmar.browser.BrowserPrompts.respond(pending!!.id, false)
+            advanceUntilIdle()
+            assertEquals(0, provider.calls); assertNull(vm.state.value.activeChatId)
+            assertEquals("0", vm.usage(chat).costUsd); assertFalse(vm.usage(chat).incompleteCost)
+            assertEquals(0L, vm.usage(chat).input)
+            assertTrue(vm.usage(chat).describe().contains("Не отправлено провайдеру"))
+            ChatStore(app).use { db ->
+                val task = com.ayuemin.ilmar.memory.ContextStore(db).tasks.snapshot(chat)!!.getString("task_id")
+                val spent = com.ayuemin.ilmar.memory.ContextStore(db).tasks.spent(task)
+                assertFalse(spent.unknownCost); assertEquals(0, spent.cost.compareTo(java.math.BigDecimal.ZERO))
+            }
+        } finally { limits.reset() }
+    }
+
     @Test fun localBrowserCompletesToolRoundInOrdinaryChat() = runTest(dispatcher) {
         val connection = registry.snapshot().providers.single()
         registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel("m", ModelCapabilities(setOf("tools"), known = true))))
