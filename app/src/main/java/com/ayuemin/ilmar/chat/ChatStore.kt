@@ -273,6 +273,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
             writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
+            writableDatabase.execSQL("DELETE FROM interventions WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM messages WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM request_usage WHERE chat_id = ?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM embedding_queries WHERE chat_id = ?", arrayOf(chatId))
