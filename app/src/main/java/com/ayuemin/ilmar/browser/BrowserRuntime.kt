@@ -11,6 +11,7 @@ internal interface BrowserPage {
     fun configure(policy: BrowserPolicy) = Unit
     fun activate(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
+    suspend fun find(query: String, exact: Boolean): JSONObject = error("Поиск элемента недоступен")
     suspend fun readFull(): JSONObject = read()
     suspend fun read(): JSONObject
     suspend fun scroll(down: Boolean): JSONObject
@@ -53,7 +54,8 @@ internal object BrowserRuntime {
     suspend fun command(chat: Long, operation: String, argument: String = "", details: JSONObject = JSONObject()): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")
-            browser.configure(policies[chat] ?: BrowserPolicy.load())
+            val policy = policies[chat] ?: BrowserPolicy.load()
+            browser.configure(policy)
             if (operation != "open" && operation != "search") require(mutable.value.chat == chat && documentChat == chat) { "Сначала открой страницу для текущего чата" }
             if (mutable.value.waitingUser) {
                 require(mutable.value.chat == chat) { "Браузером управляет пользователь другого чата" }
@@ -68,11 +70,17 @@ internal object BrowserRuntime {
             if (url != null) { documentChat = null; browser.activate(chat) }
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
             try {
-                val result = withTimeout(25000) {
+                val result = withTimeout(if (operation == "wait") policy.waitMs.toLong() + 5000 else 25000) {
                     when (operation) {
                         "open", "search" -> browser.open(url!!)
                         "read" -> if (details.optBoolean("full")) browser.readFull() else browser.read()
                         "back" -> browser.back()
+                        "find" -> browser.find(details.getString("query"), details.optBoolean("exact"))
+                        "wait" -> {
+                            val milliseconds = if (details.has("timeout_ms")) details.getLong("timeout_ms") else policy.waitMs.toLong()
+                            require(milliseconds in 0..policy.waitMs.toLong()) { "Ожидание превышает лимит ${policy.waitMs} мс" }
+                            waitForChange(browser, milliseconds)
+                        }
                         "click", "type", "select" -> browser.act(operation, details)
                         "scroll" -> { require(argument in setOf("up", "down")); browser.scroll(argument == "down") }
                         else -> error("Неизвестная команда браузера")
@@ -89,6 +97,24 @@ internal object BrowserRuntime {
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
                 throw e
             }
+        }
+    }
+    private suspend fun waitForChange(browser: BrowserPage, milliseconds: Long): JSONObject {
+        fun signature(value: JSONObject) = listOf("page_id", "url", "title", "text", "controls", "links", "scroll_y", "requires_user").joinToString { value.opt(it)?.toString().orEmpty() }
+        val baseline = observations.latest() ?: browser.read()
+        var polls = 0
+        val started = android.os.SystemClock.uptimeMillis()
+        var elapsed = 0L
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            if (mutable.value.waitingUser) return awaitingUser()
+            val current = browser.read(); polls++
+            val changed = signature(current) != signature(baseline)
+            if (changed || current.optBoolean("requires_user") || elapsed >= milliseconds) return current
+                .put("wait_changed", changed).put("local_polls", polls).put("wait_elapsed_ms", elapsed)
+            val pause = minOf(200L, milliseconds - elapsed)
+            delay(pause)
+            elapsed = maxOf(elapsed + pause, android.os.SystemClock.uptimeMillis() - started)
         }
     }
     suspend fun screenshot(chat: Long): ByteArray = captureFrame(chat).bytes

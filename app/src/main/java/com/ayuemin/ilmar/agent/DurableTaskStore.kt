@@ -134,7 +134,10 @@ internal class DurableTaskStore(private val store: ChatStore) {
         return "\nФактическое состояние задачи из SQLite (отдельно от сводки модели):\n${state}\nSUCCEEDED подтверждён исполнителем; одинаковое побочное действие в этой задаче использует сохранённый результат. UNKNOWN не повторять без проверки. ANSWERED означает завершение ответа, а не доказанное достижение цели.\n"
     }
     companion object {
-        private fun operation(name: String, args: String) = ContextEstimate.hash(name + "\n" + ToolOperationPolicy.canonical(args))
+        private fun operation(name: String, args: String): String {
+            val identity = if (name == LocalToolExecutor.STEP) JSONObject(args).getString("identity") else ToolOperationPolicy.canonical(args)
+            return ContextEstimate.hash(name + "\n" + identity)
+        }
         fun create(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS agent_tasks(id TEXT PRIMARY KEY,chat_id INTEGER NOT NULL,anchor_message_id INTEGER NOT NULL,goal TEXT NOT NULL,status TEXT NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(chat_id,anchor_message_id))")
             db.execSQL("CREATE TABLE IF NOT EXISTS agent_task_messages(chat_id INTEGER NOT NULL,message_id INTEGER NOT NULL,task_id TEXT NOT NULL,PRIMARY KEY(chat_id,message_id))")

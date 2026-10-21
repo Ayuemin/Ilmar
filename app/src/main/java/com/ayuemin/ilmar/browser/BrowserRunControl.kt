@@ -51,8 +51,8 @@ internal class BrowserRunControl(
         active(); actions++
         event("BROWSER_ACTION", summary().put("tool", name))
     }
-    fun actionResult(name: String, output: String) {
-        event("BROWSER_RESULT", summary().put("tool", name).put("result_chars", output.length)
+    fun actionResult(name: String, output: String, modelVisible: Boolean = true) {
+        event("BROWSER_RESULT", summary().put("tool", name).put("model_visible", modelVisible).put("result_chars", output.length)
             .put("result_utf8_bytes", output.toByteArray(Charsets.UTF_8).size)
             .put("result_tokens_estimate", com.ayuemin.ilmar.memory.ContextEstimate.text(output)))
     }

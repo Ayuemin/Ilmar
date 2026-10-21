@@ -6,6 +6,7 @@ import java.security.MessageDigest
 /** Cache is scoped to one browser/chat, never persisted as proof that an action succeeded. */
 internal class BrowserObservations {
     private var previous: JSONObject? = null
+    fun latest(): JSONObject? = previous?.let { JSONObject(it.toString()) }
     fun clear() { previous = null }
     fun encode(page: JSONObject, force: Boolean = false, full: Boolean = false): JSONObject {
         val result = JSONObject(page.toString())

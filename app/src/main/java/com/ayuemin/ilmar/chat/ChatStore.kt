@@ -79,8 +79,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         val policy = com.ayuemin.ilmar.agent.ToolOperationPolicy
         if (policy.safeToRepeat(toolName, arguments)) return false
         // Browser page/ref IDs change on reload. A fresh snapshot cannot bypass an uncertain write.
-        if (toolName in setOf("browser_click", "browser_type", "browser_select") && readableDatabase.rawQuery(
-            "SELECT 1 FROM task_executions WHERE chat_id=? AND execution_id<>? AND tool_name IN ('browser_click','browser_type','browser_select') AND status='UNKNOWN' LIMIT 1",
+        if (toolName in setOf("browser_click", "browser_type", "browser_select", "_browser_batch_step") && readableDatabase.rawQuery(
+            "SELECT 1 FROM task_executions WHERE chat_id=? AND execution_id<>? AND tool_name IN ('browser_click','browser_type','browser_select','_browser_batch_step') AND status='UNKNOWN' LIMIT 1",
             arrayOf(chatId.toString(), executionId)).use { it.moveToFirst() }) return true
         val canonical = policy.canonical(arguments)
         return readableDatabase.rawQuery(

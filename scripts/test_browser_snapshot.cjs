@@ -118,3 +118,22 @@ console.log('Same-document DOM mutation invalidates stale actions; unchanged DOM
 
 assert.equal(editableAction('click', {x:500,y:250}, 'INPUT', 800).result.error, 'STALE_VIEWPORT');
 console.log('Coordinate actions reject snapshots taken before a viewport resize');
+// Fixed selective lookup uses current refs, excludes values, and never guesses an ambiguous target.
+const findBody = fs.readFileSync('app/src/main/java/com/ayuemin/ilmar/browser/BrowserFind.kt', 'utf8').match(/const val BODY = """([\s\S]*?)"""/)[1];
+function findFixture(labels, query, exact = true) {
+  const elements = labels.map((label, index) => ({innerText: label, tagName:'BUTTON', type:'button', value:'private-value',
+    getAttribute: () => '', getClientRects: () => index === 2 ? [] : [{}], matches: () => false}));
+  const state = {id:'fresh-page',refs:new Map(),elements:new Map(),next:1};
+  return JSON.parse(vm.runInNewContext('(function(){const query='+JSON.stringify(query)+';const exact='+exact+';const baseline={url:"https://example.com/",title:"Test"};'+findBody+'})()', {
+    window:{__ilmarBrowser:state}, document:{querySelectorAll: () => elements}
+  }, {timeout:1000}));
+}
+assert.equal(findFixture(['Search', 'Other', 'Hidden Search'], '  SEARCH ').matches.length, 1);
+assert.equal(findFixture(['Search', 'Search'], 'Search').matches.length, 2);
+assert.equal(findFixture(['Start Search'], 'Search').matches.length, 0);
+assert.equal(findFixture(['Start Search'], 'Search', false).matches.length, 1);
+assert.equal(findFixture(['Search'], 'Search').page_id, 'fresh-page');
+assert.equal(JSON.stringify(findFixture(['Search'], 'Search')).includes('private-value'), false);
+assert.equal(findFixture(['x'.repeat(2)], '";throw Error(1);//').matches.length, 0);
+assert.equal(findFixture(Array(5001).fill('Search'), 'Search').matches_truncated, true);
+console.log('Browser find JavaScript: unique/ambiguous labels, fresh refs, hidden nodes, bounded lookup and no input values passed');

@@ -45,4 +45,14 @@ class BrowserPayloadPolicyTest {
         assertTrue(result.getBoolean("context_excerpt"))
         assertTrue(runCatching { BrowserHistoryProjection.project(original, BrowserPolicy(historyTokens = 1)) }.isFailure)
     }
+    @Test fun genericHistoryReductionCannotReplaceLatestDomWithTraceExcerpt() {
+        val current = group("a", page("x".repeat(1500), "current"))
+        val size = com.ayuemin.ilmar.memory.ContextEstimate.text(current.joinToString())
+        // This group fits the budget but exceeds the former 70% retention threshold.
+        val kept = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(current, size + 100, preserveLatestBrowser = true)
+        assertEquals("current", JSONObject(kept.last().getString("content")).getString("snapshot_id"))
+        assertEquals(1, JSONObject(kept.last().getString("content")).getJSONArray("controls").length())
+        val error = runCatching { com.ayuemin.ilmar.memory.ToolHistoryProjection.project(current, 128, preserveLatestBrowser = true) }.exceptionOrNull() as com.ayuemin.ilmar.agent.AgentFailure
+        assertEquals("BROWSER_CONTEXT_LIMIT", error.code)
+    }
 }

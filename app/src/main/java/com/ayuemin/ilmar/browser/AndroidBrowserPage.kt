@@ -95,6 +95,13 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         }
         finally { if (pending === navigation) pending = null }
     }
+    override suspend fun find(query: String, exact: Boolean): JSONObject {
+        resume()
+        require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
+        val result = JSONObject(org.json.JSONTokener(evaluate(BrowserFind.script(query, exact, policy))).nextValue() as String)
+        require(result.optString("url") == view.url) { "Страница изменилась во время поиска" }
+        return result
+    }
     override suspend fun read(): JSONObject = snapshot(false)
     override suspend fun readFull(): JSONObject = snapshot(true)
     private suspend fun snapshot(full: Boolean): JSONObject {

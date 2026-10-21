@@ -6,7 +6,7 @@ import org.json.JSONObject
 /** Only trusted built-in reads bypass the unresolved-side-effect gate. Unknown tools fail closed. */
 internal object ToolOperationPolicy {
     fun safeToRepeat(name: String, arguments: String): Boolean = when (name) {
-        "browser_screenshot", "browser_takeover", "browser_back", "browser_search", "browser_open", "browser_read", "browser_scroll", "calculator", "read_file", "fetch_url", "web_search", "search_history", "recall_memory", "ask_user" -> true
+        "browser_batch", "browser_find", "browser_wait", "browser_screenshot", "browser_takeover", "browser_back", "browser_search", "browser_open", "browser_read", "browser_scroll", "calculator", "read_file", "fetch_url", "web_search", "search_history", "recall_memory", "ask_user" -> true
         "todo" -> runCatching { !JSONObject(arguments).has("steps") }.getOrDefault(false)
         else -> false
     }

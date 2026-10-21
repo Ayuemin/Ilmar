@@ -34,7 +34,10 @@ internal object BrowserHistoryProjection {
                     full.put("observation_required", true).put("notice", "База DOM отсутствует в контексте; запроси browser_read или browser_find.")
                 } else {
                     for (field in listOf("text", "controls", "links")) {
-                        if (page.optBoolean("${field}_unchanged")) full.put(field, base.opt(field))
+                        if (page.optBoolean("${field}_unchanged")) {
+                            full.put(field, base.opt(field))
+                            if (field == "text" && base.optBoolean("context_excerpt")) full.put("context_excerpt", true).put("text_truncated", true)
+                        }
                         full.remove("${field}_unchanged")
                     }
                     full.remove("base_snapshot_id"); full.put("representation", "DOM_COMPACT")
@@ -43,7 +46,7 @@ internal object BrowserHistoryProjection {
             snapshots[full.optString("snapshot_id")] = full
             // Batch keeps only its final observation in the model-facing response.
             if (payload.has("observation")) payload.put("observation", full)
-            else full.keys().forEach { payload.put(it, full.get(it)) }.also { payload.remove("base_snapshot_id") }
+            else full.keys().forEach { payload.put(it, full.get(it)) }.also { payload.remove("base_snapshot_id"); listOf("text_unchanged", "controls_unchanged", "links_unchanged").forEach { payload.remove(it) } }
             message.put("content", payload.toString())
             observations += message
         }

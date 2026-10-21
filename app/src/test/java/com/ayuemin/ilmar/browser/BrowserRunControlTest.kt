@@ -37,7 +37,7 @@ class BrowserRunControlTest {
         val error = task.await().exceptionOrNull() as AgentFailure
         assertEquals("BROWSER_CANCELLED", error.code); assertFalse(started)
         for (tool in tools) {
-            val denied = runCatching { tool.beforeExecute(JSONObject()) }.exceptionOrNull()
+            val denied = runCatching { tool.beforeExecute(if (tool.schema.name == "browser_batch") JSONObject("{\"steps\":[{\"action\":\"read\"}]}") else JSONObject()) }.exceptionOrNull()
             assertTrue(denied is AgentFailure)
         }
         assertEquals(1, prompts)
@@ -88,7 +88,7 @@ class BrowserRunControlTest {
         val preferences = modes(602)
         preferences.setEnabled(602, "Агент", true); preferences.setEnabled(602, "tool_Браузер", true)
         val tools = BrowserTools.forChat(602, preferences, false, true)
-        for (tool in tools) tool.beforeExecute(JSONObject())
+        for (tool in tools) tool.beforeExecute(if (tool.schema.name == "browser_batch") JSONObject("{\"steps\":[{\"action\":\"read\"}]}") else JSONObject())
         assertNull(BrowserPrompts.pending.value)
     }
     @Test fun cancelledDialogClearsPendingAndStaleUiResponseCannotApproveNewOne() = runTest {
