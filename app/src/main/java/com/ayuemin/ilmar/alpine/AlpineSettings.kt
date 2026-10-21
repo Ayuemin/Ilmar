@@ -17,9 +17,17 @@ internal fun AlpineSettings() {
     var status by remember { mutableStateOf("") }
     var removing by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("cat /etc/alpine-release; uname -m; apk --version") }
+    var dns by remember { mutableStateOf(runtime.dnsSetting()) }
     Text("Alpine Linux · ARM64", style = MaterialTheme.typography.titleMedium)
     Text("Окружение Linux через PRoot по референсу Agora, без root и отдельного ярлыка. Rootfs скачивается отдельно, проверяется SHA-256, затем проходит пробный запуск. Одна файловая система общая для всех чатов; файлы сохраняются между командами. Сеть доступна; пакеты устанавливаются через apk add.")
     Text("PRoot работает с правами Ilmar и не является защитной sandbox. Выполняй доверенные команды. Ключи API не подставляются в окружение. Каждая команда агента требует подтверждения. Терминал неинтерактивный, вывод до 64 КиБ, время до 300 секунд.")
+    Text("Интернет и исходящие SSH используют сеть Android. Для SSH установи apk add openssh-client; ключи и known_hosts хранятся внутри Alpine. Парольный ввод и интерактивная SSH-сессия требуют PTY, которого здесь пока нет.")
+    OutlinedTextField(dns, { dns = it }, label = { Text("DNS IP через пробел; пусто — DNS сети Android") })
+    TextButton(onClick = {
+        try { runtime.setDns(dns); status = "DNS сохранён" }
+        catch (e: IllegalArgumentException) { status = e.message.orEmpty() }
+    }) { Text("Сохранить DNS") }
+    Text("Если Android не сообщает DNS, используются 1.1.1.1 и 8.8.8.8; для корпоративной сети/VPN можно указать свои адреса.", style = MaterialTheme.typography.bodySmall)
     if (!runtime.supported()) Text("Этот APK/устройство не поддерживает ARM64 PRoot.")
     Button(enabled = runtime.supported() && !installed && !busy, onClick = { operation = scope.launch {
         busy = true; status = "Скачивание и проверка Alpine…"

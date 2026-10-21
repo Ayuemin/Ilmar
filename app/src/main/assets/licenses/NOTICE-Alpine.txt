@@ -6,9 +6,9 @@ See PROot-COPYING.txt and copyright notices in the corresponding source.
 
 talloc: Copyright Andrew Tridgell, Stefan Metzmacher and other contributors.
 GNU LGPL version 3 or later; see LGPL-3.txt and GPL-3.txt.
-Source: https://github.com/newo-ether/Agora/tree/3e7b0c8c89d591c3cd58a4bc6824861223576c1d/thirdparty/talloc
+Source: https://github.com/samba-team/samba/tree/f28966c1638806a5af1fa4e451b668af638491ce/lib/talloc
 
-Reference: Agora build-proot.sh at the same commit. Ilmar uses its own Kotlin runtime/UI and build orchestration.
+Architectural reference: Agora build-proot.sh at 3e7b0c8c89d591c3cd58a4bc6824861223576c1d. Ilmar uses its own Kotlin runtime/UI and build orchestration.
 Ilmar patches PRoot's cross-compilation probes, a missing string.h include and the loader symbol parser.
 The exact original sources, patched sources, launcher and build script are included in the
 ilmar-alpine-corresponding-source artifact alongside each APK in GitHub Actions.

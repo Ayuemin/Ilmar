@@ -36,6 +36,26 @@ internal class AlpineRuntime(context: Context) {
         listOf("libproot_exec.so", "libproot_loader.so", "libtalloc.so", "libilmar_process.so").all { File(native, it).isFile }
     fun installed() = File(root, ".ilmar-ready").isFile && supported()
     fun hasFiles() = directory.exists()
+    private val preferences = app.getSharedPreferences("ilmar_alpine", Context.MODE_PRIVATE)
+    fun dnsSetting() = preferences.getString("dns", "").orEmpty()
+    fun setDns(value: String) {
+        val values = value.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        require(values.size <= 4 && values.all { address ->
+            if (':' in address) address.matches(Regex("[0-9a-fA-F:.]+")) && runCatching { java.net.InetAddress.getByName(address) }.isSuccess
+            else address.split('.').let { it.size == 4 && it.all { piece -> piece.isNotBlank() && piece.all(Char::isDigit) && (piece.toIntOrNull() ?: -1) in 0..255 } }
+        }) { "DNS: до четырёх IPv4/IPv6 адресов через пробел; пусто — сеть Android" }
+        check(preferences.edit().putString("dns", values.joinToString(" ")).commit())
+    }
+    private fun updateDns(filesystem: File) {
+        val configured = dnsSetting().split(' ').filter { it.isNotBlank() }
+        val manager = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val automatic = manager?.activeNetwork?.let { manager.getLinkProperties(it) }?.dnsServers.orEmpty().mapNotNull { it.hostAddress }
+        val addresses = configured.ifEmpty { automatic }.ifEmpty { listOf("1.1.1.1", "8.8.8.8") }
+        val file = File(filesystem, "etc/resolv.conf")
+        check(file.parentFile!!.canonicalPath.startsWith(filesystem.canonicalPath + File.separator))
+        if (java.nio.file.Files.isSymbolicLink(file.toPath())) check(file.delete())
+        file.writeText(addresses.joinToString("\n", postfix = "\n") { "nameserver $it" })
+    }
 
     suspend fun install(): String = withContext(Dispatchers.IO) { mutation.withLock {
         check(supported()) { "Alpine требует ARM64 и сборку APK с PRoot" }
@@ -85,6 +105,7 @@ internal class AlpineRuntime(context: Context) {
 
     private suspend fun runProcess(filesystem: File, command: String, workdir: String, seconds: Int): JSONObject = coroutineScope {
         val native = native ?: error("Native PRoot не включён в этот APK")
+        updateDns(filesystem)
         val args = listOf(File(native, "libilmar_process.so").path, File(native, "libproot_exec.so").path,
             "--rootfs=${filesystem.path}", "--bind=/dev", "--bind=/proc", "--bind=/sys", "--bind=/dev/urandom:/dev/random",
             "-w", workdir, "-0", "--link2symlink", "--kill-on-exit", "-L", "/bin/sh", "-c", command)
