@@ -15,6 +15,7 @@ import org.robolectric.annotation.Config
 class BrowserViewVisibilityTest {
     @Test fun hiddenViewKeepsViewportAndCannotReceiveTouchesOrAccessibilityFocus() {
         val view = WebView(ApplicationProvider.getApplicationContext())
+        view.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(1800, View.MeasureSpec.EXACTLY))
         view.layout(0, 0, 1080, 1800)
         BrowserViewVisibility.apply(view, false)
         assertEquals(View.INVISIBLE, view.visibility)
@@ -23,7 +24,13 @@ class BrowserViewVisibilityTest {
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, view.importantForAccessibility)
         assertEquals(1080, view.width); assertEquals(1800, view.height)
         val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 20f, 20f, 0)
-        try { assertFalse(view.dispatchTouchEvent(event)) } finally { event.recycle() }
+        val parent = android.widget.FrameLayout(view.context)
+        var touches = 0
+        val chat = View(view.context).apply { setOnTouchListener { _, _ -> touches++; true } }
+        parent.addView(chat, android.widget.FrameLayout.LayoutParams(1080, 1800))
+        parent.addView(view, android.widget.FrameLayout.LayoutParams(1080, 1800))
+        parent.layout(0, 0, 1080, 1800); chat.layout(0, 0, 1080, 1800)
+        try { assertTrue(parent.dispatchTouchEvent(event)); assertEquals(1, touches) } finally { event.recycle() }
         BrowserViewVisibility.apply(view, true)
         assertEquals(View.VISIBLE, view.visibility); assertTrue(view.isEnabled)
         BrowserViewVisibility.apply(view, false)
