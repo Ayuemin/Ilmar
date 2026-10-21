@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 10), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 11), java.io.Closeable {
     internal val appContext: Context = context.applicationContext
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
@@ -14,6 +14,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         createContext(db)
         createToolTraces(db)
         createTaskExecutions(db)
+        createInterventions(db)
         com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
         com.ayuemin.ilmar.memory.SemanticArchive.create(db)
     }
@@ -28,6 +29,57 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 8) com.ayuemin.ilmar.memory.SemanticArchive.createEconomyTables(db)
         if (oldVersion < 9) com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
         if (oldVersion < 10) com.ayuemin.ilmar.agent.DurableTaskStore.createIndexes(db)
+        if (oldVersion < 11) createInterventions(db)
+    }
+
+    data class Intervention(val id: Long, val chatId: Long, val text: String, val status: String)
+    private fun createInterventions(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS interventions (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS interventions_chat_status ON interventions(chat_id,status,id)")
+    }
+    fun interventions(chatId: Long): List<Intervention> {
+        val items = mutableListOf<Intervention>()
+        readableDatabase.rawQuery("SELECT id,chat_id,text,status FROM interventions WHERE chat_id=? AND status IN ('PENDING','NOW','QUEUED') ORDER BY id", arrayOf(chatId.toString())).use { rows ->
+            while (rows.moveToNext()) items += Intervention(rows.getLong(0), rows.getLong(1), rows.getString(2), rows.getString(3))
+        }
+        return items
+    }
+    fun stageIntervention(chatId: Long, text: String): Long {
+        require(text.isNotBlank())
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            check(db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { it.moveToFirst() })
+            val values = android.content.ContentValues().apply { put("chat_id",chatId);put("text",text.trim());put("status","PENDING");put("created_at",System.currentTimeMillis()) }
+            val id = db.insertOrThrow("interventions",null,values)
+            db.setTransactionSuccessful()
+            return id
+        } finally { db.endTransaction() }
+    }
+    fun updateIntervention(chatId: Long, id: Long, status: String) {
+        require(status in setOf("NOW","QUEUED","CANCELLED"))
+        writableDatabase.execSQL("UPDATE interventions SET status=? WHERE chat_id=? AND id=? AND status='PENDING'",arrayOf(status,chatId,id))
+    }
+    /** Claim and persist a user turn in one transaction; never duplicate after restart. */
+    fun deliverInterventions(chatId: Long, status: String): List<ChatMessage> {
+        require(status in setOf("NOW","QUEUED"))
+        val db = writableDatabase
+        val delivered = mutableListOf<ChatMessage>()
+        db.beginTransaction()
+        try {
+            db.rawQuery("SELECT id,text FROM interventions WHERE chat_id=? AND status=? ORDER BY id",arrayOf(chatId.toString(),status)).use { rows ->
+                while (rows.moveToNext()) {
+                    val id = rows.getLong(0)
+                    val text = rows.getString(1)
+                    val values = android.content.ContentValues().apply { put("chat_id",chatId);put("text",text);put("from_user",1) }
+                    val messageId = db.insertOrThrow("messages",null,values)
+                    db.execSQL("UPDATE interventions SET status='DELIVERED' WHERE id=? AND chat_id=? AND status=?",arrayOf(id,chatId,status))
+                    delivered += ChatMessage(text,true,id=messageId)
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return delivered
     }
 
     private fun createTaskExecutions(db: SQLiteDatabase) {
