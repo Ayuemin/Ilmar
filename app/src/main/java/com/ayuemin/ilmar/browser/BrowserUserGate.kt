@@ -9,14 +9,17 @@ internal object BrowserUserGate {
     fun requiresUser(snapshot: JSONObject): Boolean {
         if (snapshot.optBoolean("requires_user")) return true
         val url = snapshot.optString("url")
-        val path = runCatching { java.net.URI(url).path.orEmpty() }.getOrDefault("")
+        val uri = runCatching { java.net.URI(url) }.getOrNull()
+        val path = uri?.path.orEmpty()
+        val loginQuery = Regex("""(?:^|[&?])(?:act|action|page)=(?:login|signin|auth)(?:&|$)""", RegexOption.IGNORE_CASE)
+            .containsMatchIn("?" + uri?.rawQuery.orEmpty())
         val controls = snapshot.optJSONArray("controls")
         val formPresent = (0 until (controls?.length() ?: 0)).any { i ->
             val control = controls?.optJSONObject(i)
             control?.optString("tag") in setOf("input", "textarea") ||
                 control?.optString("type") in setOf("password", "email")
         }
-        if (authPath.containsMatchIn(path) && formPresent) return true
+        if ((authPath.containsMatchIn(path) || loginQuery) && formPresent) return true
         val text = snapshot.optString("text").take(4000)
         return challenge.containsMatchIn(text)
     }
