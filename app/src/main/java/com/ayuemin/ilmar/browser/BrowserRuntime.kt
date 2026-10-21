@@ -95,7 +95,7 @@ internal object BrowserRuntime {
                     }
                 }
                 if (url != null && (result.has("text") || result.optBoolean("download_available") && previousOwner == chat)) documentChat = chat
-                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
+                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user") || BrowserUserGate.requiresUser(result)) {
                     show(chat)
                     return@withContext awaitingUser().toString()
                 }
@@ -132,7 +132,7 @@ internal object BrowserRuntime {
             val browser = page ?: error("Браузер не готов")
             val state = browser.read()
             mutable.value = mutable.value.copy(pageId = state.optString("page_id"))
-            require(!state.optBoolean("requires_user")) { "Нельзя снимать страницу ввода пароля или CAPTCHA; передай её пользователю" }
+            if (state.optBoolean("requires_user") || BrowserUserGate.requiresUser(state)) { show(chat); error("USER_REQUIRED: авторизация или CAPTCHA — управление передано пользователю") }
             val bytes = withTimeout(5000) { browser.screenshot() }
             require(!mutable.value.waitingUser && mutable.value.chat == chat) { "Снимок отменён: управление передано пользователю" }
             require(browser.read().optString("page_id") == state.optString("page_id")) { "Страница изменилась во время снимка" }
