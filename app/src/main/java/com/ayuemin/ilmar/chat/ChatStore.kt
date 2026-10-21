@@ -58,7 +58,8 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     }
     fun updateIntervention(chatId: Long, id: Long, status: String) {
         require(status in setOf("NOW","QUEUED","CANCELLED"))
-        writableDatabase.execSQL("UPDATE interventions SET status=? WHERE chat_id=? AND id=? AND status='PENDING'",arrayOf(status,chatId,id))
+        val allowed = if (status == "CANCELLED") "status IN ('PENDING','NOW','QUEUED')" else "status='PENDING'"
+        writableDatabase.execSQL("UPDATE interventions SET status=? WHERE chat_id=? AND id=? AND $allowed",arrayOf(status,chatId,id))
     }
     /** Claim and persist a user turn in one transaction; never duplicate after restart. */
     fun deliverInterventions(chatId: Long, status: String): List<ChatMessage> {
