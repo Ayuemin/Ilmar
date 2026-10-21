@@ -58,13 +58,16 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jsoup:jsoup:1.18.3")
+    implementation("org.jsoup:jsoup:1.23.2")
     implementation("com.google.code.gson:gson:2.11.0")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    constraints {
+        testImplementation("org.bouncycastle:bcprov-jdk18on:1.85") { because("OSV advisories fixed in 1.85; used transitively by test TLS fixtures") }
+    }
     testImplementation("junit:junit:4.13.2")
 }
 
