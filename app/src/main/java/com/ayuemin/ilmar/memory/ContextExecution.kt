@@ -16,6 +16,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private val observation: () -> ChatMessage? = { null },
     private val consumeObservation: () -> Unit = {},
     private val internetInstructions: String = "",
+    private val takeInterventions: () -> List<ChatMessage> = { emptyList() },
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private var budget = TaskBudget(policy, caps)
     private lateinit var activeSession: TaskSession
@@ -44,6 +45,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     }
     suspend fun run(history: List<ChatMessage>, manual: Boolean, reasoning: ReasoningConfig?, tools: List<BoundTool>): GenerationResult? {
         activeSession = session ?: memory.tasks.begin(chat, history)
+        val injected = mutableListOf<ChatMessage>()
         try {
             val spent = memory.tasks.spent(activeSession.taskId)
             if (policy.taskUsd != null && spent.unknownCost) throw ContextFailure("Стоимость предыдущего запроса задачи неизвестна; денежный бюджет нельзя подтвердить. Проверь расходы у провайдера.")
@@ -66,7 +68,8 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
             ).run(tools) { toolHistory, schemas ->
                 val frame = observation()
                 val extraTokens = frame?.let { ContextEstimate.messages(listOf(it)) } ?: 0
-                val projection = engine.prepare(history, schemas, toolHistory, extraInputTokens = extraTokens)
+                injected += takeInterventions()
+                val projection = engine.prepare(history + injected, schemas, toolHistory, extraInputTokens = extraTokens)
                 val image = frame?.let { com.ayuemin.ilmar.attachments.AttachmentPayload.build(listOf(it), caps, files)[it.id] }
                 status("Контекст ≈ ${projection.estimatedInput} + ${projection.output} / ${projection.limit} · сокращён на ≈ ${projection.saved}")
                 invoke(projection.history, projection.options.copy(reasoning = reasoning, observation = image), "answer", projection.estimatedInput, projection.saved).also { if (frame != null) consumeObservation() }

@@ -41,6 +41,30 @@ class ChatViewModelTest {
             return gate.await()
         }
     }
+    @Test fun stagedInterventionSurvivesRestartAndDeliversOnlyOnce() {
+        ChatStore(app).use { store ->
+            store.create(77, "Test")
+            val id = store.stageIntervention(77, "Check also the date")
+            assertEquals("PENDING", store.interventions(77).single().status)
+            store.updateIntervention(77, id, "NOW")
+        }
+        ChatStore(app).use { store ->
+            assertEquals("NOW", store.interventions(77).single().status)
+            assertEquals(listOf("Check also the date"), store.deliverInterventions(77, "NOW").map { it.text })
+            assertTrue(store.deliverInterventions(77, "NOW").isEmpty())
+            assertEquals(1, store.load().single().messages.size)
+        }
+    }
+    @Test fun stagedInterventionCanBeCancelledWithoutDelivery() {
+        ChatStore(app).use { store ->
+            store.create(78, "Test")
+            val id = store.stageIntervention(78, "Do not send")
+            store.updateIntervention(78, id, "CANCELLED")
+            assertTrue(store.interventions(78).isEmpty())
+            assertTrue(store.deliverInterventions(78, "NOW").isEmpty())
+            assertTrue(store.load().single().messages.isEmpty())
+        }
+    }
     @Test fun replyRemainsInOriginalChatWhenSelectionChanges() = runTest(dispatcher) {
         val provider = FakeProvider()
         val vm = ChatViewModel(app, provider, registry, dispatcher)

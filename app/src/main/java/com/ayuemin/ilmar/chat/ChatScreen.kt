@@ -56,6 +56,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     }
     var overflow by remember { mutableStateOf(false) }
     var showMemory by remember { mutableStateOf(false) }
+    var activityExpanded by remember(selected.id) { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var searchOpen by remember(selected.id) { mutableStateOf(false) }
@@ -86,8 +87,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val list = rememberLazyListState()
-    val messages = (selected.messages + if (inThisChat && state.streamingText.isNotEmpty())
-        listOf(ChatMessage(state.streamingText, false)) else emptyList())
+    val messages = selected.messages
         .filter { !searchOpen || query.isBlank() || it.text.contains(query, true) }
     // Follow the stream only when the reader is already at the bottom.
     val following = remember { mutableStateOf(true) }
@@ -188,7 +188,25 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 }
             }
             state.contextStatus[selected.id]?.let { label -> TextButton(onClick = { showMemory = true }) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            if (inThisChat) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (inThisChat) {
+                val events = state.activityEvents
+                val label = state.activityLabel.ifBlank { "Агент выполняет задачу…" }
+                Column(Modifier.fillMaxWidth()) {
+                    if (events.size > 1) TextButton(onClick = { activityExpanded = !activityExpanded }) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(if (activityExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                    } else Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (activityExpanded && events.size > 1) Column(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
+                        events.forEach { event -> Text("• $event", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
             else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
                 Text("Перейти к активному ответу")
             }
@@ -208,6 +226,25 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
             }
             if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }
             if (selected.id in state.importing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.interventions[selected.id].orEmpty().forEach { item ->
+                var menuOpen by remember(item.id) { mutableStateOf(false) }
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                            Text(when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с уточнением") }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                (if (item.status == "PENDING") listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить") else listOf("EDIT" to "Редактировать", "DELETE" to "Удалить")).forEach { (action, title) ->
+                                    DropdownMenuItem(text = { Text(title) }, onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(4.dp)) {
@@ -234,7 +271,12 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                             Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp))
                         }
                         IconButton(onClick = dictate) { Icon(Icons.Default.Mic, "Распознать речь") }
-                        if (sending) IconButton(onClick = controller::stop) { Icon(Icons.Default.Stop, "Остановить ответ") }
+                        if (sending) {
+                            if (inThisChat) IconButton(enabled = draft.isNotBlank() && selected.id !in state.importing, onClick = {
+                                controller.stageIntervention(selected.id, draft)
+                            }) { Icon(Icons.Default.Send, "Добавить уточнение") }
+                            IconButton(onClick = controller::stop) { Icon(Icons.Default.Stop, "Остановить ответ") }
+                        }
                         else IconButton(enabled = selected.id !in state.importing && (draft.isNotBlank() || state.attachments[selected.id].orEmpty().isNotEmpty()), onClick = {
                             val text = draft; speechError = null; following.value = true; controller.send(text)
                         }) { Icon(Icons.Default.Send, "Отправить сообщение") }
