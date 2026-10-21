@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
     val activeChatId: Long? = null, val streamingText: String = "",
+    val activityLabel: String = "", val activityEvents: List<String> = emptyList(),
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
     val contextStatus: Map<Long, String> = emptyMap(),
     val archiveStatus: Map<Long, String> = emptyMap(), val taskRevision: Map<Long, Long> = emptyMap(),
@@ -183,6 +184,10 @@ class ChatViewModel @JvmOverloads constructor(
         releaseAttachments(removed)
         if (remaining.isEmpty()) create()
     }
+    private fun activity(chatId: Long, label: String) {
+        mutable.update { state -> if (state.activeChatId != chatId) state else state.copy(
+            activityLabel = label, activityEvents = (state.activityEvents + label).takeLast(40)) }
+    }
     fun send(text: String) {
         if ((text.isBlank() && mutable.value.attachments[mutable.value.selectedId].orEmpty().isEmpty()) || mutable.value.activeChatId != null || mutable.value.selectedId in mutable.value.importing) return
         val chat = mutable.value.chats.first { it.id == mutable.value.selectedId }
@@ -211,7 +216,7 @@ class ChatViewModel @JvmOverloads constructor(
         }
         val history = mutable.value.chats.first { it.id == chatId }.messages.toList()
         check(runtime.edit().putLong("active_chat", chatId).commit())
-        mutable.update { it.copy(activeChatId = chatId, streamingText = "", errors = it.errors - chatId) }
+        mutable.update { it.copy(activeChatId = chatId, streamingText = "", activityLabel = "Подготавливает запрос…", activityEvents = listOf("Подготавливает запрос…"), errors = it.errors - chatId) }
         var cleanupSession: com.ayuemin.ilmar.agent.TaskSession? = null
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
@@ -261,13 +266,16 @@ class ChatViewModel @JvmOverloads constructor(
                             "\nИнтернет: сначала используй результаты подключённого поиска поставщика. ${if (searchProtocol == com.ayuemin.ilmar.browser.ProviderSearchProtocol.OPENROUTER) "Движок OpenRouter: ${searchEngine.title}." else "Используй настроенный протокол поиска поставщика."} Если информации достаточно, ответь без браузера. Локальный браузер — дополнительный инструмент только для недостающих сведений, JavaScript, загрузки файлов или действий на конкретной странице. Не открывай браузер для повторения уже полученного поиска и не проводи дополнительные тесты без запроса пользователя.\n" else "",
                         event = { code, details ->
                             diagnostics.record(code, chatId, details.put("task_id", taskSession.taskId).put("run_id", taskSession.runId).put("parent_run_id", taskSession.parentRunId ?: org.json.JSONObject.NULL))
+                            if (code == "TOOL_ROUND") activity(chatId, "Обрабатывает результаты инструментов…")
+                            if (code == "TASK_CHECKPOINT") activity(chatId, "Сохраняет результат действия…")
+                            if (code == "TOOL_ROUND_ERROR") activity(chatId, "Ошибка инструмента")
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
                         observation = { com.ayuemin.ilmar.browser.BrowserVision.peek(taskSession.runId) },
                         consumeObservation = { com.ayuemin.ilmar.browser.BrowserVision.consume(taskSession.runId) },
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
-                            if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
+                            if (purpose == "answer") activity(chatId, "Обращается к модели…")
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
                             var providerStarted = false
@@ -303,7 +311,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 providerStarted = true
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
                                     options.copy(webSearch = requestSearch, webSearchEngine = if (requestSearch == "OPENROUTER") searchEngine.wire else null)) { delta ->
-                                    if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
+                                    if (purpose == "answer" && delta.isNotEmpty()) activity(chatId, "Модель формирует ответ…")
                                 }
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
                                     .put("finish_reason", completion.finishReason).put("input_tokens", completion.usage.input).put("output_tokens", completion.usage.output)
@@ -313,7 +321,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 browserControl?.afterModel(completion.usage, callCaps)
                                 if (requestSearch != null) primarySearchReady = true
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
-                                if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
+                                if (purpose == "answer") { roundUsage += UsageRecord(completion.usage, "completed"); if (completion.toolCalls.isNotEmpty()) activity(chatId, "Выполняет ${completion.toolCalls.first().name}…") }
                                 completion
                             } catch (e: CancellationException) {
                                 recordCall(chatId, requestId, if (providerStarted) TokenUsage() else notSent, if (providerStarted) "cancelled" else "not_sent", purpose); throw e
@@ -363,7 +371,7 @@ class ChatViewModel @JvmOverloads constructor(
                 cleanupSession?.let { com.ayuemin.ilmar.browser.BrowserVision.consume(it.runId) }
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
-                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
+                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "", activityLabel = "", activityEvents = emptyList()) }
                 request = null
             }
         }
