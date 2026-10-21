@@ -128,6 +128,22 @@ function findFixture(labels, query, exact = true) {
     window:{__ilmarBrowser:state}, document:{querySelectorAll: () => elements}
   }, {timeout:1000}));
 }
+// Selective lookup must not expose inline file/data/javascript links to the model.
+{
+  const runLink = href => {
+    const el = {innerText:'Download',tagName:'A',type:'',href,
+      getAttribute:()=>'',getClientRects:()=>[{}],matches:()=>false};
+    const state = {id:'page',refs:new Map(),elements:new Map(),next:1};
+    return JSON.parse(vm.runInNewContext('(function(){const query="Download";const exact=true;const baseline={url:"https://example.com/",title:"Test"};'+findBody+'})()', {
+      window:{__ilmarBrowser:state},document:{querySelectorAll:()=>[el]}
+    })).matches[0];
+  };
+  assert.equal(runLink('data:text/html;base64,SGVsbG8=').url, undefined);
+  assert.equal(runLink('javascript:alert(1)').url, undefined);
+  assert.equal(runLink('file:///private/secret').url, undefined);
+  assert.equal(runLink('https://example.com/file').url, 'https://example.com/file');
+  assert.equal(runLink('https://user:pass@example.com/').url, undefined);
+}
 assert.equal(findFixture(['Search', 'Other', 'Hidden Search'], '  SEARCH ').matches.length, 1);
 assert.equal(findFixture(['Search', 'Search'], 'Search').matches.length, 2);
 assert.equal(findFixture(['Start Search'], 'Search').matches.length, 0);
