@@ -36,6 +36,18 @@ class BrowserRuntimeTest {
         assertTrue(runCatching { BrowserRuntime.command(5, "read") }.isFailure)
         assertEquals(1, page.stopped)
     }
+    @Test fun unchangedScrollUsesDeltaButExplicitReadReturnsFullText() = runTest(dispatcher) {
+        val page = Page()
+        BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(42, "open", "https://example.com/")
+            val scroll = JSONObject(BrowserRuntime.command(42, "scroll", "down"))
+            assertEquals("", scroll.getString("text"))
+            assertTrue(scroll.getBoolean("text_unchanged"))
+            val read = JSONObject(BrowserRuntime.command(42, "read"))
+            assertEquals("facts", read.getString("text"))
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun cancellationStopsPendingNavigationAndNextCommandWorks() = runTest(dispatcher) {
         val page = Page().apply { gate = CompletableDeferred() }; BrowserRuntime.attach(page)
         try {
