@@ -35,6 +35,7 @@ internal class TemporaryDocuments(
         return entries[id] ?: error("DOCUMENT_UNAVAILABLE: документ отсутствует в текущем запуске или истёк")
     }
     @Synchronized fun all(): List<Entry> { checkOpen(); expire(); return entries.values.toList() }
+    @Synchronized fun remove(id: String) { checkOpen(); entries.remove(id) }
     @Synchronized override fun close() { entries.clear(); closed = true }
     private fun checkOpen() = check(!closed) { "DOCUMENT_SESSION_CLOSED" }
     private fun expire() { val now = clock(); entries.entries.removeAll { now - it.value.created >= ttlMillis } }

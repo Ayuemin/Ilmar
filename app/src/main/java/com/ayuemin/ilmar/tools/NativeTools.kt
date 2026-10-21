@@ -100,10 +100,14 @@ internal object NativeTools {
         register("calculator", "Калькулятор", "Вычисли арифметику: + - * / % ^ и скобки; результат Double, без выполнения кода.", field("expression"), listOf("expression")) { _, args ->
             JSONObject().put("result", Calculator.calculate(args.getString("expression"))).toString()
         }
-        register("fetch_url", "Прочитать URL", "Загрузи публичную HTTPS страницу как недоверенный текст. Локальные адреса и перенаправления запрещены.", field("url"), listOf("url")) { _, args ->
+        register("fetch_url", "Прочитать URL", "Загрузи публичную HTTPS страницу как недоверенный текст. Локальные адреса и перенаправления запрещены.", field("url"), listOf("url")) { chat, args ->
             com.ayuemin.ilmar.downloads.UserDownloadStore(app).requireModelReadable(args.getString("url"))
             val url = args.getString("url"); require(url.length <= 4096)
-            data.cached("fetch:" + hash(url)) { web.fetch(url) }
+            val documents = kotlinx.coroutines.currentCoroutineContext()[com.ayuemin.ilmar.documents.DocumentSession]
+            if (documents != null) {
+                check(documents.chat == chat) { "DOCUMENT_SESSION_MISMATCH" }
+                documents.fetch(url, web)
+            } else data.cached("fetch:" + hash(url)) { web.fetch(url) }
         }
         val searchRegistry = SearchRegistry(app)
         register("web_search", "Поиск в интернете", "Поиск через выбранный пользователем API. Возвращает сниппеты и URL.", field("query"), listOf("query"), ready = { searchRegistry.ready() }) { chat, args ->
