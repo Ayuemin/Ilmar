@@ -91,3 +91,27 @@ assert.equal(point.result.action_performed, true);
 assert.deepEqual(point.events.map(e => e.type), ['mousedown', 'mouseup', 'click']);
 assert.equal(point.events[2].clientX, 200); assert.equal(point.events[2].clientY, 200);
 console.log('Browser input/select/submit and coordinate-click JavaScript passed');
+// Same-document mutation must invalidate both page ID and old element map before an action.
+{
+  let records = [];
+  class Observer {
+    constructor(callback) { this.callback = callback; }
+    observe() {}
+    takeRecords() { const result = records; records = []; return result; }
+  }
+  const button = {innerText: 'Search', tagName: 'BUTTON', type: 'button', isConnected: true,
+    getAttribute: () => '', matches: () => false, getClientRects: () => [{top: 1, bottom: 5, left: 1, right: 5}],
+    getBoundingClientRect: () => ({top: 1, bottom: 5, left: 1, right: 5})};
+  const context = vm.createContext({window: {}, MutationObserver: Observer,
+    document: {title: 'SPA', body: {innerText: 'Results'}, documentElement: {scrollHeight: 200},
+      querySelectorAll: selector => selector.startsWith('a[href],') ? [button] : []},
+    location: {href: 'https://example.com/'}, scrollY: 0, innerHeight: 800, innerWidth: 400});
+  const before = JSON.parse(vm.runInContext(script, context));
+  records = [{type: 'childList'}];
+  const result = vm.runInContext('(function(){const command="click";const args=' + JSON.stringify({page_id: before.page_id, ref: before.controls[0].ref}) + ';' + actions + '})()', context);
+  assert.equal(JSON.parse(result).error, 'STALE_PAGE');
+  const after = JSON.parse(vm.runInContext(script, context));
+  assert.notEqual(after.page_id, before.page_id);
+  assert.equal(JSON.parse(vm.runInContext(script, context)).page_id, after.page_id);
+}
+console.log('Same-document DOM mutation invalidates stale actions; unchanged DOM retains page ID');

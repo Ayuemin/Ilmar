@@ -20,7 +20,7 @@ class BrowserRuntimeTest {
         var stopped = 0
         var gate: CompletableDeferred<Unit>? = null
         override suspend fun open(url: String): JSONObject { gate?.await(); return read() }
-        override suspend fun read() = JSONObject().put("url", "https://example.com/").put("title", "Example").put("text", "facts")
+        override suspend fun read() = JSONObject().put("url", "https://example.com/").put("title", "Example").put("page_id", "page").put("text", "facts")
         override suspend fun scroll(down: Boolean) = read()
         override fun stop() { stopped++ }
     }

@@ -9,6 +9,7 @@ import org.json.JSONObject
 
 internal interface BrowserPage {
     suspend fun open(url: String): JSONObject
+    suspend fun readFull(): JSONObject = read()
     suspend fun read(): JSONObject
     suspend fun scroll(down: Boolean): JSONObject
     suspend fun act(command: String, args: JSONObject): JSONObject = error("Действия браузера не подключены")
@@ -25,18 +26,19 @@ internal data class BrowserUi(val chat: Long? = null, val url: String = "", val 
 internal object BrowserRuntime {
     private var page: BrowserPage? = null
     private val lock = Mutex()
-    private var lastObservation: JSONObject? = null
+    private val observations = BrowserObservations()
     private var lastObservationChat: Long? = null
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi(); lastObservation = null; lastObservationChat = null } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null } }
     fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
     fun completeHandoff(chat: Long): Boolean {
         if (mutable.value.chat != chat || !mutable.value.waitingUser) return false
         mutable.value = mutable.value.copy(waitingUser = false, visible = false, status = "Управление возвращено модели")
+        observations.clear()
         page?.saveSession()
         return true
     }
@@ -55,13 +57,13 @@ internal object BrowserRuntime {
             }
             val url = when (operation) { "search" -> BrowserAddress.search(argument); "open" -> argument; else -> null }
             if (url != null) BrowserAddress.parse(url)
-            if (lastObservationChat != chat || operation == "open" || operation == "search") { lastObservation = null; lastObservationChat = chat }
+            if (lastObservationChat != chat || operation == "open" || operation == "search") { observations.clear(); lastObservationChat = chat }
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
             try {
                 val result = withTimeout(25000) {
                     when (operation) {
                         "open", "search" -> browser.open(url!!)
-                        "read" -> browser.read()
+                        "read" -> if (details.optBoolean("full")) browser.readFull() else browser.read()
                         "back" -> browser.back()
                         "click", "type", "select" -> browser.act(operation, details)
                         "scroll" -> { require(argument in setOf("up", "down")); browser.scroll(argument == "down") }
@@ -73,18 +75,7 @@ internal object BrowserRuntime {
                     return@withContext awaitingUser().toString()
                 }
                 mutable.value = mutable.value.copy(pageId = result.optString("page_id", mutable.value.pageId), url = result.optString("url", mutable.value.url), status = result.optString("title").ifBlank { "Страница прочитана" })
-                // Umnik-inspired delta: unchanged page text need not be sent again after each action.
-                // Preserve page_id, controls and links for safe fresh-ref actions.
-                val previous = lastObservation
-                val response = JSONObject(result.toString())
-                if (operation in setOf("scroll", "click", "type", "select", "back") && previous != null && previous.optString("page_id") == result.optString("page_id") &&
-                    previous.optString("url") == result.optString("url") && previous.optString("text") == result.optString("text")) {
-                    response.put("text", "")
-                    response.put("text_unchanged", true)
-                    response.put("notice", "Текст страницы не изменился; используй предыдущий снимок. Элементы управления и ссылки актуальны.")
-                }
-                lastObservation = JSONObject(result.toString())
-                response.toString()
+                observations.encode(result, force = operation in setOf("open", "search", "read"), full = operation == "read" && details.optBoolean("full")).toString()
             } catch (e: Exception) {
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
                 throw e

@@ -74,13 +74,15 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         try { view.loadUrl(url); navigation.await(); delay(300); return read() }
         finally { if (pending === navigation) pending = null }
     }
-    override suspend fun read(): JSONObject {
+    override suspend fun read(): JSONObject = snapshot(false)
+    override suspend fun readFull(): JSONObject = snapshot(true)
+    private suspend fun snapshot(full: Boolean): JSONObject {
         resume()
         require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
         val evaluation = suspendCancellableCoroutine<String> { continuation ->
-            view.evaluateJavascript(BrowserSnapshot.SCRIPT) { value -> if (continuation.isActive) continuation.resume(value) }
+            view.evaluateJavascript(BrowserSnapshot.script(full)) { value -> if (continuation.isActive) continuation.resume(value) }
         }
-        return BrowserSnapshot.decode(evaluation).also {
+        return BrowserSnapshot.decode(evaluation, full).also {
             require(it.getString("url") == view.url) { "Страница изменилась при чтении. Повтори browser_read." }
         }
     }
