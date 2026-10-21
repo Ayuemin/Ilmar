@@ -1,0 +1,20 @@
+Ilmar optional Alpine Linux environment
+
+PRoot is a separate executable, GNU GPL version 2 or later.
+Source: https://github.com/termux/proot/tree/a7147b50d708567dbf884d21e0f0c8698bba0d10
+See PROot-COPYING.txt and copyright notices in the corresponding source.
+
+talloc: Copyright Andrew Tridgell, Stefan Metzmacher and other contributors.
+GNU LGPL version 3 or later; see LGPL-3.txt and GPL-3.txt.
+Source: https://github.com/newo-ether/Agora/tree/3e7b0c8c89d591c3cd58a4bc6824861223576c1d/thirdparty/talloc
+
+Reference: Agora build-proot.sh at the same commit. Ilmar uses its own Kotlin runtime/UI and build orchestration.
+Ilmar patches PRoot's cross-compilation probes, a missing string.h include and the loader symbol parser.
+The exact original sources, patched sources, launcher and build script are included in the
+ilmar-alpine-corresponding-source artifact alongside each APK in GitHub Actions.
+https://github.com/Ayuemin/Ilmar/actions
+Build instructions and limitations: docs/github-and-alpine.md in that repository.
+
+Alpine minirootfs and packages are downloaded separately from dl-cdn.alpinelinux.org.
+Their package licences and upstream sources are described at https://pkgs.alpinelinux.org/.
+Alpine is Linux userspace running with the application's UID, not a security sandbox.

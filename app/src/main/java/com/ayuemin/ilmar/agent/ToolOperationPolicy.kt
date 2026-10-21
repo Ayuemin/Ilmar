@@ -8,6 +8,7 @@ internal object ToolOperationPolicy {
     fun safeToRepeat(name: String, arguments: String): Boolean = when (name) {
         "browser_batch", "browser_find", "browser_wait", "browser_screenshot", "browser_takeover", "browser_back", "browser_search", "browser_open", "browser_read", "browser_scroll", "calculator", "read_file", "fetch_url", "web_search", "search_history", "recall_memory", "ask_user" -> true
         "github" -> runCatching { val args = JSONObject(arguments); args.getString("method") == "GET" && com.ayuemin.ilmar.github.GitHubClient.validate("GET", args.getString("path"), args.optString("body")).host == "api.github.com" }.getOrDefault(false)
+        "github_git" -> runCatching { JSONObject(arguments).getString("action") in com.ayuemin.ilmar.github.GitHubGit.reads }.getOrDefault(false)
         "todo" -> runCatching { !JSONObject(arguments).has("steps") }.getOrDefault(false)
         else -> false
     }

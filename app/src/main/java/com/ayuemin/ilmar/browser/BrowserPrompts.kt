@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal data class BrowserPrompt(val id: String, val chat: Long, val title: String, val message: String, val confirmLabel: String = "Разрешить")
 
@@ -17,19 +19,21 @@ internal data class BrowserPrompt(val id: String, val chat: Long, val title: Str
 internal object BrowserPrompts {
     private val mutable = MutableStateFlow<BrowserPrompt?>(null)
     val pending = mutable.asStateFlow()
-    private var answer: CompletableDeferred<Boolean>? = null
+    private data class Request(val prompt: BrowserPrompt, val answer: CompletableDeferred<Boolean>)
+    private val mutex = Mutex()
+    @Volatile private var active: Request? = null
     suspend fun ask(chat: Long, title: String, message: String): Boolean = askLabel(chat, title, message, "Разрешить")
     suspend fun askDownload(chat: Long, title: String, message: String): Boolean = askLabel(chat, title, message, "Скачать")
-    private suspend fun askLabel(chat: Long, title: String, message: String, label: String): Boolean {
-        check(answer == null) { "Уже ожидается подтверждение браузера" }
+    private suspend fun askLabel(chat: Long, title: String, message: String, label: String): Boolean = mutex.withLock {
         val prompt = BrowserPrompt(java.util.UUID.randomUUID().toString(), chat, title, message, label)
         val deferred = CompletableDeferred<Boolean>()
-        answer = deferred; mutable.value = prompt
-        return try { deferred.await() } finally {
-            if (mutable.value?.id == prompt.id) { mutable.value = null; answer = null }
+        val request = Request(prompt, deferred)
+        active = request; mutable.value = prompt
+        try { deferred.await() } finally {
+            if (active === request) { active = null; mutable.value = null }
         }
     }
-    fun respond(id: String, allow: Boolean) { if (mutable.value?.id == id) answer?.complete(allow) }
+    fun respond(id: String, allow: Boolean) { active?.takeIf { it.prompt.id == id }?.answer?.complete(allow) }
 }
 
 @Composable

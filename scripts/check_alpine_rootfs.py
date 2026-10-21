@@ -11,7 +11,7 @@ expected = urllib.request.urlopen(url + ".sha256", timeout=60).read().decode().s
 data = urllib.request.urlopen(url, timeout=90).read(16 * 1024 * 1024 + 1)
 assert len(data) <= 16 * 1024 * 1024
 actual = hashlib.sha256(data).hexdigest()
-assert actual == expected
+assert actual == expected == "9bf70a7f18ea44094cbb5f70c58f9af129c8214745743db0e68e5502cc2ce773"
 path = Path("/tmp/ilmar-alpine-rootfs.tar.gz")
 path.write_bytes(data)
 with tarfile.open(path) as archive:

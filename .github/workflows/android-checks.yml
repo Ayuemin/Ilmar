@@ -52,6 +52,8 @@ jobs:
         run: node scripts/test_browser_snapshot.cjs
       - name: Test dependency advisory parser
         run: python3 -m unittest discover -s scripts -p 'test_check_dependencies.py'
+      - name: Test native process-group cancellation
+        run: python3 scripts/test_process_group.py
       - name: Verify official Alpine rootfs
         run: python3 scripts/check_alpine_rootfs.py
       - name: Compile Kotlin and unit tests
@@ -80,6 +82,8 @@ jobs:
           path: app/build/outputs/apk/browserAcceptance/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Verify ARM64 runtime packaged in APK
+        run: python3 scripts/check_alpine_apk.py app/build/outputs/apk/debug/app-debug.apk
       - name: Download phone-tested reference APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:

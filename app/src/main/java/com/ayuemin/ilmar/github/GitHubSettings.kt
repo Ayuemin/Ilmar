@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 internal fun GitHubSettings() {
     val context = LocalContext.current
     val credentials = remember { CredentialStore(context) }
+    val prefs = remember { context.getSharedPreferences("ilmar_github", android.content.Context.MODE_PRIVATE) }
+    var authorName by remember { mutableStateOf(prefs.getString("author_name", "").orEmpty()) }
+    var authorEmail by remember { mutableStateOf(prefs.getString("author_email", "").orEmpty()) }
     var token by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(credentials.hasApiKey(GitHubClient.KEY)) }
     var status by remember { mutableStateOf("") }
@@ -34,5 +37,11 @@ internal fun GitHubSettings() {
         finally { busy = false }
     } }) { Text("Проверить подключение") }
     Text(status)
+    OutlinedTextField(authorName, { authorName = it }, label = { Text("Имя автора Git-коммитов") }, singleLine = true)
+    OutlinedTextField(authorEmail, { authorEmail = it }, label = { Text("Email автора Git (можно GitHub noreply)") }, singleLine = true)
+    TextButton(enabled = authorName.isNotBlank() && authorEmail.isNotBlank(), onClick = {
+        if (prefs.edit().putString("author_name", authorName.trim()).putString("author_email", authorEmail.trim()).commit()) status = "Автор Git сохранён"
+    }) { Text("Сохранить автора Git") }
+    Text("Для настоящих commit/push установи Alpine и git ca-certificates, включи GitHub и «Git · Alpine» ниже и выбери Git в меню «+» чата. Сохранённый токен используется краткоживущим credential helper, без записи в URL, shell-команды или файл. Git hooks отключены, push без force, pull только fast-forward.")
     Text("Включи GitHub ниже и выбери его в меню «+» чата. Чтение постраничное; каждая запись, merge, удаление, запуск Actions и публикация требуют отдельного подтверждения с телом запроса. Бинарные uploads/downloads и GitHub Enterprise этим REST-инструментом не поддерживаются.")
 }

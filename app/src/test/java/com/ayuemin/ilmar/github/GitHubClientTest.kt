@@ -76,4 +76,16 @@ class GitHubClientTest {
         assertTrue(runCatching { GitHubClient.validate("POST", "/user", "not json") }.isFailure)
         assertTrue(runCatching { GitHubClient.validate("POST", "/user", "{\"a\":\"" + "x".repeat(66000) + "\"}") }.isFailure)
     }
+    @Test fun jobLogsUseFreshAnonymousRequestAndRemainBounded() = runTest {
+        MockWebServer().use { api -> MockWebServer().use { storage ->
+            api.enqueue(MockResponse().setResponseCode(302).addHeader("Location", storage.url("/signed-log?sig=fixture")))
+            storage.enqueue(MockResponse().setBody("step one\nstep two\n"))
+            val client = GitHubClient({ credential }, { true }, { _,_,_ -> false },
+                OkHttpClient.Builder().followRedirects(false).build(), api.url("/"), { it.host == storage.hostName && it.port == storage.port })
+            val result = JSONObject(client.request(1, "GET", "/repos/owner/repo/actions/jobs/123/logs"))
+            assertEquals(200, result.getInt("status")); assertTrue(result.getString("body").contains("step two"))
+            assertEquals("Bearer $credential", api.takeRequest().getHeader("Authorization"))
+            assertNull(storage.takeRequest().getHeader("Authorization")); assertEquals(1, storage.requestCount)
+        } }
+    }
 }

@@ -64,6 +64,8 @@ class RootfsArchiveTest {
     @Test fun officialPinnedArchiveExtractsWhenProvidedByCI() {
         val archive = System.getenv("ILMAR_ROOTFS_ARCHIVE")?.let(::File) ?: return
         assertTrue("CI rootfs artifact missing", archive.isFile)
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(archive.readBytes()).joinToString("") { "%02x".format(it) }
+        assertEquals(AlpineRuntime.SHA256, hash)
         val root = temp()
         try {
             GZIPInputStream(archive.inputStream()).use { RootfsArchive.extract(it, root) }

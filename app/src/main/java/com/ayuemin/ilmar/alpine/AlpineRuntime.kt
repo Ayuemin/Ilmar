@@ -26,9 +26,9 @@ internal class AlpineRuntime(context: Context) {
     private val native = File(app.applicationInfo.nativeLibraryDir)
     companion object {
         private val mutation = Mutex()
-        const val VERSION = "3.21.0"
-        const val BRANCH = "v3.21"
-        const val SHA256 = "f31202c4070c4ef7de9e157e1bd01cb4da3a2150035d74ea5372c5e86f1efac1"
+        const val VERSION = "3.24.2"
+        const val BRANCH = "v3.24"
+        const val SHA256 = "9bf70a7f18ea44094cbb5f70c58f9af129c8214745743db0e68e5502cc2ce773"
         const val URL = "https://dl-cdn.alpinelinux.org/alpine/$BRANCH/releases/aarch64/alpine-minirootfs-$VERSION-aarch64.tar.gz"
         const val ID = "alpine_shell"
     }
@@ -50,11 +50,18 @@ internal class AlpineRuntime(context: Context) {
             val job = currentCoroutineContext()
             GZIPInputStream(archive.inputStream()).use { RootfsArchive.extract(it, staging) { job.ensureActive() } }
             listOf("root", "tmp", "proc", "dev", "sys", "run", "var/cache/apk").forEach { File(staging, it).mkdirs() }
-            File(staging, "etc/resolv.conf").writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
-            File(staging, "etc/apk/repositories").writeText("https://dl-cdn.alpinelinux.org/alpine/$BRANCH/main\nhttps://dl-cdn.alpinelinux.org/alpine/$BRANCH/community\n")
+            fun config(path: String, value: String) {
+                val file = File(staging, path)
+                check(file.parentFile!!.canonicalPath.startsWith(staging.canonicalPath + File.separator)) { "Небезопасный каталог rootfs" }
+                // Replace an archive link itself, never write through its target on the Android host.
+                if (java.nio.file.Files.isSymbolicLink(file.toPath())) check(file.delete())
+                file.writeText(value)
+            }
+            config("etc/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+            config("etc/apk/repositories", "https://dl-cdn.alpinelinux.org/alpine/$BRANCH/main\nhttps://dl-cdn.alpinelinux.org/alpine/$BRANCH/community\n")
             val smoke = runProcess(staging, "cat /etc/alpine-release; /bin/busybox echo ILMAR_ALPINE_OK", "/root", 30)
             check(smoke.optInt("exit_code", -1) == 0 && smoke.optString("output").contains("ILMAR_ALPINE_OK")) { "PRoot smoke test не прошёл; окружение не активировано" }
-            File(staging, ".ilmar-ready").writeText("$VERSION\n$SHA256\n")
+            java.nio.file.Files.write(File(staging, ".ilmar-ready").toPath(), "$VERSION\n$SHA256\n".toByteArray(), java.nio.file.StandardOpenOption.CREATE_NEW)
             currentCoroutineContext().ensureActive()
             check(staging.renameTo(root)) { "Не удалось активировать Alpine" }
             "Alpine $VERSION установлен; PRoot smoke test пройден"
@@ -98,7 +105,7 @@ internal class AlpineRuntime(context: Context) {
                 val first = StringBuilder()
                 while (true) { val ch = input.read(); check(ch >= 0 && first.length < 80) { "Не получен PID launcher" }; if (ch == 10) break; first.append(ch.toChar()) }
                 check(first.startsWith("ILMAR_PROCESS_GROUP=")) { "Неверный launcher handshake" }
-                val pid = first.substringAfter('=').toInt(); check(pid > 1); group.set(pid)
+                val pid = first.toString().substringAfter('=').toInt(); check(pid > 1); group.set(pid)
                 val bytes = ByteArray(8192)
                 while (true) {
                     val n = input.read(bytes); if (n < 0) break
@@ -122,8 +129,8 @@ internal class AlpineRuntime(context: Context) {
             // Kill the session even if the shell exited but a child kept its output pipe open.
             if (group.get() > 1) runCatching { Os.kill(-group.get(), OsConstants.SIGKILL) }
             process.destroyForcibly()
-            runCatching { process.inputStream.close() }
             output.cancel()
+            runCatching { process.inputStream.close() }
         }
         JSONObject().put("exit_code", if (timeout) -1 else exit).put("timed_out", timeout)
             .put("output", capture.toString("UTF-8")).put("truncated", truncated).put("untrusted", true)
@@ -141,6 +148,7 @@ internal class AlpineRuntime(context: Context) {
                     response.use { reply ->
                         check(reply.isSuccessful) { "Alpine: HTTP ${reply.code}" }
                         val body = reply.body ?: error("Пустой rootfs")
+                        check(continuation.isActive) { "Отмена" }
                         body.byteStream().use { input -> file.outputStream().use { out ->
                             val bytes = ByteArray(8192); var size = 0L
                             while (true) { if (!continuation.isActive) throw IOException("Отмена"); val n = input.read(bytes); if (n < 0) break; size += n; check(size <= 16L * 1024 * 1024) { "Rootfs превышает 16 МиБ" }; out.write(bytes, 0, n) }
@@ -148,6 +156,7 @@ internal class AlpineRuntime(context: Context) {
                     }
                     if (continuation.isActive) continuation.resume(Unit)
                 } catch (e: Exception) { if (continuation.isActive) continuation.resumeWithException(e) }
+                finally { if (continuation.isCancelled) file.delete() }
             }
         })
     }

@@ -25,7 +25,8 @@ def run(*args, cwd=BUILD, env=None):
 
 def main():
     BUILD.mkdir(exist_ok=True)
-    ndk = Path(os.environ.get("ANDROID_NDK_HOME", str(Path(os.environ["ANDROID_HOME"]) / "ndk/28.2.13676358")))
+    ndk = Path(os.environ["ANDROID_HOME"]) / "ndk/28.2.13676358"
+    assert "28.2.13676358" in (ndk / "source.properties").read_text()
     tools = ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin"
     cc = str(tools / "aarch64-linux-android26-clang")
     source = BUILD / "proot"
@@ -42,6 +43,7 @@ def main():
         (talloc / name).write_bytes(content)
     # Keep the original and patched sources, including upstream licences, available to recipients.
     shutil.copy2(ROOT / "app/src/main/assets/licenses/LGPL-3.txt", talloc / "COPYING.LESSER")
+    shutil.copy2(ROOT / "app/src/main/assets/licenses/GPL-3.txt", talloc / "COPYING")
     out = BUILD / "src"
     if out.exists():
         shutil.rmtree(out)

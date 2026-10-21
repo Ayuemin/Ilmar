@@ -18,7 +18,11 @@ internal class GitHubClient(
     private val approve: suspend (Long, String, String) -> Boolean,
     private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).callTimeout(45, TimeUnit.SECONDS).build(),
-    private val origin: HttpUrl = "https://api.github.com/".toHttpUrl()
+    private val origin: HttpUrl = "https://api.github.com/".toHttpUrl(),
+    private val logDestinationAllowed: (HttpUrl) -> Boolean = { url ->
+        url.scheme == "https" && url.port == 443 && url.username.isEmpty() && url.password.isEmpty() &&
+            (url.host.endsWith(".blob.core.windows.net") || url.host.endsWith(".actions.githubusercontent.com") || url.host.endsWith(".githubusercontent.com"))
+    }
 ) {
     companion object {
         const val KEY = "tool-github"
@@ -42,7 +46,8 @@ internal class GitHubClient(
         }
     }
 
-    suspend fun request(chat: Long, method: String, path: String, body: String = ""): String {
+    suspend fun request(chat: Long, method: String, path: String, body: String = "", responseLimit: Int = 32768): String {
+        require(responseLimit in 1024..MAX_RESPONSE) { "Лимит ответа GitHub: 1024–262144 байт" }
         val url = validate(method, path, body)
         check(allowed(chat)) { "Разрешение GitHub отозвано" }
         val credential = token()?.takeIf { it.isNotBlank() } ?: error("Добавь токен GitHub в настройках")
@@ -56,38 +61,52 @@ internal class GitHubClient(
             .header("User-Agent", "Ilmar-GitHub").method(method,
                 if (method == "GET" || method == "DELETE" && body.isBlank()) null
                 else body.ifBlank { "{}" }.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-        return execute(request, credential)
+        return execute(request, credential, responseLimit)
     }
 
-    private suspend fun execute(request: Request, credential: String): String = suspendCancellableCoroutine { continuation ->
+    private suspend fun execute(request: Request, credential: String, limit: Int): String = suspendCancellableCoroutine { continuation ->
         val call = client.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
+        val activeCall = java.util.concurrent.atomic.AtomicReference(call)
+        continuation.invokeOnCancellation { activeCall.get().cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (continuation.isActive) continuation.resumeWithException(IOException("GitHub: результат запроса неизвестен; автоматический повтор отключён"))
             }
             override fun onResponse(call: Call, response: Response) {
                 try {
+                    // Jobs/logs uses a short-lived signed redirect. Follow only this read endpoint,
+                    // only to GitHub's log storage, and construct a fresh request without Authorization.
+                    if (response.code in setOf(301, 302, 303, 307, 308) && call.request() === request && request.method == "GET" &&
+                        request.url.encodedPath.matches(Regex("/repos/[^/]+/[^/]+/actions/jobs/[0-9]+/logs"))) {
+                        val location = response.header("Location")?.let { runCatching { it.toHttpUrl() }.getOrNull() }
+                        if (location != null && logDestinationAllowed(location)) {
+                            response.close()
+                            val download = client.newCall(Request.Builder().url(location).header("Accept", "text/plain").build())
+                            activeCall.set(download)
+                            if (continuation.isActive) download.enqueue(this) else download.cancel()
+                            return
+                        }
+                    }
                     val result = response.use { reply ->
                         val bytes = reply.body?.byteStream()?.use { input ->
                             val buffer = java.io.ByteArrayOutputStream()
                             val chunk = ByteArray(8192)
-                            while (buffer.size() <= MAX_RESPONSE) {
-                                val count = input.read(chunk, 0, minOf(chunk.size, MAX_RESPONSE + 1 - buffer.size()))
+                            while (buffer.size() <= limit) {
+                                val count = input.read(chunk, 0, minOf(chunk.size, limit + 1 - buffer.size()))
                                 if (count < 0) break
                                 buffer.write(chunk, 0, count)
                             }
                             buffer.toByteArray()
                         } ?: ByteArray(0)
-                        val truncated = bytes.size > MAX_RESPONSE
-                        val text = String(bytes.take(MAX_RESPONSE).toByteArray(), Charsets.UTF_8).replace(credential, "[REDACTED]")
+                        val truncated = bytes.size > limit
+                        val text = String(bytes.take(limit).toByteArray(), Charsets.UTF_8).replace(credential, "[REDACTED]")
                         JSONObject().put("status", reply.code).put("ok", reply.isSuccessful).put("body", text)
                             .put("truncated", truncated).put("untrusted", true)
                             .put("next", reply.header("Link")?.replace(credential, "[REDACTED]") ?: JSONObject.NULL)
                             .put("rate_remaining", reply.header("X-RateLimit-Remaining") ?: JSONObject.NULL)
                             .put("rate_reset", reply.header("X-RateLimit-Reset") ?: JSONObject.NULL)
                             .put("retry_after", reply.header("Retry-After") ?: JSONObject.NULL)
-                            .put("note", if (reply.code in 300..399) "Перенаправление не выполнено; используй актуальный путь API." else if (truncated) "Ответ ограничен 256 КиБ. Используй per_page/page, фильтры или отдельный объект." else "").toString()
+                            .put("note", if (reply.code in 300..399) "Перенаправление не выполнено; используй актуальный путь API." else if (truncated) "Ответ ограничен $limit байт. Используй per_page/page, фильтры или отдельный объект." else "").toString()
                     }
                     if (continuation.isActive) continuation.resume(result)
                 } catch (_: Exception) {

@@ -35,6 +35,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+      - name: Verify ARM64 runtime packaged in APK
+        run: python3 scripts/check_alpine_apk.py app/build/outputs/apk/debug/app-debug.apk
       - name: Download phone-tested reference APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
