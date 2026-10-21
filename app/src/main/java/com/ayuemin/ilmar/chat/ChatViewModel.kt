@@ -26,6 +26,7 @@ data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
     val activeChatId: Long? = null, val streamingText: String = "",
     val activityLabel: String = "", val activityEvents: List<String> = emptyList(),
+    val interventions: Map<Long, List<ChatStore.Intervention>> = emptyMap(),
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
     val contextStatus: Map<Long, String> = emptyMap(),
     val archiveStatus: Map<Long, String> = emptyMap(), val taskRevision: Map<Long, Long> = emptyMap(),
@@ -72,7 +73,7 @@ class ChatViewModel @JvmOverloads constructor(
             mapOf(interrupted to "Ответ прерван при закрытии приложения. Можно повторить запрос.")
         } else emptyMap()
         runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
-        mutable.value = ChatState(chats, chats.first().id, errors = errors, attachments = store.drafts())
+        mutable.value = ChatState(chats, chats.first().id, errors = errors, attachments = store.drafts(), interventions = chats.associate { it.id to store.interventions(it.id) })
         val referenced = (chats.flatMap { it.messages }.flatMap { it.attachments } + mutable.value.attachments.values.flatten())
             .flatMap { listOf(it.id) + it.images }.toSet()
         java.io.File(application.filesDir, "attachments").listFiles()?.filter { it.name !in referenced }?.forEach { it.delete() }
@@ -188,6 +189,27 @@ class ChatViewModel @JvmOverloads constructor(
         mutable.update { state -> if (state.activeChatId != chatId) state else state.copy(
             activityLabel = label, activityEvents = (state.activityEvents + label).takeLast(40)) }
     }
+    private fun refreshInterventions(chatId: Long) {
+        val items = store.interventions(chatId)
+        mutable.update { it.copy(interventions = it.interventions + (chatId to items)) }
+    }
+    fun stageIntervention(chatId: Long, text: String) {
+        if (text.isBlank() || mutable.value.activeChatId != chatId) return
+        store.stageIntervention(chatId, text)
+        setDraft(chatId, "")
+        refreshInterventions(chatId)
+    }
+    fun chooseIntervention(chatId: Long, id: Long, action: String) {
+        val item = store.interventions(chatId).find { it.id == id && it.status == "PENDING" } ?: return
+        when (action) {
+            "EDIT" -> { setDraft(chatId, item.text); store.updateIntervention(chatId,id,"CANCELLED") }
+            "NOW" -> store.updateIntervention(chatId,id,"NOW")
+            "QUEUED" -> store.updateIntervention(chatId,id,"QUEUED")
+            "DELETE" -> store.updateIntervention(chatId,id,"CANCELLED")
+            else -> return
+        }
+        refreshInterventions(chatId)
+    }
     fun send(text: String) {
         if ((text.isBlank() && mutable.value.attachments[mutable.value.selectedId].orEmpty().isEmpty()) || mutable.value.activeChatId != null || mutable.value.selectedId in mutable.value.importing) return
         val chat = mutable.value.chats.first { it.id == mutable.value.selectedId }
@@ -272,6 +294,15 @@ class ChatViewModel @JvmOverloads constructor(
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
+                        takeInterventions = {
+                            val delivered = store.deliverInterventions(chatId, "NOW")
+                            if (delivered.isNotEmpty()) {
+                                mutable.update { it.copy(chats = store.load()) }
+                                refreshInterventions(chatId)
+                                activity(chatId, "Получено уточнение пользователя")
+                            }
+                            delivered
+                        },
                         observation = { com.ayuemin.ilmar.browser.BrowserVision.peek(taskSession.runId) },
                         consumeObservation = { com.ayuemin.ilmar.browser.BrowserVision.consume(taskSession.runId) },
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
@@ -372,6 +403,12 @@ class ChatViewModel @JvmOverloads constructor(
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "", activityLabel = "", activityEvents = emptyList()) }
+                // Deferred turns become ordinary user messages after the current task ends.
+                // Never start a new API request implicitly after cancellation or failure.
+                store.deliverInterventions(chatId, "QUEUED")
+                store.deliverInterventions(chatId, "NOW")
+                mutable.update { it.copy(chats = store.load()) }
+                refreshInterventions(chatId)
                 request = null
             }
         }
