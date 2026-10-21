@@ -17,6 +17,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private val consumeObservation: () -> Unit = {},
     private val internetInstructions: String = "",
     private val takeInterventions: () -> List<ChatMessage> = { emptyList() },
+    private val onProjection: (ContextProjection) -> Unit = {},
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private var budget = TaskBudget(policy, caps)
     private lateinit var activeSession: TaskSession
@@ -70,6 +71,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 val extraTokens = frame?.let { ContextEstimate.messages(listOf(it)) } ?: 0
                 injected += takeInterventions()
                 val projection = engine.prepare(history + injected, schemas, toolHistory, extraInputTokens = extraTokens)
+                onProjection(projection)
                 val image = frame?.let { com.ayuemin.ilmar.attachments.AttachmentPayload.build(listOf(it), caps, files)[it.id] }
                 status("Контекст ≈ ${projection.estimatedInput} + ${projection.output} / ${projection.limit} · сокращён на ≈ ${projection.saved}")
                 invoke(projection.history, projection.options.copy(reasoning = reasoning, observation = image), "answer", projection.estimatedInput, projection.saved).also { if (frame != null) consumeObservation() }
