@@ -22,6 +22,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class CompactGauge(val input: Int, val outputReserve: Int, val window: Int, val saved: Int) {
+    val threshold: Int get() = (window * 0.8).toInt()
+    val percent: Int get() = if (threshold <= 0) 0 else (((input + outputReserve).toDouble() / threshold) * 100).toInt().coerceIn(0, 100)
+    val remaining: Int get() = (threshold - input - outputReserve).coerceAtLeast(0)
+}
+
 data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
     val activeChatId: Long? = null, val streamingText: String = "",
@@ -29,6 +35,7 @@ data class ChatState(
     val interventions: Map<Long, List<ChatStore.Intervention>> = emptyMap(),
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
     val contextStatus: Map<Long, String> = emptyMap(),
+    val compactGauges: Map<Long, CompactGauge> = emptyMap(),
     val archiveStatus: Map<Long, String> = emptyMap(), val taskRevision: Map<Long, Long> = emptyMap(),
     val errors: Map<Long, String> = emptyMap(), val drafts: Map<Long, String> = emptyMap()
 )
@@ -295,6 +302,7 @@ class ChatViewModel @JvmOverloads constructor(
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
+                        onProjection = { projection -> mutable.update { it.copy(compactGauges = it.compactGauges + (chatId to CompactGauge(projection.estimatedInput, projection.output, projection.limit, projection.saved))) } },
                         takeInterventions = {
                             val delivered = store.deliverInterventions(chatId, "NOW")
                             if (delivered.isNotEmpty()) {
