@@ -234,10 +234,10 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                             Text(item.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                             Text(when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
                         }
-                        if (item.status == "PENDING") Box {
+                        Box {
                             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с уточнением") }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить").forEach { (action, title) ->
+                                (if (item.status == "PENDING") listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить") else listOf("EDIT" to "Редактировать", "DELETE" to "Удалить")).forEach { (action, title) ->
                                     DropdownMenuItem(text = { Text(title) }, onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
                                 }
                             }
