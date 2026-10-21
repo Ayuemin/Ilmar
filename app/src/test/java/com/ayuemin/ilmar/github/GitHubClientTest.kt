@@ -69,6 +69,8 @@ class GitHubClientTest {
         }
     }
     @Test fun rejectOriginEscapeTraversalSecretsAndMalformedBodies() {
+        assertEquals("api.github.com", GitHubClient.validate("GET", "/search/code?q=repo%3Aowner%2Frepo", "").host)
+        assertEquals("api.github.com", GitHubClient.validate("GET", "/repos/owner/repo/branches/feature%2Ftest", "").host)
         for (path in listOf("https://evil.example/user", "//evil.example/user", "/user#fragment", "/repos/a/../b", "/repos/a/%2e%2e/b", "/user?access_token=secret", "/graphql", "/repos/a\\b")) {
             assertTrue(path, runCatching { GitHubClient.validate("GET", path, "") }.isFailure)
         }

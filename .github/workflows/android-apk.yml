@@ -67,6 +67,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ilmar-alpine-corresponding-source
+          include-hidden-files: true
           path: .build-alpine/native-corresponding-source.tar.gz
           if-no-files-found: error
           retention-days: 14

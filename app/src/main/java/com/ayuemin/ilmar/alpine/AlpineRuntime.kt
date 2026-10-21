@@ -23,7 +23,7 @@ internal class AlpineRuntime(context: Context) {
     private val app = context.applicationContext
     private val directory = File(app.filesDir, "alpine")
     private val root = File(directory, "rootfs")
-    private val native = File(app.applicationInfo.nativeLibraryDir)
+    private val native = app.applicationInfo.nativeLibraryDir?.let(::File)
     companion object {
         private val mutation = Mutex()
         const val VERSION = "3.24.2"
@@ -32,14 +32,16 @@ internal class AlpineRuntime(context: Context) {
         const val URL = "https://dl-cdn.alpinelinux.org/alpine/$BRANCH/releases/aarch64/alpine-minirootfs-$VERSION-aarch64.tar.gz"
         const val ID = "alpine_shell"
     }
-    fun supported() = Build.SUPPORTED_ABIS.contains("arm64-v8a") &&
+    fun supported() = native != null && Build.SUPPORTED_ABIS.contains("arm64-v8a") &&
         listOf("libproot_exec.so", "libproot_loader.so", "libtalloc.so", "libilmar_process.so").all { File(native, it).isFile }
     fun installed() = File(root, ".ilmar-ready").isFile && supported()
+    fun hasFiles() = directory.exists()
 
     suspend fun install(): String = withContext(Dispatchers.IO) { mutation.withLock {
         check(supported()) { "Alpine требует ARM64 и сборку APK с PRoot" }
         check(!root.exists()) { "Окружение уже установлено; существующие данные не заменены" }
         directory.mkdirs()
+        directory.listFiles().orEmpty().filter { it.name.startsWith("install-") || it.name.startsWith("rootfs-") && it.name.endsWith(".tar.gz") }.forEach(RootfsArchive::remove)
         val staging = File(directory, "install-${java.util.UUID.randomUUID()}").apply { mkdir() }
         val archive = File(directory, "rootfs-${java.util.UUID.randomUUID()}.tar.gz")
         try {
@@ -82,6 +84,7 @@ internal class AlpineRuntime(context: Context) {
     }
 
     private suspend fun runProcess(filesystem: File, command: String, workdir: String, seconds: Int): JSONObject = coroutineScope {
+        val native = native ?: error("Native PRoot не включён в этот APK")
         val args = listOf(File(native, "libilmar_process.so").path, File(native, "libproot_exec.so").path,
             "--rootfs=${filesystem.path}", "--bind=/dev", "--bind=/proc", "--bind=/sys", "--bind=/dev/urandom:/dev/random",
             "-w", workdir, "-0", "--link2symlink", "--kill-on-exit", "-L", "/bin/sh", "-c", command)

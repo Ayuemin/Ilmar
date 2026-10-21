@@ -67,4 +67,42 @@ class GitHubGitTest {
         val git = GitHubGit(runtime(), { token }, { "a" to "b" }, { true }, { _,_,_ -> true }, runner = { _,_,_ -> error("must not run") })
         assertTrue(runCatching { git.execute(1, args("push").apply { remove("branch") }) }.isFailure)
     }
+    @Test fun realGitCommitsPushesClonesAndRejectsNonFastForwardOffline() = runTest {
+        val root = java.nio.file.Files.createTempDirectory("ilmar-git-integration").toFile()
+        try {
+            val bare = java.io.File(root, "remote.git")
+            fun shell(command: String): Pair<Int, String> {
+                val process = ProcessBuilder("/bin/sh", "-c", command).redirectErrorStream(true).start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                check(process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS)) { "Git fixture timed out" }
+                return process.exitValue() to output
+            }
+            assertEquals(0, shell("git init --bare --initial-branch=main " + GitCredentialBridge.quote(bare.path)).first)
+            val git = GitHubGit(runtime(), { token }, { "Fixture Author" to "fixture@example.invalid" }, { true }, { _,_,_ -> true }, runner = { command, _, allowed ->
+                assertTrue(allowed())
+                withContext(Dispatchers.IO) {
+                    val translated = command.replace("/root/repos", java.io.File(root, "repos").path).replace("https://github.com/owner/repo.git", bare.path)
+                    val (code, output) = shell(translated)
+                    JSONObject().put("exit_code", code).put("output", output).toString()
+                }
+            })
+            suspend fun run(action: String, directory: String = "repo", message: String = "fixture"): JSONObject = JSONObject(git.execute(1,
+                args(action).put("directory", directory).put("message", message).put("paths", org.json.JSONArray().put("sample.txt"))))
+            assertEquals(0, run("init").getInt("exit_code"))
+            val local = java.io.File(root, "repos/repo")
+            java.io.File(local, "sample.txt").writeText("first\n")
+            assertEquals(0, run("add").getInt("exit_code")); assertEquals(0, run("commit").getInt("exit_code"))
+            assertEquals(0, run("push").getInt("exit_code")); assertEquals(0, run("clone", "second").getInt("exit_code"))
+            java.io.File(root, "repos/second/sample.txt").writeText("remote second\n")
+            assertEquals(0, run("add", "second").getInt("exit_code")); assertEquals(0, run("commit", "second", "remote commit").getInt("exit_code"))
+            assertEquals(0, run("push", "second").getInt("exit_code"))
+            java.io.File(local, "sample.txt").writeText("divergent local\n")
+            assertEquals(0, run("add").getInt("exit_code")); assertEquals(0, run("commit", message = "local commit").getInt("exit_code"))
+            assertNotEquals(0, run("push").getInt("exit_code"))
+            assertNotEquals(0, run("pull").getInt("exit_code"))
+            assertEquals(0, run("status").getInt("exit_code")); assertEquals(0, run("log").getInt("exit_code"))
+            val remoteLog = shell("git --git-dir=" + GitCredentialBridge.quote(bare.path) + " log -1 --format=%s refs/heads/feature/check")
+            assertEquals("remote commit", remoteLog.second.trim())
+        } finally { com.ayuemin.ilmar.alpine.RootfsArchive.remove(root) }
+    }
 }

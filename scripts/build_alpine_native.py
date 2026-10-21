@@ -75,6 +75,7 @@ END { print "#include <unistd.h>"; print "const ssize_t offset_to_pokedata_worka
         archive.add(talloc, "talloc")
         archive.add(ROOT / "scripts/build_alpine_native.py", "build_alpine_native.py")
         archive.add(ROOT / "app/src/main/cpp/process_group.c", "process_group.c")
+        archive.add(ROOT / "docs/github-and-alpine.md", "BUILD-AND-NOTICES.md")
     print("native_build", {"proot": PROOT, "talloc_source": AGORA, "abi": "arm64-v8a", "ndk": str(ndk)})
 
 

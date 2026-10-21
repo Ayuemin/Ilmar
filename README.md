@@ -9,7 +9,9 @@ Android-чат на Kotlin, Compose и Material 3 — основа будуще�
 - Нативные tools: настраиваемые API поиска (Brave/Tavily/SerpAPI/свой JSON API), HTTPS fetch, калькулятор, файлы, память, план и уточнение.
 - Непрерывный чат: отдельный провайдер/модель Compact, карточка состояния, полная локальная история, SQLite FTS и опциональный RAG с API-эмбеддингами.
 - Глобальные расширенные лимиты и подробный журнал с выгрузкой JSONL.
-- GitHub-инструменты и плагины пока не исполняются.
+- GitHub REST: репозитории/файлы/commits, issues/PR, workflows/Actions/jobs/logs/releases; отдельное подтверждение каждой записи.
+- Устанавливаемый Alpine Linux 3.24.2/PRoot ARM64; настоящий Git clone/add/commit/push с сохранённым токеном через временный credential helper.
+- Внешние Kotlin-плагины пока не исполняются.
 
 Документация и единственный Roadmap: [Obsidian / Ilmar](https://github.com/Ayuemin/Ayuemin-obsidian-/tree/main/Ilmar).
 
@@ -19,12 +21,17 @@ Android-чат на Kotlin, Compose и Material 3 — основа будуще�
 затем собирает `ilmar-debug-apk` на push в main и pull request.
 `android-apk.yml` позволяет отдельно собрать debug APK вручную через Actions.
 Артефакты хранятся 14 дней. SHA и версия доступны в Настройки → Диагностика.
+Alpine-сборки включают native runtime; архив corresponding sources публикуется рядом с APK.
 
 Локально нужны JDK 17, Gradle 8.11.1 и Android SDK 35:
 
 ```sh
 ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
+
+Для Alpine дополнительно установи NDK 28.2.13676358 и перед сборкой выполни
+`python3 scripts/build_alpine_native.py` (Linux; ANDROID_HOME указывает на SDK).
+[GitHub, Git и Alpine: настройка, возможности и приёмка](docs/github-and-alpine.md).
 
 [Проверки перед телефонной приёмкой](docs/chat-preview-acceptance.md).
 [Android tools: реализованное, ограничения и отложенные пункты](docs/android-tools-mvp.md).

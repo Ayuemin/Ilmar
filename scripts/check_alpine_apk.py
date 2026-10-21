@@ -19,6 +19,6 @@ with zipfile.ZipFile(path) as archive:
             if struct.unpack_from("<I", data, p)[0] == 1:
                 alignment = struct.unpack_from("<Q", data, p + 48)[0]
                 assert alignment >= 16384, (name, alignment)
-    for name in ["PROot-COPYING.txt", "GPL-3.txt", "LGPL-3.txt"]:
+    for name in ["PROot-COPYING.txt", "GPL-3.txt", "LGPL-3.txt", "NOTICE-Alpine.txt"]:
         assert len(archive.read("assets/licenses/" + name)) > 1000
 print(json.dumps({"alpine_apk": str(path), "abi": "arm64-v8a", "binaries": required, "elf_load_alignment": ">=16384", "licenses": "present"}))

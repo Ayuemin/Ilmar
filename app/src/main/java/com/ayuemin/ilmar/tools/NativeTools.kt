@@ -18,7 +18,7 @@ import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 
 internal class ClarificationRequired(val question: String) : Exception(question)
 
-/** Built-in, bounded native operations. These executors never run downloaded code or arbitrary shell commands. */
+/** Built-in operations; optional Alpine shell and Git require separate grants and native consent. */
 internal object NativeTools {
     private var installedFor: Context? = null
     private var resources: ToolDataStore? = null

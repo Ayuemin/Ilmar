@@ -20,11 +20,14 @@ internal fun GitHubSettings() {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Text("GitHub", style = MaterialTheme.typography.titleMedium)
-    Text("Подключи fine-grained Personal Access Token выбранных репозиториев. Для файлов нужны Contents, для задач — Issues, для PR — Pull requests, для запусков — Actions. Выдай только нужные права. Токен хранится через Android Keystore и не передаётся модели.")
+    Text("Подключи fine-grained Personal Access Token выбранных репозиториев. Для файлов/push нужны Contents, для задач — Issues, для PR — Pull requests, для запусков — Actions, для изменения YAML workflow — Workflows (write). Выдай только нужные права. Токен хранится через Android Keystore и не передаётся модели.")
     OutlinedTextField(token, { token = it }, label = { Text(if (saved) "Новый токен GitHub" else "Токен GitHub") },
         singleLine = true, visualTransformation = PasswordVisualTransformation())
     TextButton(enabled = token.isNotBlank(), onClick = {
-        credentials.saveApiKey(token.trim(), GitHubClient.KEY); token = ""; saved = true; status = "Токен сохранён"
+        try {
+            require(token.trim().none { it.isISOControl() })
+            credentials.saveApiKey(token.trim(), GitHubClient.KEY); token = ""; saved = true; status = "Токен сохранён"
+        } catch (_: Exception) { status = "Не удалось сохранить токен в Keystore; проверь токен и доступность хранилища" }
     }) { Text("Сохранить токен") }
     TextButton(enabled = saved, onClick = { credentials.clearApiKey(GitHubClient.KEY); token = ""; saved = false; status = "Токен удалён с устройства" }) { Text("Удалить токен") }
     TextButton(enabled = saved && !busy, onClick = { scope.launch {

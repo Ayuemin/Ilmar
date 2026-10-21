@@ -36,7 +36,10 @@ internal class GitHubClient(
             require(path.substringBefore('?').split('/').none { it == "." || it == ".." }) { "Путь не должен содержать dot segments" }
             val url = ("https://api.github.com" + path).toHttpUrl()
             require(url.host == "api.github.com" && url.username.isEmpty() && url.password.isEmpty() && url.port == 443)
-            require(url.pathSegments.none { it == "." || it == ".." } && !Regex("(?i)%2e|%2f|%5c").containsMatchIn(path)) { "Закодированные разделители запрещены" }
+            require(path.substringBefore('?').split('/').all { segment ->
+                val decoded = java.net.URLDecoder.decode(segment.replace("+", "%2B"), "UTF-8")
+                '\\' !in decoded && decoded.none { it.isISOControl() } && decoded.split('/').none { it == "." || it == ".." }
+            }) { "Недопустимые закодированные сегменты пути" }
             require(url.pathSegments.firstOrNull() in setOf("user", "users", "repos", "repositories", "orgs", "search", "rate_limit", "gists", "notifications", "issues", "teams")) { "Нужен путь REST API GitHub" }
             require(url.queryParameterNames.none { it.lowercase() in setOf("access_token", "token", "client_secret") }) { "Секреты в URL запрещены" }
             require(body.toByteArray().size <= MAX_BODY) { "JSON-тело GitHub превышает 64 КиБ; разбей операцию" }
