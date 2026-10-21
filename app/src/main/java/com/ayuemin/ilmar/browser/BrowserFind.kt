@@ -20,7 +20,7 @@ internal object BrowserFind {
       const matches=candidates.slice(0,20).map(el=>{
         if(!state.refs.has(el))state.refs.set(el,state.next++);
         const ref=state.refs.get(el);state.elements.set(ref,el);
-        return {ref:ref,tag:el.tagName.toLowerCase(),type:el.type||'',label:label(el).slice(0,200),url:el.tagName==='A'?el.href:undefined,
+        return {ref:ref,tag:el.tagName.toLowerCase(),type:el.type||'',label:label(el).slice(0,200),url:el.tagName==='A' && /^https:\/\//i.test(el.href||'') && !/^[^?#]*@/.test((el.href||'').replace(/^https:\/\//i,''))?el.href:undefined,
           sensitive:el.matches('input[type=password],input[autocomplete="one-time-code"],input[autocomplete*="password"],input[autocomplete^="cc-"]')};
       });
       return JSON.stringify({url:baseline.url,title:baseline.title,page_id:state.id,representation:'DOM_FIND',query:query,matches:matches,
