@@ -48,7 +48,7 @@ class SearchRoutingTest {
         val page = JSONObject().put("url", "https://example.com/").put("title", "Example").put("text", "x".repeat(15000))
             .put("links", org.json.JSONArray("""[{"ref":1,"title":"bad","url":"file:///etc/passwd"},{"ref":2,"title":"ok","url":"https://example.com/page"}]"""))
         val decoded = BrowserSnapshot.decode(JSONObject.quote(page.toString()))
-        assertEquals(12000, decoded.getString("text").length); assertTrue(decoded.getBoolean("untrusted"))
+        assertEquals(4000, decoded.getString("text").length); assertTrue(decoded.getBoolean("untrusted"))
         assertEquals(1, decoded.getJSONArray("links").length())
         assertTrue(runCatching { BrowserSnapshot.decode("null") }.isFailure)
         listOf("file:///etc/passwd", "content://local", "javascript:alert(1)", "https://user:secret@example.com/").forEach { assertFalse(BrowserAddress.valid(it)) }
