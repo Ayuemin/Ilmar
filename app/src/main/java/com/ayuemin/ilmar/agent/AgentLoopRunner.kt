@@ -58,7 +58,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
                     confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
                 } else {
-                    tool?.beforeExecute?.invoke(JSONObject(call.arguments))
+                    val preflight = try { JSONObject(call.arguments) } catch (_: org.json.JSONException) { null }
+                    if (preflight != null) tool?.beforeExecute?.invoke(preflight)
                     currentCoroutineContext().ensureActive()
                     // Planned calls are not execution intents. Persist only this call immediately before entering its executor.
                     history[groupStart].getJSONArray("_started_calls").put(call.id)
