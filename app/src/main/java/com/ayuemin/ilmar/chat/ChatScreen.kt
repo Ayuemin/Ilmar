@@ -216,13 +216,15 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                                     Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Column(Modifier.weight(1f)) {
                                             Text(item.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                                            Text(when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
+                                            Text(if (!controller.interventionIsCurrent(selected.id, item)) "Сохранено для прежней задачи · можно отредактировать и отправить заново"
+                                                else when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
                                         }
                                         Box {
                                             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с уточнением") }
                                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                                 (if (item.status == "PENDING") listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить") else listOf("EDIT" to "Редактировать", "DELETE" to "Удалить")).forEach { (action, title) ->
-                                                    DropdownMenuItem(text = { Text(title) }, onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
+                                                    DropdownMenuItem(text = { Text(title) }, enabled = action !in setOf("NOW", "QUEUED") || inThisChat,
+                                                        onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
                                                 }
                                             }
                                         }

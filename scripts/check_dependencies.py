@@ -6,6 +6,8 @@ from urllib.request import Request, urlopen
 
 
 def query(packages, transport=None):
+    if not packages or any(not p.get("name") or not p.get("version") for p in packages):
+        raise ValueError("A nonempty resolved dependency inventory is required")
     payload = {"queries": [{"package": {"name": p["name"], "ecosystem": "Maven"}, "version": p["version"]} for p in packages]}
     if transport is None:
         def transport(value):
@@ -16,6 +18,11 @@ def query(packages, transport=None):
     results = transport(payload).get("results")
     if not isinstance(results, list) or len(results) != len(packages):
         raise ValueError("OSV returned an incomplete result; no clean-scan claim is possible")
+    for result in results:
+        if not isinstance(result, dict) or "error" in result or not isinstance(result.get("vulns", []), list):
+            raise ValueError("OSV query failed; no clean-scan claim is possible")
+        if any(not isinstance(v, dict) or not isinstance(v.get("id"), str) for v in result.get("vulns", [])):
+            raise ValueError("Malformed OSV advisory")
     affected = [{**p, "advisories": [v["id"] for v in result.get("vulns", [])]} for p, result in zip(packages, results) if result.get("vulns")]
     return {"source": "https://osv.dev", "packages_checked": len(packages), "affected": affected,
             "scope": "resolved debug runtime and unit-test Maven artifacts; not a full SBOM or device acceptance"}

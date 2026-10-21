@@ -12,6 +12,10 @@ class DependencyCheckTest(unittest.TestCase):
         self.assertEqual([], query(packages, lambda _: {"results": [{}]})["affected"])
         with self.assertRaises(ValueError):
             query(packages, lambda _: {"results": []})
+        with self.assertRaises(ValueError):
+            query(packages, lambda _: {"results": [{"error": "unavailable"}]})
+        with self.assertRaises(ValueError):
+            query([], lambda _: {"results": []})
 
 
 if __name__ == "__main__":

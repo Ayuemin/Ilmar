@@ -70,7 +70,7 @@ internal fun CompactStats(gauge: CompactGauge?, ledger: UsageLedger, messageCoun
                 Line("Входные токены", ledger.input?.toString() ?: "Нет данных")
                 Line("Выходные токены", ledger.output?.toString() ?: "Нет данных")
                 Line("Кэшированные входные", ledger.cached?.toString() ?: "Нет данных")
-                Line("Сжато (оценка)", ledger.estimatedSaved.toString())
+                Line("Избежано входа суммарно (оценка)", ledger.estimatedSaved.toString())
                 Line("Запросов Compact", ledger.compactCalls.toString())
                 Line("Стоимость Compact USD", ledger.compactCost ?: "Нет данных")
                 Line("Стоимость USD", ledger.costUsd ?: "Нет данных")

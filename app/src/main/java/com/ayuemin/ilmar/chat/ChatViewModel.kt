@@ -101,6 +101,8 @@ class ChatViewModel @JvmOverloads constructor(
     internal fun activateCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) { memory.activate(chatId, id); invalidateGauge(chatId) } }
     fun compact(chatId: Long) { if (mutable.value.activeChatId == null) generate(chatId, true) }
     fun usage(chatId: Long) = store.usage(chatId)
+    internal fun interventionIsCurrent(chat: Long, item: ChatStore.Intervention): Boolean =
+        item.taskId != null && mutable.value.activeChatId == chat && runtime.getString("active_task", null) == item.taskId
     private fun projectionFingerprint(chat: Long): String {
         val app = getApplication<Application>()
         val model = registry.modelForChat(chat)
@@ -129,8 +131,11 @@ class ChatViewModel @JvmOverloads constructor(
                     mutable.update { it.copy(attachments = it.attachments + (chatId to items)) }
                 } else releaseAttachments(listOf(item))
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(errors = it.errors + (chatId to
-                (if (e is IllegalArgumentException || e is IllegalStateException) e.message ?: "Не удалось прочитать вложение" else "Не удалось прочитать вложение. Проверь формат и доступ к файлу."))) } }
+            catch (e: Exception) { mutable.update { state ->
+                if (state.chats.none { it.id == chatId } || (chatEpochs[chatId] ?: 0L) != epoch) state
+                else state.copy(errors = state.errors + (chatId to
+                    (if (e is IllegalArgumentException || e is IllegalStateException) e.message ?: "Не удалось прочитать вложение" else "Не удалось прочитать вложение. Проверь формат и доступ к файлу.")))
+            } }
             finally { cleanup?.delete(); mutable.update { it.copy(importing = it.importing - chatId) } }
         }
     }
@@ -214,6 +219,11 @@ class ChatViewModel @JvmOverloads constructor(
                 }
                 releaseAttachments(removed)
                 if (mutable.value.chats.isEmpty()) create()
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                val chats = runCatching { store.load() }.getOrElse { mutable.value.chats }
+                mutable.update { it.copy(chats = chats, errors = it.errors + (id to "Не удалось полностью очистить данные чата. Проверь свободное место и повтори действие.")) }
+                if (chats.isEmpty()) create()
             } finally { mutable.update { it.copy(mutating = it.mutating - id) } }
         }
     }
