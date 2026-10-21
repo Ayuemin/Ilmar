@@ -4,7 +4,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class BrowserUserGateTest {
     @Test fun passwordFormRequiresImmediateHandoff() {
         val page = JSONObject().put("url", "https://4pda.to/forum/index.php?act=Login")
