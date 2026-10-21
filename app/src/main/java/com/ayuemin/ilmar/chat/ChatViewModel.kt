@@ -200,11 +200,11 @@ class ChatViewModel @JvmOverloads constructor(
         refreshInterventions(chatId)
     }
     fun chooseIntervention(chatId: Long, id: Long, action: String) {
-        val item = store.interventions(chatId).find { it.id == id && it.status == "PENDING" } ?: return
+        val item = store.interventions(chatId).find { it.id == id } ?: return
         when (action) {
             "EDIT" -> { setDraft(chatId, item.text); store.updateIntervention(chatId,id,"CANCELLED") }
-            "NOW" -> store.updateIntervention(chatId,id,"NOW")
-            "QUEUED" -> store.updateIntervention(chatId,id,"QUEUED")
+            "NOW" -> if (item.status == "PENDING") store.updateIntervention(chatId,id,"NOW")
+            "QUEUED" -> if (item.status == "PENDING") store.updateIntervention(chatId,id,"QUEUED")
             "DELETE" -> store.updateIntervention(chatId,id,"CANCELLED")
             else -> return
         }
