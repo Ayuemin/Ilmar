@@ -27,7 +27,9 @@ jobs:
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           fi
           yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+      - name: Build ARM64 Alpine PRoot from pinned sources
+        run: python3 scripts/build_alpine_native.py
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '8.11.1'
@@ -56,5 +58,13 @@ jobs:
         with:
           name: ilmar-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish Alpine corresponding source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ilmar-alpine-corresponding-source
+          path: .build-alpine/native-corresponding-source.tar.gz
           if-no-files-found: error
           retention-days: 14
