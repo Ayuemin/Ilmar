@@ -56,6 +56,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     }
     var overflow by remember { mutableStateOf(false) }
     var showMemory by remember { mutableStateOf(false) }
+    var activityExpanded by remember(selected.id) { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var searchOpen by remember(selected.id) { mutableStateOf(false) }
@@ -86,8 +87,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val list = rememberLazyListState()
-    val messages = (selected.messages + if (inThisChat && state.streamingText.isNotEmpty())
-        listOf(ChatMessage(state.streamingText, false)) else emptyList())
+    val messages = selected.messages
         .filter { !searchOpen || query.isBlank() || it.text.contains(query, true) }
     // Follow the stream only when the reader is already at the bottom.
     val following = remember { mutableStateOf(true) }
@@ -188,7 +188,25 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 }
             }
             state.contextStatus[selected.id]?.let { label -> TextButton(onClick = { showMemory = true }) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            if (inThisChat) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (inThisChat) {
+                val events = state.activityEvents
+                val label = state.activityLabel.ifBlank { "Агент выполняет задачу…" }
+                Column(Modifier.fillMaxWidth()) {
+                    if (events.size > 1) TextButton(onClick = { activityExpanded = !activityExpanded }) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(if (activityExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                    } else Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (activityExpanded && events.size > 1) Column(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
+                        events.forEach { event -> Text("• $event", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
             else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
                 Text("Перейти к активному ответу")
             }
