@@ -51,14 +51,13 @@ jobs:
       - name: Test dependency advisory parser
         run: python3 -m unittest discover -s scripts -p 'test_check_dependencies.py'
       - name: Compile Kotlin and unit tests
-        run: ./gradlew --write-verification-metadata sha256 --write-locks :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
       - name: Summarize actual JUnit results
         run: python3 scripts/summarize_test_results.py
 
       - name: Inventory and check dependency advisories
         run: |
-          ./gradlew --write-verification-metadata sha256 :app:dependencyInventory --write-locks --no-daemon
-          python3 scripts/print_build_inputs.py
+          ./gradlew :app:dependencyInventory --no-daemon
           python3 scripts/check_dependencies.py --inventory app/build/reports/dependency-inventory.json --output app/build/reports/dependency-advisories.json
 
       - name: Build installable debug APK
