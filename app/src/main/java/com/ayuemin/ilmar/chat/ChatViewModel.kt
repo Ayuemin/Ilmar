@@ -240,6 +240,7 @@ class ChatViewModel @JvmOverloads constructor(
         check(runtime.edit().putLong("active_chat", chatId).commit())
         mutable.update { it.copy(activeChatId = chatId, streamingText = "", activityLabel = "Подготавливает запрос…", activityEvents = listOf("Подготавливает запрос…"), errors = it.errors - chatId) }
         var cleanupSession: com.ayuemin.ilmar.agent.TaskSession? = null
+        var completedNormally = false
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val taskSession = memory.tasks.begin(chatId, history)
@@ -373,6 +374,7 @@ class ChatViewModel @JvmOverloads constructor(
                     store.append(chatId, ChatMessage(reply, false, info = info), null)
                     mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = store.load().first { it.id == chatId }.messages) else c }) }
                     diagnostics.record("SUCCESS", chatId)
+                    completedNormally = true
                     indexArchive(chatId)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -403,13 +405,15 @@ class ChatViewModel @JvmOverloads constructor(
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
                 mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "", activityLabel = "", activityEvents = emptyList()) }
-                // Deferred turns become ordinary user messages after the current task ends.
-                // Never start a new API request implicitly after cancellation or failure.
-                store.deliverInterventions(chatId, "QUEUED")
-                store.deliverInterventions(chatId, "NOW")
+                // Follow-up is a new task, never an interruption of an in-flight request.
+                // On cancellation/failure, leave queued turns untouched for explicit recovery.
+                val followUp = if (completedNormally) store.deliverInterventions(chatId, "QUEUED") + store.deliverInterventions(chatId, "NOW") else emptyList()
                 mutable.update { it.copy(chats = store.load()) }
                 refreshInterventions(chatId)
                 request = null
+                if (followUp.isNotEmpty() && mutable.value.chats.any { it.id == chatId }) {
+                    viewModelScope.launch { kotlinx.coroutines.yield(); if (mutable.value.activeChatId == null) generate(chatId) }
+                }
             }
         }
         val job = request!!
