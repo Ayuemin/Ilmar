@@ -23,7 +23,7 @@ Android-чат на Kotlin, Compose и Material 3 — основа будуще�
 Локально нужны JDK 17, Gradle 8.11.1 и Android SDK 35:
 
 ```sh
-gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
 [Проверки перед телефонной приёмкой](docs/chat-preview-acceptance.md).
@@ -32,3 +32,5 @@ gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assemb
 Успешный CI не заменяет проверку API и интерфейса на устройстве.
 Обновление поверх старого APK требует совпадающей подписи; удалять приложение ради
 установки без сохранения данных нельзя. Стабильная релизная подпись ещё не настроена.
+
+[Исправления аудита issue #9 и границы приёмки](docs/issue-9-fixes.md).

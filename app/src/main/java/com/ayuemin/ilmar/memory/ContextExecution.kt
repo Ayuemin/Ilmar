@@ -53,6 +53,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
             budget = TaskBudget(policy, caps, spent.tokens, spent.cost)
             val result = if (manual) {
                 val projection = engine.prepare(history, emptyList(), emptyList(), force = true)
+                onProjection(projection)
                 status(engine.lastNotice ?: "Compact сохранён · оценка контекста ${projection.estimatedInput} + ${projection.output} / ${projection.limit}")
                 null
             } else AgentLoopRunner(

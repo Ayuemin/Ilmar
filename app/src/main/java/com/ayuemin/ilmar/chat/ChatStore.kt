@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 11), java.io.Closeable {
+class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", null, 12), java.io.Closeable {
     internal val appContext: Context = context.applicationContext
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL)")
@@ -30,51 +30,57 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
         if (oldVersion < 9) com.ayuemin.ilmar.agent.DurableTaskStore.create(db)
         if (oldVersion < 10) com.ayuemin.ilmar.agent.DurableTaskStore.createIndexes(db)
         if (oldVersion < 11) createInterventions(db)
+        else if (oldVersion < 12) db.execSQL("ALTER TABLE interventions ADD COLUMN task_id TEXT")
     }
 
-    data class Intervention(val id: Long, val chatId: Long, val text: String, val status: String)
+    data class Intervention(val id: Long, val chatId: Long, val text: String, val status: String, val taskId: String? = null)
     private fun createInterventions(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS interventions (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS interventions (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, task_id TEXT)")
         db.execSQL("CREATE INDEX IF NOT EXISTS interventions_chat_status ON interventions(chat_id,status,id)")
     }
     fun interventions(chatId: Long): List<Intervention> {
         val items = mutableListOf<Intervention>()
-        readableDatabase.rawQuery("SELECT id,chat_id,text,status FROM interventions WHERE chat_id=? AND status IN ('PENDING','NOW','QUEUED') ORDER BY id", arrayOf(chatId.toString())).use { rows ->
-            while (rows.moveToNext()) items += Intervention(rows.getLong(0), rows.getLong(1), rows.getString(2), rows.getString(3))
+        readableDatabase.rawQuery("SELECT id,chat_id,text,status,task_id FROM interventions WHERE chat_id=? AND status IN ('PENDING','NOW','QUEUED') ORDER BY id", arrayOf(chatId.toString())).use { rows ->
+            while (rows.moveToNext()) items += Intervention(rows.getLong(0), rows.getLong(1), rows.getString(2), rows.getString(3), rows.getString(4))
         }
         return items
     }
-    fun stageIntervention(chatId: Long, text: String): Long {
+    fun stageIntervention(chatId: Long, text: String, taskId: String? = null): Long {
         require(text.isNotBlank())
         val db = writableDatabase
         db.beginTransaction()
         try {
             check(db.rawQuery("SELECT 1 FROM chats WHERE id=?", arrayOf(chatId.toString())).use { it.moveToFirst() })
             val values = android.content.ContentValues().apply { put("chat_id",chatId);put("text",text.trim());put("status","PENDING");put("created_at",System.currentTimeMillis()) }
+            values.put("task_id", taskId)
             val id = db.insertOrThrow("interventions",null,values)
             db.setTransactionSuccessful()
             return id
         } finally { db.endTransaction() }
     }
-    fun updateIntervention(chatId: Long, id: Long, status: String) {
+    fun updateIntervention(chatId: Long, id: Long, status: String, taskId: String? = null) {
         require(status in setOf("NOW","QUEUED","CANCELLED"))
         val allowed = if (status == "CANCELLED") "status IN ('PENDING','NOW','QUEUED')" else "status='PENDING'"
-        writableDatabase.execSQL("UPDATE interventions SET status=? WHERE chat_id=? AND id=? AND $allowed",arrayOf(status,chatId,id))
+        writableDatabase.execSQL("UPDATE interventions SET status=?,task_id=coalesce(?,task_id) WHERE chat_id=? AND id=? AND $allowed",arrayOf(status,taskId,chatId,id))
     }
     /** Claim and persist a user turn in one transaction; never duplicate after restart. */
-    fun deliverInterventions(chatId: Long, status: String): List<ChatMessage> {
-        require(status in setOf("NOW","QUEUED"))
+    fun deliverInterventions(chatId: Long, status: String, taskId: String? = null): List<ChatMessage> {
+        require(status in setOf("NOW","QUEUED","FOLLOW_UP"))
         val db = writableDatabase
         val delivered = mutableListOf<ChatMessage>()
         db.beginTransaction()
         try {
-            db.rawQuery("SELECT id,text FROM interventions WHERE chat_id=? AND status=? ORDER BY id",arrayOf(chatId.toString(),status)).use { rows ->
+            val condition = if (status == "FOLLOW_UP") "status IN ('NOW','QUEUED')" else "status='$status'"
+            val scope = if (taskId == null) "task_id IS NULL" else "task_id=?"
+            val parameters = if (taskId == null) arrayOf(chatId.toString()) else arrayOf(chatId.toString(), taskId)
+            db.rawQuery("SELECT id,text FROM interventions WHERE chat_id=? AND $condition AND $scope ORDER BY id",parameters).use { rows ->
                 while (rows.moveToNext()) {
                     val id = rows.getLong(0)
                     val text = rows.getString(1)
                     val values = android.content.ContentValues().apply { put("chat_id",chatId);put("text",text);put("from_user",1) }
                     val messageId = db.insertOrThrow("messages",null,values)
-                    db.execSQL("UPDATE interventions SET status='DELIVERED' WHERE id=? AND chat_id=? AND status=?",arrayOf(id,chatId,status))
+                    if (taskId != null && status == "NOW") db.execSQL("INSERT OR IGNORE INTO agent_task_messages(chat_id,message_id,task_id) VALUES(?,?,?)", arrayOf(chatId,messageId,taskId))
+                    db.execSQL("UPDATE interventions SET status='DELIVERED' WHERE id=? AND chat_id=? AND $condition",arrayOf(id,chatId))
                     delivered += ChatMessage(text,true,id=messageId)
                 }
             }
@@ -271,6 +277,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun clearMessages(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM draft_attachments WHERE chat_id=?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id = ?", arrayOf(chatId))
             com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))
@@ -291,6 +298,7 @@ class ChatStore(context: Context) : SQLiteOpenHelper(context, "ilmar_chats.db", 
     fun delete(chatId: Long) {
         writableDatabase.beginTransaction()
         try {
+            writableDatabase.execSQL("DELETE FROM interventions WHERE chat_id=?", arrayOf(chatId))
             writableDatabase.execSQL("DELETE FROM task_executions WHERE chat_id=?", arrayOf(chatId))
             com.ayuemin.ilmar.agent.DurableTaskStore.clear(writableDatabase, chatId)
             writableDatabase.execSQL("DELETE FROM tool_traces WHERE chat_id = ?", arrayOf(chatId))

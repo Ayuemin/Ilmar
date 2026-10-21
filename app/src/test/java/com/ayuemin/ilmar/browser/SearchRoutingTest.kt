@@ -64,7 +64,7 @@ class SearchRoutingTest {
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
         modes.setEnabled(91, "Агент", false); modes.setEnabled(91, "Поиск", true); modes.setChoice(91, "search_source", "browser")
         assertFalse(modes.enabled(91, "Агент"))
-        assertEquals(12, BrowserTools.forChat(91, modes, false, true).size)
+        assertEquals(12, BrowserTools.forChat(91, modes, false, true, globalAllowed = { true }, approveAction = { _, _, _ -> true }).size)
     }
     @Test fun snapshotsRejectInvalidDataAndBoundUntrustedContent() {
         val page = JSONObject().put("url", "https://example.com/").put("title", "Example").put("text", "x".repeat(15000))

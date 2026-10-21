@@ -28,7 +28,7 @@ internal object StateJournalExport {
                     }
                     item.put(key, value)
                 }
-                writer.append(Redaction.json(item).toString()).append('\n')
+                writer.append(Redaction.metadata(item).toString()).append('\n')
             }
         }
     }

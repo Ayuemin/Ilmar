@@ -33,7 +33,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     val state by controller.state.collectAsState()
     val selected = state.chats.firstOrNull { it.id == state.selectedId } ?: return
     LaunchedEffect(selected.id) { controller.indexArchive(selected.id) }
-    val sending = state.activeChatId != null
+    val sending = state.activeChatId != null || state.mutating.isNotEmpty()
     val inThisChat = state.activeChatId == selected.id
     val draft = state.drafts[selected.id].orEmpty()
     val prefs = remember { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
@@ -131,9 +131,10 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showMemory) ChatMemoryPanel(selected.id, controller, sending, onDismiss = { showMemory = false })
-    if (showStats) CompactStats(state.compactGauges[selected.id], controller.usage(selected.id), selected.messages.size) { showStats = false }
+    val gauge = controller.compactGauge(selected.id)
+    if (showStats) CompactStats(gauge, controller.usage(selected.id), selected.messages.size) { showStats = false }
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("Очистить чат?") },
-        text = { Text("Сообщения будут удалены без возможности восстановления.") },
+        text = { Text("Сообщения, вложения, уточнения, правила, сохранённая память и план будут удалены без возможности восстановления. Пользовательские загрузки сохранятся.") },
         confirmButton = { TextButton(onClick = { controller.clear(selected.id); showClear = false }) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("Отмена") } })
     ModalNavigationDrawer(drawerState = drawer, drawerContent = {
@@ -163,7 +164,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 modifier = Modifier.fillMaxWidth(), label = { Text("Поиск в чате") },
                 trailingIcon = { IconButton(onClick = { searchOpen = false; query = "" }) { Icon(Icons.Default.Close, "Закрыть поиск") } })
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (messages.isEmpty() && !searchOpen) IlmarWelcome(Modifier.align(Alignment.Center))
+                if (messages.isEmpty() && !searchOpen && !inThisChat && state.errors[selected.id] == null && state.interventions[selected.id].orEmpty().isEmpty()) IlmarWelcome(Modifier.align(Alignment.Center))
                 else LazyColumn(Modifier.fillMaxSize(), state = list,
                     verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -182,64 +183,67 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                                 onSpeak = { speech.speak(message.text) }) }
                         }
                     }
-                }
-            }
-            if (inThisChat) {
-                val events = state.activityEvents
-                val label = state.activityLabel.ifBlank { "Агент выполняет задачу…" }
-                Column(Modifier.fillMaxWidth()) {
-                    if (events.size > 1) TextButton(onClick = { activityExpanded = !activityExpanded }) {
-                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Icon(if (activityExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
-                    } else Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (activityExpanded && events.size > 1) Column(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
-                        events.forEach { event -> Text("• $event", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                }
-            }
-            else if (sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
-                Text("Перейти к активному ответу")
-            }
-            (state.errors[selected.id] ?: speechError ?: speech.error)?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (state.errors.containsKey(selected.id)) {
-                    Row {
-                        TextButton(onClick = { onSettingsPage("Диагностика") }) { Text("Подробности / журнал") }
-                        if (error.contains("контекст", true) || error.contains("Compact", true)) TextButton(onClick = { onSettingsPage("Память и контекст") }) { Text("Память") }
-                        else if (error.contains("лимит", true) || error.contains("врем", true)) TextButton(onClick = { onSettingsPage("Расширенные лимиты") }) { Text("Лимиты") }
-                        else TextButton(onClick = onConnectionSettings) { Text("Подключение") }
-                    }
-                }
-            }
-            if (!inThisChat && (selected.messages.lastOrNull()?.fromUser == true || state.errors.containsKey(selected.id) && selected.messages.any { it.fromUser })) {
-                TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
-            }
-            if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }
-            if (selected.id in state.importing) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.interventions[selected.id].orEmpty().forEach { item ->
-                var menuOpen by remember(item.id) { mutableStateOf(false) }
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
-                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                            Text(when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
-                        }
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с уточнением") }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                (if (item.status == "PENDING") listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить") else listOf("EDIT" to "Редактировать", "DELETE" to "Удалить")).forEach { (action, title) ->
-                                    DropdownMenuItem(text = { Text(title) }, onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
+                    item(key = "runtime-status") {
+                        Column(Modifier.fillMaxWidth()) {
+                            if (inThisChat && activityExpanded && state.activityEvents.size > 1) {
+                                Column(Modifier.heightIn(max = 112.dp).verticalScroll(rememberScrollState()).padding(start = 20.dp, bottom = 8.dp)) {
+                                    state.activityEvents.forEach { event -> Text("• $event", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                 }
+                            }
+                            if (!inThisChat && sending) TextButton(onClick = { state.activeChatId?.let(controller::select) }) {
+                                Text("Перейти к активному ответу")
+                            }
+                            (state.errors[selected.id] ?: speechError ?: speech.error)?.let { error ->
+                                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                if (state.errors.containsKey(selected.id)) {
+                                    Row {
+                                        TextButton(onClick = { onSettingsPage("Диагностика") }) { Text("Подробности / журнал") }
+                                        if (error.contains("контекст", true) || error.contains("Compact", true)) TextButton(onClick = { onSettingsPage("Память и контекст") }) { Text("Память") }
+                                        else if (error.contains("лимит", true) || error.contains("врем", true)) TextButton(onClick = { onSettingsPage("Расширенные лимиты") }) { Text("Лимиты") }
+                                        else TextButton(onClick = onConnectionSettings) { Text("Подключение") }
+                                    }
+                                }
+                            }
+                            if (!inThisChat && (selected.messages.lastOrNull()?.fromUser == true || state.errors.containsKey(selected.id) && selected.messages.any { it.fromUser })) {
+                                TextButton(enabled = !sending, onClick = controller::retry) { Text("Повторить запрос") }
+                            }
+                            if (speech.playing) TextButton(onClick = { speech.stop() }) { Text("Остановить озвучку") }
+                            if (selected.id in state.importing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
+                            state.interventions[selected.id].orEmpty().forEach { item ->
+                                var menuOpen by remember(item.id) { mutableStateOf(false) }
+                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(item.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                                            Text(if (!controller.interventionIsCurrent(selected.id, item)) "Сохранено для прежней задачи · можно отредактировать и отправить заново"
+                                                else when(item.status) { "NOW" -> "На ближайшем раунде"; "QUEUED" -> "В очереди"; else -> "Выбери действие" }, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        Box {
+                                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с уточнением") }
+                                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                                (if (item.status == "PENDING") listOf("EDIT" to "Редактировать", "NOW" to "Отправить сейчас", "QUEUED" to "Поставить в очередь", "DELETE" to "Удалить") else listOf("EDIT" to "Редактировать", "DELETE" to "Удалить")).forEach { (action, title) ->
+                                                    DropdownMenuItem(text = { Text(title) }, enabled = action !in setOf("NOW", "QUEUED") || inThisChat,
+                                                        onClick = { menuOpen = false; controller.chooseIntervention(selected.id,item.id,action) })
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             }
                         }
                     }
                 }
+            }
+            if (inThisChat) TextButton(onClick = {
+                activityExpanded = !activityExpanded
+                if (activityExpanded) scope.launch { list.animateScrollToItem(messages.size) }
+            }, enabled = state.activityEvents.size > 1) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(state.activityLabel.ifBlank { "Агент выполняет задачу…" }, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(if (activityExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "История действий")
             }
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -247,12 +251,12 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     com.ayuemin.ilmar.attachments.AttachmentList(state.attachments[selected.id].orEmpty(),
                         onRemove = { controller.removeAttachment(selected.id, it) })
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
+                    TextField(draft, { controller.setDraft(selected.id, it) }, placeholder = { Text("Сообщение") }, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
-                    CompactRing(state.compactGauges[selected.id]) { showStats = true }
+                    CompactRing(gauge) { showStats = true }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(enabled = selected.id !in state.importing, onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }

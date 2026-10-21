@@ -53,7 +53,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                 ComposerActionTile(Icons.Outlined.CameraAlt, "Фото", true, Modifier.weight(1f)) { onDismiss(); onPhoto() }
                 ComposerActionTile(Icons.Outlined.Image, "Изображение", true, Modifier.weight(1f)) { onDismiss(); onImage() }
             }
-            Text("Файлы: текст UTF-8, DOCX, XLSX, PDF до 12 страниц. Фото и PDF требуют модели с входом image. До 8 вложений по 20 МБ (текст — 256 КБ); отправка только по кнопке.",
+            Text("Файлы: текст UTF-8, DOCX, XLSX, PDF до ${com.ayuemin.ilmar.settings.RuntimeLimits.get("pdf_pages")} страниц. Фото и PDF требуют модели с входом image. До ${com.ayuemin.ilmar.settings.RuntimeLimits.get("attachments")} вложений по ${com.ayuemin.ilmar.settings.RuntimeLimits.get("import_mib")} МиБ (извлечённый текст — ${com.ayuemin.ilmar.settings.RuntimeLimits.get("text_kib")} КиБ); отправка только по кнопке.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 ComposerToggleTile(Icons.Outlined.Psychology, if (reasoning) 2 else 0, 3, levelDescription = "Размышление",

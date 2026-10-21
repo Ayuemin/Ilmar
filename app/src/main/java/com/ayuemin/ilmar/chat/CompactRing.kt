@@ -24,8 +24,8 @@ internal fun CompactRing(gauge: CompactGauge?, onClick: () -> Unit) {
     val foreground = if (progress >= 90) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val background = MaterialTheme.colorScheme.outlineVariant
     Box(Modifier.size(48.dp).semantics {
-        contentDescription = if (gauge == null) "Статистика контекста, ожидается первый запрос"
-            else "До следующего сжатия: $progress процентов. Открыть статистику"
+        contentDescription = if (gauge == null) "Статистика контекста неизвестна или устарела. Открыть статистику"
+            else "Заполнение порога по оценке: $progress процентов. ${if (gauge.automatic) "Автоматический Compact включён" else "Автоматический Compact выключен"}. Открыть статистику"
     }.clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(40.dp)) {
             val stroke = 4.dp.toPx()
@@ -44,13 +44,18 @@ internal fun CompactStats(gauge: CompactGauge?, ledger: UsageLedger, messageCoun
     @Composable fun Line(label: String, value: String) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            Text(value, style = MaterialTheme.typography.bodySmall)
+            Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
         }
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Контекст и использование") },
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("До следующего Compact", style = MaterialTheme.typography.titleSmall)
+                Text(if (gauge?.automatic == false) "Автоматический Compact выключен" else "Порог автоматического Compact", style = MaterialTheme.typography.titleSmall)
+                when (gauge?.outcome) {
+                    "completed" -> Text("Последнее сжатие завершено")
+                    "no_op" -> Text("Последняя попытка не сократила контекст")
+                    "fallback" -> Text("Модельное сжатие не завершено; использованы локальные выдержки")
+                }
                 Line("Заполнение порога", gauge?.let { "${it.percent}%" } ?: "Нет данных")
                 Line("Текущий вход (оценка)", gauge?.input?.toString() ?: "Нет данных")
                 Line("Порог 80% окна", gauge?.threshold?.toString() ?: "Нет данных")
@@ -58,16 +63,19 @@ internal fun CompactStats(gauge: CompactGauge?, ledger: UsageLedger, messageCoun
                 Line("Резерв ответа", gauge?.outputReserve?.toString() ?: "Нет данных")
                 Line("Окно модели", gauge?.window?.toString() ?: "Нет данных")
                 HorizontalDivider()
-                Text("За весь чат", style = MaterialTheme.typography.titleSmall)
+                Text("Генерация и Compact за весь чат", style = MaterialTheme.typography.titleSmall)
                 Line("Сообщений", messageCount.toString())
-                Line("Запросов к модели", ledger.calls.toString())
+                Line("Отправлено к модели", ledger.sent.toString())
+                Line("Не отправлено", ledger.notSent.toString())
                 Line("Входные токены", ledger.input?.toString() ?: "Нет данных")
                 Line("Выходные токены", ledger.output?.toString() ?: "Нет данных")
                 Line("Кэшированные входные", ledger.cached?.toString() ?: "Нет данных")
-                Line("Сжато (оценка)", ledger.estimatedSaved.toString())
-                Line("Сжатий", ledger.compactCalls.toString())
+                Line("Избежано входа суммарно (оценка)", ledger.estimatedSaved.toString())
+                Line("Запросов Compact", ledger.compactCalls.toString())
+                Line("Стоимость Compact USD", ledger.compactCost ?: "Нет данных")
                 Line("Стоимость USD", ledger.costUsd ?: "Нет данных")
                 if (ledger.incompleteCost) Text("Стоимость неполная: показана известная часть.", style = MaterialTheme.typography.bodySmall)
+                Text("Эмбеддинги учитываются отдельно в панели памяти. Озвучка и отдельные сборы поиска не входят в эту сумму.", style = MaterialTheme.typography.bodySmall)
                 Text("Процент отражает последний подготовленный запрос, а не размер всей истории. Обновляется при работе агента; до первого запроса неизвестен.", style = MaterialTheme.typography.bodySmall)
             }
         },

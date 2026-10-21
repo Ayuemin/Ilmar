@@ -10,6 +10,7 @@ import org.json.JSONObject
 internal interface BrowserPage {
     fun configure(policy: BrowserPolicy) = Unit
     fun activate(chat: Long) = Unit
+    fun forget(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
     suspend fun find(query: String, exact: Boolean): JSONObject = error("Поиск элемента недоступен")
     suspend fun readFull(): JSONObject = read()
@@ -30,6 +31,19 @@ internal data class BrowserUi(val chat: Long? = null, val url: String = "", val 
 internal object BrowserRuntime {
     private var page: BrowserPage? = null
     private var documentChat: Long? = null
+    private var sessionOwner: Long? = null
+    suspend fun confirmSession(chat: Long, ask: suspend (Long, String, String) -> Boolean) {
+        if (sessionOwner == chat) return
+        if (!ask(chat, "Общая сессия браузера", "Cookies и входы на сайты общие для приложения, а не отдельные для каждого чата. Этот чат может использовать уже выполненный вход. Продолжить с общей сессией?"))
+            throw com.ayuemin.ilmar.agent.AgentFailure("BROWSER_CANCELLED", "Использование общей сессии отменено")
+        sessionOwner = chat
+    }
+    fun forgetChat(chat: Long) {
+        page?.forget(chat)
+        policies.remove(chat)
+        if (sessionOwner == chat) sessionOwner = null
+        if (mutable.value.chat == chat) { page?.stop(); documentChat = null; mutable.value = BrowserUi(); observations.clear() }
+    }
     private val lock = Mutex()
     private val policies = mutableMapOf<Long, BrowserPolicy>()
     fun configure(chat: Long, policy: BrowserPolicy) { policies[chat] = policy; invalidateObservations(chat) }
@@ -45,7 +59,7 @@ internal object BrowserRuntime {
         }
     }
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null; policies.clear() } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; sessionOwner = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null; policies.clear() } }
     fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
