@@ -9,6 +9,7 @@ import org.json.JSONObject
 
 internal object BrowserTools {
     fun forChat(chat: Long, modes: ChatModePreferences, providerAvailable: Boolean, supportsTools: Boolean, vision: Boolean = false, context: android.content.Context? = null, run: String = "", control: BrowserRunControl? = null): List<BoundTool> {
+        BrowserRuntime.invalidateObservations(chat)
         val modeKey = listOf(modes.enabled(chat, "Агент"), modes.enabled(chat, "tool_Браузер"), modes.enabled(chat, "Поиск"), modes.choice(chat, "search_source"))
         val explicit = modes.enabled(chat, "Агент") && modes.enabled(chat, "tool_Браузер")
         val guard = control ?: BrowserRunControl(chat, !explicit && SearchRouting.source(modes.choice(chat, "search_source")) == SearchSource.AUTO)

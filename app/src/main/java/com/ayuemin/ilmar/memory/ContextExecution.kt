@@ -20,7 +20,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private lateinit var activeSession: TaskSession
     private val engine = ContextEngine(chat, memory, files, policy, caps, target,
         { history, options, purpose, input, saved -> invoke(history, options, purpose, input, saved) }, compactCaps, compactTarget,
-        notice = { status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
+        notice = { com.ayuemin.ilmar.browser.BrowserRuntime.invalidateObservations(chat); status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
         failure = { event("COMPACT_ERROR", JSONObject().put("message", it.message).put("exception", it.javaClass.simpleName).put("stack", it.stackTraceToString())) },
         semanticSearch = semanticSearch, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
@@ -60,6 +60,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 },
                 onProgress = { status(it); event("AGENT_PROGRESS", activeSession.json().put("message", it)) },
                 blockUnresolved = { id, name, args -> memory.unresolvedExecution(chat, id, name, args) },
+                onHistoryReduced = { com.ayuemin.ilmar.browser.BrowserRuntime.invalidateObservations(chat) },
                 replayConfirmed = { name, args -> memory.tasks.confirmed(activeSession, name, args) }
             ).run(tools) { toolHistory, schemas ->
                 val frame = observation()

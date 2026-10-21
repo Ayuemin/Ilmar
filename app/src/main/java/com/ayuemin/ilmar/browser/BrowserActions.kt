@@ -18,6 +18,7 @@ internal object BrowserActions {
       if(!state || state.id!==args.page_id)return JSON.stringify({error:'STALE_PAGE',action_performed:false});
       const coordinate=command==='click' && Number.isInteger(args.x) && Number.isInteger(args.y);
       if(coordinate && state.scroll!==undefined && state.scroll!==scrollY)return JSON.stringify({error:'STALE_VIEWPORT',action_performed:false});
+      if(coordinate && state.viewportWidth!==undefined && (state.viewportWidth!==innerWidth || state.viewportHeight!==innerHeight))return JSON.stringify({error:'STALE_VIEWPORT',action_performed:false});
       const cx=Math.min(innerWidth-1,innerWidth*args.x/1000),cy=Math.min(innerHeight-1,innerHeight*args.y/1000);
       const hit=coordinate?document.elementFromPoint(cx,cy):state.elements.get(args.ref);
       const el=hit?.closest?.('button,a,input,textarea,select,[role="button"]')||hit;

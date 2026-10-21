@@ -32,6 +32,7 @@ internal object BrowserRuntime {
     private var lastObservationChat: Long? = null
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
+    fun invalidateObservations(chat: Long) { if (lastObservationChat == chat) observations.clear() }
     fun attach(value: BrowserPage) { page = value }
     fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null } }
     fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }

@@ -22,6 +22,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
     private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> },
     private val onCheckpoint: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {},
     private val blockUnresolved: (String, String, String) -> Boolean = { _, _, _ -> false },
+    private val onHistoryReduced: () -> Unit = {},
     private val replayConfirmed: (String, String) -> ConfirmedToolResult? = { _, _ -> null }) {
     suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
         val history = mutableListOf<JSONObject>()
@@ -86,6 +87,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
             }
             onRound(traceId, history.drop(groupStart))
             val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(history, Limits.get("trace_tokens"), preserveTrace = true)
+            if (working.size < history.size) onHistoryReduced()
             history.clear(); history.addAll(working)
         }
         throw AgentFailure("ROUND_LIMIT", "Достигнут лимит $maxRounds раундов агента. История сохранена; лимит можно увеличить или отключить в расширенных настройках.")

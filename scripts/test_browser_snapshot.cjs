@@ -66,7 +66,7 @@ for (const opts of [{sensitive: true, command: 'type'}, {credentialForm: true}, 
 assert.equal(actionFixture({label: 'Display results'}).clicks, 1);
 console.log('Browser actions JavaScript: click, stale-page guard, credential and high-impact handoff passed');
 // Normal inputs/selects and coordinate clicks use the same shipped action implementation.
-function editableAction(command, args, tag = 'INPUT') {
+function editableAction(command, args, tag = 'INPUT', viewportWidth) {
   const events = []; let submitted = 0;
   const el = {isConnected: true, tagName: tag, type: 'text', innerText: '', value: '', options: [{value: 'chosen'}],
     matches: selector => selector === 'input,textarea,[contenteditable="true"]', getAttribute: () => '',
@@ -74,7 +74,7 @@ function editableAction(command, args, tag = 'INPUT') {
     dispatchEvent: event => {events.push(event)}, form: {querySelectorAll: () => [], requestSubmit: () => {submitted++}}};
   class Input { set value(value) { this.value = value; } }
   class Event { constructor(type, options) {this.type = type; Object.assign(this, options)} }
-  const state = {id: 'page', elements: new Map([[1, el]])};
+  const state = {id: 'page', elements: new Map([[1, el]]), viewportWidth, viewportHeight:800};
   const value = vm.runInNewContext('(function(){const command=' + JSON.stringify(command) + ';const args=' + JSON.stringify({page_id: 'page', ref: 1, text: 'chosen', ...args}) + ';' + actions + '})()', {
     window: {__ilmarBrowser: state}, innerWidth: 400, innerHeight: 800,
     document: {elementFromPoint: () => el}, HTMLInputElement: Input, HTMLTextAreaElement: Input,
@@ -115,3 +115,6 @@ console.log('Browser input/select/submit and coordinate-click JavaScript passed'
   assert.equal(JSON.parse(vm.runInContext(script, context)).page_id, after.page_id);
 }
 console.log('Same-document DOM mutation invalidates stale actions; unchanged DOM retains page ID');
+
+assert.equal(editableAction('click', {x:500,y:250}, 'INPUT', 800).result.error, 'STALE_VIEWPORT');
+console.log('Coordinate actions reject snapshots taken before a viewport resize');

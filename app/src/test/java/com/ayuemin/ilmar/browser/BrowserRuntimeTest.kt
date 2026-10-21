@@ -59,6 +59,16 @@ class BrowserRuntimeTest {
             assertTrue(runCatching { BrowserRuntime.command(10, "read") }.isFailure)
         } finally { BrowserRuntime.detach(page) }
     }
+    @Test fun reducedHistoryAndNewRunRequireFreshCompactBaseline() = runTest(dispatcher) {
+        val page = Page(); BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(80, "open", "https://example.com/")
+            BrowserRuntime.invalidateObservations(80)
+            val next = JSONObject(BrowserRuntime.command(80, "scroll", "down"))
+            assertEquals("DOM_COMPACT", next.getString("representation")); assertEquals("facts", next.getString("text"))
+            assertFalse(next.has("base_snapshot_id"))
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun failedOpenInAnotherChatCannotExposePreviousDocumentOrCaptureIt() = runTest(dispatcher) {
         var fail = false
         val page = object : BrowserPage {

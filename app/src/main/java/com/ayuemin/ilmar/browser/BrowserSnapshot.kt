@@ -14,7 +14,7 @@ internal object BrowserSnapshot {
         observer?.observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true});
         state.sync=()=>{if(observer?.takeRecords().length)state.dirty=true;if(state.dirty){state.id=base+'-'+(++state.version);state.refs=new WeakMap();state.elements.clear();state.dirty=false;}};
       }
-      state.sync();state.elements.clear();state.scroll=scrollY;
+      state.sync();state.elements.clear();state.scroll=scrollY;state.viewportWidth=innerWidth;state.viewportHeight=innerHeight;
       const ref=el=>{if(!state.refs.has(el))state.refs.set(el,state.next++);const id=state.refs.get(el);state.elements.set(id,el);return id;};
       const inView=r=>r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth;
       const scrolled=scrollY>0;
