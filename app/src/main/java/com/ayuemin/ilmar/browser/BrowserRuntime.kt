@@ -102,6 +102,19 @@ internal object BrowserRuntime {
                 mutable.value = mutable.value.copy(pageId = result.optString("page_id", mutable.value.pageId), url = result.optString("url", mutable.value.url), status = result.optString("title").ifBlank { "Страница прочитана" })
                 observations.encode(result, force = operation in setOf("open", "search", "read"), full = operation == "read" && details.optBoolean("full")).toString()
             } catch (e: Exception) {
+                // HTTP 403 is an access denial, not proof of CAPTCHA or a login form.
+                // Preserve the WebView and hand it to the user instead of making the
+                // agent retry the blocked URL or spending more model rounds.
+                if (url != null && e is IllegalStateException &&
+                    e.message?.startsWith("Страница: HTTP 403.") == true) {
+                    documentChat = chat
+                    show(chat)
+                    mutable.value = mutable.value.copy(status = "HTTP 403 — открой страницу вручную")
+                    return@withContext awaitingUser().put(
+                        "message",
+                        "Сайт вернул HTTP 403. Автоматические попытки остановлены. Открой страницу вручную в браузере; когда закончишь, нажми «Готово, вернуть модели»."
+                    ).put("http_status", 403).toString()
+                }
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
                 throw e
             }
