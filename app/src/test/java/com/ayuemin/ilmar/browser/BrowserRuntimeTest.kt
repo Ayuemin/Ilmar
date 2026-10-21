@@ -91,7 +91,7 @@ class BrowserRuntimeTest {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
         modes.setChoice(100, "search_source", "browser"); modes.setEnabled(100, "Поиск", true)
-        val tools = BrowserTools.forChat(100, modes, false, true)
+        val tools = BrowserTools.forChat(100, modes, false, true, globalAllowed = { true }, approveAction = { _, _, _ -> true })
         modes.setEnabled(100, "Поиск", false)
         val error = runCatching { tools.first().execute(JSONObject().put("query", "test")) }.exceptionOrNull()
         assertTrue(error is com.ayuemin.ilmar.agent.AgentFailure)

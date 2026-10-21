@@ -27,6 +27,7 @@ class ChatViewModelTest {
         listOf("ilmar_ui", "ilmar_models", "ilmar_chat_modes", "ilmar_requests", "ilmar_diagnostics").forEach {
             app.getSharedPreferences(it, 0).edit().clear().commit()
         }
+        com.ayuemin.ilmar.agent.ToolPermissionBroker(app).setGranted("Браузер", true)
         registry = ProviderRegistry(app, MemorySecrets())
         registry.saveConnection(null, "Test", "https://example.com/v1/chat/completions", listOf("m"), "key")
     }
@@ -67,7 +68,7 @@ class ChatViewModelTest {
     }
     @Test fun replyRemainsInOriginalChatWhenSelectionChanges() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         val original = vm.state.value.selectedId
         vm.send("hello"); runCurrent(); vm.create()
         provider.gate.complete("answer"); advanceUntilIdle()
@@ -76,7 +77,7 @@ class ChatViewModelTest {
     }
     @Test fun stopDiscardsPartialAndRetryDoesNotDuplicateUserMessage() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         vm.send("hello"); runCurrent(); vm.stop(); advanceUntilIdle()
         assertEquals(1, vm.state.value.chats.single().messages.size)
         assertEquals("", vm.state.value.streamingText)
@@ -86,7 +87,7 @@ class ChatViewModelTest {
     }
     @Test fun failureIsNotRetriedAutomaticallyAndUserMessageSurvives() = runTest(dispatcher) {
         val provider = FakeProvider().apply { fail = true }
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         vm.send("hello"); advanceUntilIdle()
         assertEquals(1, provider.calls)
         assertEquals(1, vm.state.value.chats.single().messages.size)
@@ -97,21 +98,21 @@ class ChatViewModelTest {
         store.create(42, "Existing"); store.append(42, ChatMessage("hello", true), null); store.close()
         app.getSharedPreferences("ilmar_requests", 0).edit().putLong("active_chat", 42).commit()
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         assertEquals(0, provider.calls)
         assertTrue(vm.state.value.errors.containsKey(42))
         assertEquals("hello", vm.state.value.chats.single().messages.single().text)
     }
     @Test fun clearingActiveChatCannotResurrectDeletedMessages() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         vm.send("hello"); runCurrent(); vm.clear(vm.state.value.selectedId)
         provider.gate.complete("late answer"); advanceUntilIdle()
         assertTrue(vm.state.value.chats.single().messages.isEmpty())
     }
     @Test fun cancellationBeforeCoroutineStartsDoesNotLeaveAnUnretryableRunningTask() = runTest(dispatcher) {
         val provider = FakeProvider()
-        val vm = ChatViewModel(app, provider, registry, dispatcher)
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
         vm.send("hello"); vm.stop(); advanceUntilIdle()
         assertNull(vm.state.value.activeChatId)
         assertEquals(0, provider.calls)
@@ -129,7 +130,7 @@ class ChatViewModelTest {
                 return GenerationResult("done", TokenUsage(10, 3, 13, 4, 2, "0.02"), "stop")
             }
         }
-        val vm = ChatViewModel(app, provider, registry, dispatcher); vm.send("hello"); advanceUntilIdle()
+        val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true }); vm.send("hello"); advanceUntilIdle()
         val out = java.io.ByteArrayOutputStream(); com.ayuemin.ilmar.diagnostics.Diagnostics(app).export(out)
         val rows = out.toString("UTF-8").lineSequence().filter { it.isNotBlank() }.map { org.json.JSONObject(it) }.toList()
         val request = rows.single { it.optString("event") == "MODEL_REQUEST" }.getJSONObject("details")
@@ -155,7 +156,7 @@ class ChatViewModelTest {
                 assertTrue(options.tools.isEmpty())
                 throw ProviderFailure("Ошибка API: HTTP 429")
             }
-        }, registry, dispatcher)
+        }, registry, dispatcher, { _, _, _ -> true })
         val chat = vm.state.value.selectedId
         modes.setEnabled(chat, "Поиск", true); modes.setEnabled(chat, "Агент", false)
         modes.setChoice(chat, "search_source", "provider")
@@ -177,7 +178,7 @@ class ChatViewModelTest {
                 assertTrue(options.tools.any { it.name == "browser_batch" })
                 return if (flags.size == 1) GenerationResult("", toolCalls = listOf(ModelToolCall("bad", "browser_batch", "{\"steps\":[]}"))) else GenerationResult("done")
             }
-        }, registry, dispatcher)
+        }, registry, dispatcher, { _, _, _ -> true })
         val chat = vm.state.value.selectedId
         ChatModePreferences(app).apply {
             setEnabled(chat, "Поиск", true); setEnabled(chat, "Агент", true); setEnabled(chat, "tool_Браузер", true); setChoice(chat, "search_source", source)
@@ -201,7 +202,7 @@ class ChatViewModelTest {
             val connection = registry.snapshot().providers.single()
             registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel("m", ModelCapabilities(setOf("tools"), known = true))))
             val provider = FakeProvider()
-            val vm = ChatViewModel(app, provider, registry, dispatcher)
+            val vm = ChatViewModel(app, provider, registry, dispatcher, { _, _, _ -> true })
             val chat = vm.state.value.selectedId
             ChatModePreferences(app).apply { setEnabled(chat, "Поиск", true); setChoice(chat, "search_source", "browser") }
             vm.send("Find a fact"); runCurrent()
@@ -243,7 +244,7 @@ class ChatViewModelTest {
             }
         }
         try {
-            val vm = ChatViewModel(app, model, registry, dispatcher)
+            val vm = ChatViewModel(app, model, registry, dispatcher, { _, _, _ -> true })
             val chat = vm.state.value.selectedId; val modes = ChatModePreferences(app)
             modes.setEnabled(chat, "Поиск", true); modes.setEnabled(chat, "Агент", false); modes.setChoice(chat, "search_source", "browser")
             vm.send("Find test fact"); advanceUntilIdle()
@@ -277,7 +278,7 @@ class ChatViewModelTest {
             }
         }
         try {
-            val vm = ChatViewModel(app, model, registry, dispatcher); val chat = vm.state.value.selectedId
+            val vm = ChatViewModel(app, model, registry, dispatcher, { _, _, _ -> true }); val chat = vm.state.value.selectedId
             val modes = ChatModePreferences(app); modes.setEnabled(chat, "Поиск", true); modes.setChoice(chat, "search_source", "browser")
             vm.send("Open a page"); advanceUntilIdle()
             assertEquals(1, calls); assertTrue(com.ayuemin.ilmar.browser.BrowserRuntime.state.value.waitingUser)

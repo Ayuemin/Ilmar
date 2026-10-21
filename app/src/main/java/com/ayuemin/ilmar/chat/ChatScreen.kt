@@ -33,7 +33,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     val state by controller.state.collectAsState()
     val selected = state.chats.firstOrNull { it.id == state.selectedId } ?: return
     LaunchedEffect(selected.id) { controller.indexArchive(selected.id) }
-    val sending = state.activeChatId != null
+    val sending = state.activeChatId != null || state.mutating.isNotEmpty()
     val inThisChat = state.activeChatId == selected.id
     val draft = state.drafts[selected.id].orEmpty()
     val prefs = remember { context.getSharedPreferences("ilmar_ui", android.content.Context.MODE_PRIVATE) }
@@ -131,9 +131,10 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showMemory) ChatMemoryPanel(selected.id, controller, sending, onDismiss = { showMemory = false })
-    if (showStats) CompactStats(state.compactGauges[selected.id], controller.usage(selected.id), selected.messages.size) { showStats = false }
+    val gauge = controller.compactGauge(selected.id)
+    if (showStats) CompactStats(gauge, controller.usage(selected.id), selected.messages.size) { showStats = false }
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("Очистить чат?") },
-        text = { Text("Сообщения будут удалены без возможности восстановления.") },
+        text = { Text("Сообщения, вложения, уточнения, правила, сохранённая память и план будут удалены без возможности восстановления. Пользовательские загрузки сохранятся.") },
         confirmButton = { TextButton(onClick = { controller.clear(selected.id); showClear = false }) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("Отмена") } })
     ModalNavigationDrawer(drawerState = drawer, drawerContent = {
@@ -198,7 +199,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                         Spacer(Modifier.width(8.dp))
                         Text(label, style = MaterialTheme.typography.bodySmall)
                     }
-                    if (activityExpanded && events.size > 1) Column(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
+                    if (activityExpanded && events.size > 1) Column(Modifier.heightIn(max = 112.dp).verticalScroll(rememberScrollState()).padding(start = 20.dp, bottom = 8.dp)) {
                         events.forEach { event -> Text("• $event", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
@@ -252,7 +253,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
-                    CompactRing(state.compactGauges[selected.id]) { showStats = true }
+                    CompactRing(gauge) { showStats = true }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(enabled = selected.id !in state.importing, onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }

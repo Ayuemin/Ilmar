@@ -7,7 +7,10 @@ import java.math.BigDecimal
 data class UsageRecord(val usage: TokenUsage, val status: String, val purpose: String = "answer", val estimatedSaved: Int = 0)
 class UsageLedger(private val records: List<UsageRecord>) {
     val calls = records.size
-    val compactCalls = records.count { it.purpose == "compact" }
+    val notSent = records.count { it.status == "not_sent" }
+    val sent = calls - notSent
+    val completed = records.count { it.status == "completed" }
+    val compactCalls = records.count { it.purpose == "compact" && it.status != "not_sent" }
     val estimatedSaved = records.sumOf { it.estimatedSaved.toLong() }
     val compactCost = records.filter { it.purpose == "compact" }.mapNotNull { it.usage.costUsd?.toBigDecimal() }.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO, BigDecimal::add)?.stripTrailingZeros()?.toPlainString()
     val incompleteCost = records.any { it.usage.costUsd == null }
@@ -19,7 +22,7 @@ class UsageLedger(private val records: List<UsageRecord>) {
         ?.fold(BigDecimal.ZERO, BigDecimal::add)?.stripTrailingZeros()?.toPlainString()
     private val partialTokens = records.any { it.usage.input == null || it.usage.output == null }
     fun describe(): String = buildString {
-        append("Учтено запросов: $calls; прерванных/ошибок: $failed\n")
+        append("Отправлено к модели: $sent; попыток: $calls; завершено: $completed; прерванных/ошибок: $failed\n")
         if (records.any { it.status == "not_sent" }) append("Не отправлено провайдеру: ${records.count { it.status == "not_sent" }}; нулевой usage этих попыток установлен локально.\n")
         append("Compact: $compactCalls запросов; стоимость: ${compactCost ?: "нет данных"} USD\n")
         append("Сокращение входа по оценке: $estimatedSaved токенов (не денежная экономия)\n")
@@ -30,5 +33,6 @@ class UsageLedger(private val records: List<UsageRecord>) {
         if (incompleteCost && costUsd != null) append(" (известная часть)")
         if (partialTokens && calls > 0) append("\nСчётчики неполные: не все ответы содержат usage.")
         append("\nДанные сообщает провайдер; старые сообщения без usage не пересчитываются.")
+        append("\nУчтена генерация и Compact; эмбеддинги, озвучка и отдельные сборы поиска сюда не входят.")
     }
 }

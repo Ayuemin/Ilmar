@@ -59,7 +59,7 @@ class BrowserBatchTest {
         Dispatchers.setMain(StandardTestDispatcher())
     }
     @After fun cleanup() { BrowserRuntime.detach(page); RuntimeLimits.reset(); Dispatchers.resetMain() }
-    private fun tools(control: BrowserRunControl? = null) = BrowserTools.forChat(chat, modes, false, true, control = control)
+    private fun tools(control: BrowserRunControl? = null) = BrowserTools.forChat(chat, modes, false, true, control = control, globalAllowed = { true }, approveAction = { _, _, _ -> true })
     private suspend fun plan(json: String, tools: List<BoundTool> = tools(), runner: AgentLoopRunner = AgentLoopRunner()): Pair<Int, JSONObject> {
         var rounds = 0; var response = JSONObject()
         runner.run(tools) { history, _ ->

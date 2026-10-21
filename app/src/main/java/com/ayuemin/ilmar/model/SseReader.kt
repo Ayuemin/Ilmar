@@ -68,6 +68,7 @@ internal object SseReader {
                 if (maxCalls > 0 && calls.size > maxCalls) throw IOException("Слишком много инструментальных вызовов; проверь глобальный лимит")
             }
         }
+        try {
         while (!done) {
             val line = reader.readLine() ?: break
             when { line.isEmpty() -> dispatch(); line.startsWith("data:") -> event.add(line.substring(5).trimStart()) }
@@ -83,6 +84,11 @@ internal object SseReader {
             else "Модель завершила поток без текста ответа",
             details = "empty_response; finish_reason=${finish ?: "unknown"}; output_tokens=${usage.output}; reasoning_tokens=${usage.reasoning}", reportedUsage = usage)
         return GenerationResult(text.toString(), usage, finish, tools)
+        } catch (e: StreamInterruption) { throw e }
+        catch (e: Exception) {
+            if (e is ProviderFailure && e.reportedUsage != null) throw e
+            throw ProviderFailure("Поток ответа прерван или имеет неподдерживаемый формат", reportedUsage = usage)
+        }
     }
     private class CallBuffer(var id: String = "", var name: String = "", val arguments: StringBuilder = StringBuilder(), var bytes: Int = 0)
     private fun merge(current: String, part: String) = current + part

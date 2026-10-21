@@ -9,13 +9,17 @@ import org.json.JSONObject
 
 internal object BrowserTools {
     fun forChat(chat: Long, modes: ChatModePreferences, providerAvailable: Boolean, supportsTools: Boolean, vision: Boolean = false, context: android.content.Context? = null, run: String = "", control: BrowserRunControl? = null,
-        fallbackAllowed: Boolean = false, primaryReady: () -> Boolean = { true }): List<BoundTool> {
+        fallbackAllowed: Boolean = false, primaryReady: () -> Boolean = { true },
+        globalAllowed: () -> Boolean = { context?.let { com.ayuemin.ilmar.agent.ToolPermissionBroker(it).granted("Браузер") } == true },
+        approveAction: suspend (Long, String, String) -> Boolean = BrowserPrompts::ask): List<BoundTool> {
+        if (!globalAllowed()) return emptyList()
         val policy = BrowserPolicy.load()
         BrowserRuntime.configure(chat, policy)
         val modeKey = listOf(modes.enabled(chat, "Агент"), modes.enabled(chat, "tool_Браузер"), modes.enabled(chat, "Поиск"), modes.choice(chat, "search_source"))
         val explicit = modes.enabled(chat, "Агент") && modes.enabled(chat, "tool_Браузер")
         val guard = control ?: BrowserRunControl(chat, !explicit && SearchRouting.source(modes.choice(chat, "search_source")) == SearchSource.AUTO)
         fun authorized(): Boolean {
+            if (!globalAllowed()) return false
             if (modeKey != listOf(modes.enabled(chat, "Агент"), modes.enabled(chat, "tool_Браузер"), modes.enabled(chat, "Поиск"), modes.choice(chat, "search_source"))) return false
             val agentBrowser = modes.enabled(chat, "Агент") && modes.enabled(chat, "tool_Браузер") && supportsTools
             if (agentBrowser) return true
@@ -27,11 +31,25 @@ internal object BrowserTools {
             if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Режим браузера изменён; остановлено без повторного действия")
             if (!primaryReady()) throw AgentFailure("PRIMARY_SEARCH_REQUIRED", "Сначала нужен ответ подключённого поиска поставщика; браузер доступен после него для сложных случаев")
             guard.beforeAction()
+            BrowserRuntime.confirmSession(chat, approveAction)
             if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Режим браузера изменён во время подтверждения")
         }
         fun field(type: String) = JSONObject().put("type", type)
         fun tool(name: String, description: String, fields: JSONObject = JSONObject(), required: List<String> = emptyList()): BoundTool {
             val schema = JSONObject().put("type", "object").put("properties", fields).put("required", JSONArray(required)).put("additionalProperties", false)
+            var approved: String? = null
+            suspend fun confirm(args: JSONObject) {
+                if (name !in setOf("click", "type", "select")) return
+                val key = com.ayuemin.ilmar.agent.ToolOperationPolicy.canonical(args.toString())
+                if (approved != key) {
+                    val address = BrowserRuntime.state.value.url.substringBefore('?').substringBefore('#')
+                    if (!approveAction(chat, "Подтвердить действие браузера?",
+                        "$address\nДействие: $name\nЭлемент: ${args.optString("ref", "координаты")}\n${args.optString("text").take(200)}\nДействие может отправить форму или изменить данные. Разрешить только это действие?"))
+                        throw AgentFailure("BROWSER_CANCELLED", "Действие браузера отменено пользователем")
+                    if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Разрешение отозвано во время подтверждения")
+                    approved = key
+                }
+            }
             return BoundTool(ToolSchema("browser_$name", description, schema), localPrimitive = name !in setOf("screenshot", "takeover"), execute = { args ->
                 if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Поиск браузером выключен или изменён")
                 require(args.keys().asSequence().all { fields.has(it) } && required.all { args.has(it) && !args.isNull(it) }) { "Некорректные аргументы браузера" }
@@ -41,6 +59,8 @@ internal object BrowserTools {
                     else -> args.get(key) is String
                 }) { "Неверный тип $key" } }
                 prepare()
+                confirm(args)
+                approved = null
                 guard.actionStarted("browser_$name")
                 val argument = when (name) { "open" -> args.getString("url"); "search" -> args.getString("query"); "scroll" -> args.getString("direction"); else -> "" }
                 if (name == "open" && context != null) com.ayuemin.ilmar.downloads.UserDownloadStore(context).requireModelReadable(argument)
@@ -48,7 +68,7 @@ internal object BrowserTools {
                 else BrowserRuntime.command(chat, name, argument, args)
                 guard.actionResult("browser_$name", output, modelVisible = !com.ayuemin.ilmar.agent.LocalToolExecutor.insideStep())
                 output
-            }, beforeExecute = { prepare() })
+            }, beforeExecute = { args -> prepare(); confirm(args) })
         }
         fun reference() = JSONObject().put("page_id", field("string")).put("ref", field("integer"))
         return listOf(

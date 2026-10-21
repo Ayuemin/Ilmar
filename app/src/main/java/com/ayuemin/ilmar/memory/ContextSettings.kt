@@ -43,6 +43,7 @@ internal fun ContextSettings(onConnections: () -> Unit = {}) {
         TextButton(onClick = { chooseCompact = true }) { Text("Выбрать провайдера и модель Compact") }
         Text("Отдельная модель используется только для сжатия. Её API-ключ берётся из подключения; расходы входят в общий бюджет задачи.", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { window = "0"; output = "0"; tokens = "0"; automatic = true; message = "Автоматический режим подготовлен. Нажми «Сохранить»." }) { Text("Непрерывный контекст: автоматические настройки") }
+        TextButton(onClick = { window = "8192"; output = "1024"; automatic = true; message = "Подготовлено рабочее окно 8192 и вывод до 1024 токенов. Проверь и сохрани; денежный бюджет и модель Compact не меняются." }) { Text("Подготовить экономичный контекст") }
         Row { Text("Циклический Compact при 80%", Modifier.weight(1f)); Switch(automatic, { automatic = it }) }
         OutlinedTextField(window, { window = it }, label = { Text("Контекст: 0 — авто, до 32768 токенов") }, singleLine = true)
         Text("Автоматическое рабочее окно — до 32768 токенов, даже если модель поддерживает больше: это уменьшает повторную отправку длинной истории. Можно явно выбрать большее окно в пределах API. Оригиналы остаются локально.", style = MaterialTheme.typography.bodySmall)

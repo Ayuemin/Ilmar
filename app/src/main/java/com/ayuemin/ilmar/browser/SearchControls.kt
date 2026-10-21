@@ -18,6 +18,7 @@ internal fun SearchControls(chat: Long, preferences: ChatModePreferences, provid
     var advanced by remember { mutableStateOf(false) }
     val browser by BrowserRuntime.state.collectAsState()
     Text("Источник поиска", style = MaterialTheme.typography.labelLarge)
+    Text("Локальному браузеру нужно глобальное разрешение в настройках инструментов. Cookies и авторизация общие для приложения; при передаче сессии чату требуется подтверждение.", style = MaterialTheme.typography.bodySmall)
     SearchSource.entries.forEach { option ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(source == option, onClick = { source = option; preferences.setChoice(chat, "search_source", option.name.lowercase()) })

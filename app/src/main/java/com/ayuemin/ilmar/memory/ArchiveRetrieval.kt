@@ -49,6 +49,7 @@ internal class ArchiveRetrieval(private val context: Context, private val regist
         }
     }
     fun cancel(chat: Long) { jobs[chat]?.cancel() }
+    suspend fun cancelAndJoin(chat: Long) { jobs.remove(chat)?.cancelAndJoin() }
     suspend fun search(chat: Long, query: String, through: Long): String {
         if (!preferences.load().enabled || query.isBlank() || ContinuationPolicy.isControl(query)) return ""
         return withContext(Dispatchers.IO) {

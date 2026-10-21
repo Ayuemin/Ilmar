@@ -9,7 +9,7 @@ import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
 
 internal data class ContextProjection(val history: List<ChatMessage>, val options: GenerationOptions,
-    val estimatedInput: Int, val fullInput: Int, val limit: Int, val output: Int) {
+    val estimatedInput: Int, val fullInput: Int, val limit: Int, val output: Int, val compactOutcome: String = "ready") {
     val saved get() = (fullInput - estimatedInput).coerceAtLeast(0)
 }
 
@@ -30,7 +30,10 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val outputParameter = caps.outputParameter(target.connection.endpoint)
     var lastNotice: String? = null
         private set
+    private var compactOutcome = "ready"
     suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false, extraInputTokens: Int = 0): ContextProjection {
+        lastNotice = null
+        compactOutcome = "ready"
         policy.validate()
         val browser = schemas.any { it.name.startsWith("browser_") }
         val outputCap = if (browser) browserPolicy.outputTokens else 0
@@ -53,6 +56,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             catch (e: Exception) {
                 if (force) throw e
                 failure(e)
+                compactOutcome = "fallback"
                 lastNotice = "Compact не завершён; использованы локальные выдержки. Оригиналы сохранены."
                 notice(lastNotice!!)
                 fallback(history, capsule, rules)
@@ -99,7 +103,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         return ContextProjection(recent, GenerationOptions(tools = schemas, toolHistory = projectedTools,
             includeUsage = caps.includeUsage(target.connection.endpoint), attachmentContent = attachments,
             systemPrefix = stable, retrieval = retrieval, maxOutput = output, outputParameter = outputParameter,
-            ephemeralCache = CachingPolicy.ephemeral(target.connection.endpoint, target.model.name, caps, stable)), estimated, full, limit, output)
+            ephemeralCache = CachingPolicy.ephemeral(target.connection.endpoint, target.model.name, caps, stable)), estimated, full, limit, output, compactOutcome)
     }
     private fun boundedRecovery(text: String, tokens: Int): String {
         if (ContextEstimate.text(text) <= tokens) return text
@@ -137,6 +141,12 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
 
         val fingerprint = ContextEstimate.hash(packets.joinToString() + rules + active?.id + compactTarget.model.id + compactTarget.connection.endpoint + compactLimit + summaryOutput)
         val checkpoint = memory.checkpoint(chat)?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optString("fingerprint") == fingerprint }
+        if (!force && checkpoint?.optString("state") == "no_op") {
+            compactOutcome = "no_op"
+            lastNotice = "Повторное сжатие неизменённого участка пропущено: предыдущая сводка не сократила его. Можно повторить вручную."
+            notice(lastNotice!!)
+            return
+        }
         var summary = checkpoint?.optString("summary")?.takeIf { it.isNotBlank() } ?: active?.text.orEmpty()
         var next = checkpoint?.optInt("next", 0)?.coerceIn(0, packets.size) ?: 0
         var pending = checkpoint?.optString("pending_result")?.takeIf { it.isNotBlank() }
@@ -170,12 +180,14 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         val previousProjection = (active?.let { ContextEstimate.text(it.text) } ?: 0) + ContextEstimate.messages(sources)
         val after = ContextEstimate.text(summary)
         if (after >= previousProjection) {
-            memory.clearCheckpoint(chat)
+            compactOutcome = "no_op"
+            memory.checkpoint(chat, JSONObject().put("state", "no_op").put("fingerprint", fingerprint).put("through", through))
             lastNotice = "История уже компактна: новая сводка не короче. Сохранён прежний рабочий контекст."
             notice(lastNotice!!)
             return
         }
         memory.save(chat, through, summary, ContextEstimate.source(history, through), before, after)
+        compactOutcome = "completed"
     }
     private fun fallback(history: List<ChatMessage>, active: Capsule?, rules: String, keep: Int = policy.recent) {
         var cut = (history.size - maxOf(keep, 1)).coerceAtLeast(0)

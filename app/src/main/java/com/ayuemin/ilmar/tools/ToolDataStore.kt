@@ -97,19 +97,18 @@ internal class ToolDataStore(context: Context) : SQLiteOpenHelper(context, "ilma
     }
     fun log(chat: Long, tool: String, args: JSONObject, result: String, duration: Long, status: String) {
         writableDatabase.execSQL("INSERT INTO calls(chat,tool,args,result,latency,status,cost) VALUES(?,?,?,?,?,?,NULL)",
-            arrayOf<Any>(chat, tool, com.ayuemin.ilmar.diagnostics.Redaction.json(args).toString().take(Limits.get("log_chars")), com.ayuemin.ilmar.diagnostics.Redaction.text(result).take(Limits.get("log_chars")), duration, status))
+            arrayOf<Any>(chat, tool, JSONObject().put("argument_fields", args.length()).toString(), JSONObject().put("result_chars", result.length).toString(), duration, status))
         writableDatabase.execSQL("DELETE FROM calls WHERE id NOT IN (SELECT id FROM calls ORDER BY id DESC LIMIT ${Limits.get("log_events")})")
     }
     fun exportCalls(writer: java.io.Writer) {
         readableDatabase.rawQuery("SELECT id,chat,tool,args,result,latency,status,cost FROM calls ORDER BY id", null).use { rows ->
             while (rows.moveToNext()) writer.append(JSONObject().put("event", "TOOL_LOG").put("id", rows.getLong(0)).put("chat", rows.getLong(1))
-                .put("tool", rows.getString(2)).put("arguments", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(3)))
-                .put("result", com.ayuemin.ilmar.diagnostics.Redaction.text(rows.getString(4))).put("latency_ms", rows.getLong(5))
+                .put("tool", rows.getString(2)).put("content_omitted", true).put("latency_ms", rows.getLong(5))
                 .put("status", rows.getString(6)).put("cost", if (rows.isNull(7)) JSONObject.NULL else rows.getString(7)).toString()).append('\n')
         }
         readableDatabase.rawQuery("SELECT chat,payload FROM plans ORDER BY chat", null).use { rows ->
             while (rows.moveToNext()) writer.append(com.ayuemin.ilmar.diagnostics.Redaction.json(JSONObject().put("event", "PLAN_STATE").put("chat_id", rows.getLong(0))
-                .put("status_source", "agent_declaration").put("steps", JSONArray(rows.getString(1)))).toString()).append('\n')
+                .put("status_source", "agent_declaration").put("step_count", JSONArray(rows.getString(1)).length())).toString()).append('\n')
         }
     }
     fun clear(chat: Long) {
