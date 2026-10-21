@@ -13,17 +13,20 @@ internal class TemporaryDocuments(
     private val ttlMillis: Long = 15 * 60 * 1000L,
     private val clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
 ) : AutoCloseable {
-    data class Entry(val id: String, val fetched: FetchedDocument, val created: Long)
+    data class Entry(val id: String, val fetched: FetchedDocument, val created: Long, val structure: StructuredDocument) {
+        val retainedBytes get() = fetched.retainedBytes + structure.retainedBytes
+    }
     private val entries = linkedMapOf<String, Entry>()
     private var closed = false
     init { require(run.isNotBlank() && maxDocuments > 0 && maxBytes > 0 && ttlMillis > 0) }
     @Synchronized fun put(document: FetchedDocument): Entry {
         checkOpen(); expire()
         require(entries.size < maxDocuments) { "DOCUMENT_COUNT_LIMIT: временное хранилище заполнено" }
-        require(document.retainedBytes <= maxBytes - entries.values.sumOf { it.fetched.retainedBytes }) {
+        val structure = DocumentExtraction.extract(document)
+        require(document.retainedBytes + structure.retainedBytes <= maxBytes - entries.values.sumOf { it.retainedBytes }) {
             "DOCUMENT_MEMORY_LIMIT: полный документ не сохранён; частичный документ не индексируется"
         }
-        val entry = Entry("d-" + UUID.randomUUID(), document, clock())
+        val entry = Entry("d-" + UUID.randomUUID(), document, clock(), structure)
         entries[entry.id] = entry
         return entry
     }

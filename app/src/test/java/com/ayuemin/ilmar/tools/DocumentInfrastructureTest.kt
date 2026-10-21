@@ -42,7 +42,7 @@ class DocumentInfrastructureTest {
             .put("token_method", "existing ContextEstimate; not tokenizer or actual usage")
             .put("fetch_calls", requests).put("browser_calls", 0).put("model_calls", 0)
             .put("late_answer_present_in_legacy", false)
-        java.io.File("build/reports/fetch-baseline.json").apply { parentFile.mkdirs(); writeText(report.toString(2)) }
+        java.io.File("build/reports/fetch-baseline.json").apply { parentFile?.mkdirs(); writeText(report.toString(2)) }
         RuntimeLimits.reset()
     }
     @Test fun scopesExpiryQuotasAndCloseFailClosedWithoutDisk() {
