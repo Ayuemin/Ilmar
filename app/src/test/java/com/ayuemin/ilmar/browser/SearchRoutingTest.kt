@@ -21,9 +21,23 @@ class SearchRoutingTest {
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.AUTO, false, true))
         assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.AUTO, true, false))
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.BROWSER, true, true))
+        assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.AUTO, true, true, explicitBrowser = true))
+        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.PROVIDER, true, true, explicitBrowser = true))
+        assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.AUTO, true, true, explicitBrowser = true))
         assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.PROVIDER, false, false))
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.PROVIDER, false, true) }.isFailure)
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.BROWSER, true, false) }.isFailure)
+    }
+    @Test fun providerAddonIsBoundedOnlyForBrowserRunsAndCompactNeverConsumesQuota() {
+        val budget = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.OPENROUTER, true, 1)
+        assertNull(budget.next("compact")); assertEquals("OPENROUTER", budget.next("answer")); assertNull(budget.next("answer"))
+        val disabled = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.CHAT_COMPLETIONS, true, 0)
+        assertNull(disabled.next("answer"))
+        val nonBrowser = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.OPENROUTER, false, 0)
+        repeat(3) { assertEquals("OPENROUTER", nonBrowser.next("answer")) }
+        assertNull(ProviderSearchBudget(SearchRoute.BROWSER, ProviderSearchProtocol.OPENROUTER, true, 8).next("answer"))
+        // Intrinsic provider behavior is explicitly not represented as an addon switch.
+        assertEquals("NATIVE", ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.NATIVE, true, 0).next("answer"))
     }
     @Test fun payloadAdaptersAreSeparateAndAbsentByDefaultAndForCompact() {
         fun payload(mode: String?) = GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = mode))

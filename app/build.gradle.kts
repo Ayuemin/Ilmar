@@ -12,8 +12,8 @@ android {
         applicationId = "com.ayuemin.ilmar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.1.3-browser-control"
+        versionCode = 14
+        versionName = "0.1.4-browser-economy"
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ILMAR_BUILD_SHA") ?: System.getenv("GITHUB_SHA") ?: "local"}\"")
         manifestPlaceholders["appLabel"] = "Ilmar"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -16,6 +16,7 @@ internal fun RuntimeSettings() {
     var status by remember { mutableStateOf<String?>(null) }
     Text("Глобальные настройки для всех чатов. Новые значения применяются к следующим задачам. Ноль отключает ограничение только там, где это указано. Ограничения памяти устройства, прав доступа и окна модели сохраняются.")
     Text("Для экономии браузера можно менять размер DOM, число ссылок и полных наблюдений в истории, резерв ответа модели и длину локальных цепочек. Очень маленький объём может потребовать дополнительных чтений. Полные результаты сохраняются локально.", style = MaterialTheme.typography.bodySmall)
+    Text("«Авто» с явно включённым браузером использует локальный поиск. В смешанном режиме дополнительный поиск поставщика по умолчанию подключается только к первому запросу. Встроенный в саму модель поиск (например, Perplexity) этим лимитом не отключается.", style = MaterialTheme.typography.bodySmall)
     RuntimeLimits.fields.groupBy { it.group }.forEach { (title, fields) ->
         TextButton(onClick = { group = if (group == title) null else title }) { Text("${if (group == title) "⌄" else "›"} $title") }
         if (group == title) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

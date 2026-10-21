@@ -227,17 +227,18 @@ class ChatViewModel @JvmOverloads constructor(
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
+                val browserForAgent = !compactOnly && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
                 val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
-                    modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
+                    modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools, browserForAgent)
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val browserForAgent = modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
                 val browserControl = if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
                         event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
                         notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
                 val tools = agentTools + if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl) else emptyList()
+                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol, browserControl != null)
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
@@ -273,6 +274,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 val callCaps = if (purpose == "compact") compactCaps else capabilities
                                 browserControl?.beforeModel(estimatedInput, options.maxOutput ?: contextPolicy.reserve(callCaps), callCaps,
                                     options.observation != null || projectedHistory.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } })
+                                val requestSearch = providerSearchBudget.next(purpose)
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
                                 val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
@@ -282,12 +284,15 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("automatic_compact", contextPolicy.automatic).put("recent_messages_target", contextPolicy.recent)
                                     .put("compact_model", compactTarget.model.name).put("compact_window_tokens", contextPolicy.limit(compactCaps)).put("cache_requested", options.ephemeralCache)
                                     .put("estimated_saved_tokens", saved).put("context_policy", contextPolicy.diagnosticJson())
-                                    .put("search_route", if (purpose == "answer") searchRoute.name else "OFF")
-                                    .put("search_protocol", if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) searchProtocol?.name else org.json.JSONObject.NULL)
+                                    .put("configured_search_route", searchRoute.name)
+                                    .put("search_route", if (requestSearch != null) "PROVIDER" else if (purpose == "answer" && browserControl != null) "BROWSER" else "OFF")
+                                    .put("search_protocol", requestSearch ?: org.json.JSONObject.NULL)
+                                    .put("provider_intrinsic_search", searchProtocol == com.ayuemin.ilmar.browser.ProviderSearchProtocol.NATIVE)
+                                    .put("input_breakdown_estimate", com.ayuemin.ilmar.memory.ContextInputMetrics.estimate(projectedHistory, options))
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
                                 providerStarted = true
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
-                                    if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) options.copy(webSearch = searchProtocol!!.name) else options) { delta ->
+                                    options.copy(webSearch = requestSearch)) { delta ->
                                     if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
                                 }
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)

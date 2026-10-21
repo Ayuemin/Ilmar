@@ -16,6 +16,7 @@ internal object RuntimeLimits {
         LimitField("browser_output_tokens", "Объём браузерных запросов", "Резерв ответа модели с браузером, токенов; 0 — настройки памяти", 0, 100000, true),
         LimitField("browser_batch_steps", "Браузер", "Шагов локальной цепочки за один вызов; 0 — выключить", 8, 64, true),
         LimitField("browser_wait_ms", "Браузер", "Максимальное локальное ожидание DOM, миллисекунд", 3000, 30000),
+        LimitField("browser_provider_search_requests", "Браузер", "Запросов с дополнительным поиском поставщика за запуск; 0 — выключить", 1, 64, true),
         LimitField("browser_actions", "Браузер", "Действий браузера за запуск; 0 — без лимита", 128, 1000000, true),
         LimitField("browser_rounds", "Браузер", "Запросов модели с браузером за запуск; 0 — без лимита", 64, 100000, true),
         LimitField("browser_budget_cents", "Браузер", "Бюджет запуска, центы USD; 0 — без лимита", 0, 1000000, true),
@@ -88,7 +89,7 @@ internal object RuntimeLimits {
             "browser_history_items", "browser_history_tokens", "browser_output_tokens" -> "one_browser_model_request"
             "browser_text_chars", "browser_full_chars", "browser_controls", "browser_links" -> "one_browser_snapshot"
             "browser_batch_steps" -> "one_browser_batch"; "browser_wait_ms" -> "one_browser_wait"
-            "browser_actions", "browser_rounds", "browser_budget_cents" -> "one_browser_run"
+            "browser_actions", "browser_rounds", "browser_budget_cents", "browser_provider_search_requests" -> "one_browser_run"
             "rounds", "calls", "task_seconds", "repeat_threshold" -> "one_agent_run"
             "model_seconds" -> "one_model_request"; "tool_seconds", "argument_kib", "result_kib" -> "one_tool_call"
             "embedding_batch", "embedding_response_kib", "embedding_seconds" -> "one_embedding_request"
@@ -98,7 +99,7 @@ internal object RuntimeLimits {
             "rules_chars", "memory_records", "memory_chars", "plan_steps" -> "one_chat"
             else -> "working_context_or_cache"
         }
-        val zero = when { field.key == "browser_output_tokens" -> "inherit_context_output"; field.key == "browser_batch_steps" -> "batch_disabled"; !field.zero -> "not_allowed"; field.key == "cache_minutes" -> "cache_disabled"; field.key == "repeat_threshold" -> "repeat_guard_disabled"; else -> "limit_disabled" }
+        val zero = when { field.key == "browser_provider_search_requests" -> "provider_search_addon_disabled"; field.key == "browser_output_tokens" -> "inherit_context_output"; field.key == "browser_batch_steps" -> "batch_disabled"; !field.zero -> "not_allowed"; field.key == "cache_minutes" -> "cache_disabled"; field.key == "repeat_threshold" -> "repeat_guard_disabled"; else -> "limit_disabled" }
         put(org.json.JSONObject().put("key", field.key).put("value", get(field.key)).put("unit", unit)
             .put("scope", "global_all_chats").put("applies_to", applies).put("zero_meaning", zero).put("label", field.label))
     } }

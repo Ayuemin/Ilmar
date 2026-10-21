@@ -112,6 +112,7 @@ class ChatViewModelTest {
         assertEquals(8192, request.getInt("working_window_tokens")); assertEquals(512, request.getInt("reserved_output_tokens"))
         assertEquals(8192, request.getInt("compact_window_tokens")); assertEquals(4096, request.getJSONObject("context_policy").getInt("task_token_budget"))
         assertTrue(request.getString("task_id").isNotBlank()); assertTrue(request.getString("run_id").isNotBlank())
+        assertEquals("local_heuristic_not_provider_usage", request.getJSONObject("input_breakdown_estimate").getString("method"))
         val response = rows.single { it.optString("event") == "MODEL_RESPONSE" }.getJSONObject("details")
         assertEquals(4, response.getInt("cached_tokens")); assertEquals(2, response.getInt("reasoning_tokens")); assertEquals("0.02", response.getJSONObject("usage").getString("cost_usd"))
         val reservation = rows.single { it.optString("event") == "TASK_MODEL_RESERVATION" }
@@ -138,6 +139,34 @@ class ChatViewModelTest {
         assertTrue(vm.state.value.errors[chat]!!.contains("429"))
         assertEquals(1, vm.state.value.chats.single().messages.size)
         assertFalse(modes.enabled(chat, "Агент"))
+    }
+
+    private suspend fun TestScope.browserSearchRoundFlags(source: String): List<String?> {
+        val connection = registry.snapshot().providers.single()
+        com.ayuemin.ilmar.browser.ProviderSearchPreferences(app).save(connection.id, com.ayuemin.ilmar.browser.ProviderSearchProtocol.CHAT_COMPLETIONS)
+        registry.applyCatalogDetails(connection.id, connection.endpoint, listOf(CatalogModel("m", ModelCapabilities(setOf("tools"), contextLength = 32768, known = true))))
+        val flags = mutableListOf<String?>()
+        val vm = ChatViewModel(app, object : ChatProvider {
+            override suspend fun stream(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, onDelta: (String) -> Unit): String = error("typed")
+            override suspend fun generate(endpoint: String, model: String, apiKey: String, history: List<ChatMessage>, options: GenerationOptions, onDelta: (String) -> Unit): GenerationResult {
+                flags += options.webSearch
+                assertTrue(options.tools.any { it.name == "browser_batch" })
+                return if (flags.size == 1) GenerationResult("", toolCalls = listOf(ModelToolCall("bad", "browser_batch", "{\"steps\":[]}"))) else GenerationResult("done")
+            }
+        }, registry, dispatcher)
+        val chat = vm.state.value.selectedId
+        ChatModePreferences(app).apply {
+            setEnabled(chat, "Поиск", true); setEnabled(chat, "Агент", true); setEnabled(chat, "tool_Браузер", true); setChoice(chat, "search_source", source)
+        }
+        vm.send("Inspect browser test"); advanceUntilIdle()
+        assertTrue(vm.state.value.errors.isEmpty()); assertEquals(2, flags.size)
+        return flags
+    }
+    @Test fun autoWithExplicitBrowserNeverAddsProviderSearchToModelRounds() = runTest(dispatcher) {
+        assertEquals(listOf(null, null), browserSearchRoundFlags("auto"))
+    }
+    @Test fun intentionalMixedBrowserSearchAddsProviderSearchOnlyWithinConfiguredQuota() = runTest(dispatcher) {
+        assertEquals(listOf("CHAT_COMPLETIONS", null), browserSearchRoundFlags("provider"))
     }
 
     @Test fun browserBudgetCancelledBeforeSendingModelHasKnownZeroUsage() = runTest(dispatcher) {
