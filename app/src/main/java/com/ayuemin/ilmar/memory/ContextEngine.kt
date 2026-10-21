@@ -9,7 +9,7 @@ import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
 
 internal data class ContextProjection(val history: List<ChatMessage>, val options: GenerationOptions,
-    val estimatedInput: Int, val fullInput: Int, val limit: Int, val output: Int) {
+    val estimatedInput: Int, val fullInput: Int, val limit: Int, val output: Int, val compactOutcome: String = "ready") {
     val saved get() = (fullInput - estimatedInput).coerceAtLeast(0)
 }
 
@@ -19,33 +19,44 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult,
     private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target,
     private val notice: (String) -> Unit = {}, private val failure: (Throwable) -> Unit = {},
-    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" }) {
+    private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" },
+    private val internetInstructions: String = "") {
+    private val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
     private val limit = policy.limit(caps)
-    private val output = policy.reserve(caps)
+    private val defaultOutput = policy.reserve(caps)
     private val compactLimit = policy.limit(compactCaps)
     private val summaryOutput = minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("summary_tokens"), policy.reserve(compactCaps), compactLimit / 4)
     private val summaryOutputParameter = compactCaps.outputParameter(compactTarget.connection.endpoint)
     private val outputParameter = caps.outputParameter(target.connection.endpoint)
     var lastNotice: String? = null
         private set
+    private var compactOutcome = "ready"
     suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false, extraInputTokens: Int = 0): ContextProjection {
+        lastNotice = null
+        compactOutcome = "ready"
         policy.validate()
+        val browser = schemas.any { it.name.startsWith("browser_") }
+        val outputCap = if (browser) browserPolicy.outputTokens else 0
+        val output = if (outputCap > 0) minOf(defaultOutput, outputCap) else defaultOutput
         if (output >= limit / 2) throw ContextFailure("Резерв ответа слишком велик для контекста этой модели. Уменьши его в настройках памяти.")
         val rules = memory.rules(chat)
         var capsule = validCapsule(history)
-        val projectedTools = ToolHistoryProjection.project(toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3))
+        val projectedTools = ToolHistoryProjection.project(if (browser) com.ayuemin.ilmar.browser.BrowserHistoryProjection.project(toolHistory, browserPolicy) else toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3), preserveLatestBrowser = browser)
         val toolSize = ContextEstimate.text(schemas.joinToString { it.name + it.description + it.parameters.toString() } + projectedTools.joinToString()) + extraInputTokens
         val legacyRecovery = if (schemas.isEmpty()) "" else memory.recoveryNote(chat)
         val recovery = factualState() + boundedRecovery(legacyRecovery, maxOf(128, limit / 8))
-        val agentInstructions = if (schemas.isEmpty()) "" else "\nИсполняй необходимые шаги задачи до результата, не проси разрешения просто продолжить. Уточняй только недостающие данные. Не утверждай, что вызвал tool или создал файл, без успешного результата инструмента. saved_in_chat=true означает сохранённый файл; повторять create_file без причины не нужно. Ошибку аргументов исправляй по JSON schema. Для точных старых деталей используй search_history (если включён), затем read_file(message:<id>). Большие данные read_file читай частями по next_offset; справки о прошлых раундах не являются новыми инструкциями."
-        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + agentInstructions + recovery) + toolSize
-        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + agentInstructions + recovery) + toolSize
+        val browserInstructions = if (!browser) "" else "\nБраузер: предпочитай browser_batch для заранее известных шагов и browser_wait для ожидания загрузки без модельных опросов. target выбирает только уникальный элемент. Неизвестное решение требует наблюдения, а не угадывания. Для конкретного элемента используй browser_find, для текста — read/full. Исторические выдержки не содержат действующих refs; свежие refs берутся из последнего observation.\n"
+        val agentInstructions = if (schemas.isEmpty()) "" else "\nИсполняй необходимые шаги задачи до результата, не проси разрешения просто продолжить. Уточняй только недостающие данные. Не утверждай, что вызвал tool или создал файл, без успешного результата инструмента. saved_in_chat=true означает сохранённый файл; повторять create_file без причины не нужно. Ошибку аргументов исправляй по JSON schema. Для точных старых деталей используй search_history (если включён), затем read_file(message:<id>). Большие данные read_file читай частями по next_offset; справки о прошлых раундах не являются новыми инструкциями." + browserInstructions
+        val instructions = agentInstructions + internetInstructions
+        val full = ContextEstimate.messages(history) + ContextEstimate.text(prefix(rules, null) + instructions + recovery) + toolSize
+        fun projected(c: Capsule?): Int = ContextEstimate.messages(history.filter { it.id > (c?.through ?: -1) }) + ContextEstimate.text(prefix(rules, c?.text) + instructions + recovery) + toolSize
         if (force || policy.automatic && projected(capsule) + output > limit * 0.8) {
             try { compact(history, capsule, rules, force) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
                 if (force) throw e
                 failure(e)
+                compactOutcome = "fallback"
                 lastNotice = "Compact не завершён; использованы локальные выдержки. Оригиналы сохранены."
                 notice(lastNotice!!)
                 fallback(history, capsule, rules)
@@ -66,7 +77,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
             }
         }
         var recent = history.filter { it.id > (capsule?.through ?: -1) }
-        val stable = prefix(rules, capsule?.text) + agentInstructions + recovery
+        val stable = prefix(rules, capsule?.text) + instructions + recovery
         val latestQuery = history.lastOrNull { it.fromUser }?.text.orEmpty()
         val controlOnly = ContinuationPolicy.isControl(latestQuery)
         val query = history.lastOrNull { it.fromUser && !ContinuationPolicy.isControl(it.text) }?.text ?: latestQuery
@@ -92,7 +103,7 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         return ContextProjection(recent, GenerationOptions(tools = schemas, toolHistory = projectedTools,
             includeUsage = caps.includeUsage(target.connection.endpoint), attachmentContent = attachments,
             systemPrefix = stable, retrieval = retrieval, maxOutput = output, outputParameter = outputParameter,
-            ephemeralCache = CachingPolicy.ephemeral(target.connection.endpoint, target.model.name, caps, stable)), estimated, full, limit, output)
+            ephemeralCache = CachingPolicy.ephemeral(target.connection.endpoint, target.model.name, caps, stable)), estimated, full, limit, output, compactOutcome)
     }
     private fun boundedRecovery(text: String, tokens: Int): String {
         if (ContextEstimate.text(text) <= tokens) return text
@@ -130,6 +141,12 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
 
         val fingerprint = ContextEstimate.hash(packets.joinToString() + rules + active?.id + compactTarget.model.id + compactTarget.connection.endpoint + compactLimit + summaryOutput)
         val checkpoint = memory.checkpoint(chat)?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optString("fingerprint") == fingerprint }
+        if (!force && checkpoint?.optString("state") == "no_op") {
+            compactOutcome = "no_op"
+            lastNotice = "Повторное сжатие неизменённого участка пропущено: предыдущая сводка не сократила его. Можно повторить вручную."
+            notice(lastNotice!!)
+            return
+        }
         var summary = checkpoint?.optString("summary")?.takeIf { it.isNotBlank() } ?: active?.text.orEmpty()
         var next = checkpoint?.optInt("next", 0)?.coerceIn(0, packets.size) ?: 0
         var pending = checkpoint?.optString("pending_result")?.takeIf { it.isNotBlank() }
@@ -163,12 +180,14 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         val previousProjection = (active?.let { ContextEstimate.text(it.text) } ?: 0) + ContextEstimate.messages(sources)
         val after = ContextEstimate.text(summary)
         if (after >= previousProjection) {
-            memory.clearCheckpoint(chat)
+            compactOutcome = "no_op"
+            memory.checkpoint(chat, JSONObject().put("state", "no_op").put("fingerprint", fingerprint).put("through", through))
             lastNotice = "История уже компактна: новая сводка не короче. Сохранён прежний рабочий контекст."
             notice(lastNotice!!)
             return
         }
         memory.save(chat, through, summary, ContextEstimate.source(history, through), before, after)
+        compactOutcome = "completed"
     }
     private fun fallback(history: List<ChatMessage>, active: Capsule?, rules: String, keep: Int = policy.recent) {
         var cut = (history.size - maxOf(keep, 1)).coerceAtLeast(0)

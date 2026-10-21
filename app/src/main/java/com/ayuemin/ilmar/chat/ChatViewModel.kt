@@ -22,11 +22,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class CompactGauge(val input: Int, val outputReserve: Int, val window: Int, val saved: Int,
+    val automatic: Boolean = true, val outcome: String = "ready", val fingerprint: String = "") {
+    val threshold: Int get() = (window * 0.8).toInt()
+    val percent: Int get() = if (threshold <= 0) 0 else (((input + outputReserve).toDouble() / threshold) * 100).toInt().coerceIn(0, 100)
+    val remaining: Int get() = (threshold - input - outputReserve).coerceAtLeast(0)
+}
+
 data class ChatState(
     val chats: List<ChatSession> = emptyList(), val selectedId: Long = 0,
-    val activeChatId: Long? = null, val streamingText: String = "",
+    val mutating: Set<Long> = emptySet(), val activeChatId: Long? = null, val streamingText: String = "",
+    val activityLabel: String = "", val activityEvents: List<String> = emptyList(),
+    val interventions: Map<Long, List<ChatStore.Intervention>> = emptyMap(),
     val attachments: Map<Long, List<com.ayuemin.ilmar.attachments.ChatAttachment>> = emptyMap(), val importing: Set<Long> = emptySet(),
     val contextStatus: Map<Long, String> = emptyMap(),
+    val compactGauges: Map<Long, CompactGauge> = emptyMap(),
     val archiveStatus: Map<Long, String> = emptyMap(), val taskRevision: Map<Long, Long> = emptyMap(),
     val errors: Map<Long, String> = emptyMap(), val drafts: Map<Long, String> = emptyMap()
 )
@@ -36,7 +46,8 @@ class ChatViewModel @JvmOverloads constructor(
     application: Application,
     private val provider: ChatProvider = OpenAiCompatibleProvider(),
     val registry: ProviderRegistry = ProviderRegistry(application),
-    private val contextDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
+    private val contextDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
+    private val browserApproval: suspend (Long, String, String) -> Boolean = com.ayuemin.ilmar.browser.BrowserPrompts::ask
 ) : AndroidViewModel(application) {
     private val store = ChatStore(application)
     private val memory = com.ayuemin.ilmar.memory.ContextStore(store)
@@ -50,6 +61,7 @@ class ChatViewModel @JvmOverloads constructor(
     private val mutable = MutableStateFlow(ChatState())
     val state = mutable.asStateFlow()
     private var request: Job? = null
+    private val chatEpochs = mutableMapOf<Long, Long>()
     @Volatile private var closed = false
 
     init {
@@ -71,7 +83,7 @@ class ChatViewModel @JvmOverloads constructor(
             mapOf(interrupted to "Ответ прерван при закрытии приложения. Можно повторить запрос.")
         } else emptyMap()
         runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
-        mutable.value = ChatState(chats, chats.first().id, errors = errors, attachments = store.drafts())
+        mutable.value = ChatState(chats, chats.first().id, errors = errors, attachments = store.drafts(), interventions = chats.associate { it.id to store.interventions(it.id) })
         val referenced = (chats.flatMap { it.messages }.flatMap { it.attachments } + mutable.value.attachments.values.flatten())
             .flatMap { listOf(it.id) + it.images }.toSet()
         java.io.File(application.filesDir, "attachments").listFiles()?.filter { it.name !in referenced }?.forEach { it.delete() }
@@ -84,19 +96,33 @@ class ChatViewModel @JvmOverloads constructor(
     internal fun embeddingUsage(chatId: Long) = com.ayuemin.ilmar.memory.EmbeddingLedger(store).summary(chatId)
     internal fun memorySnapshot(chatId: Long) = memory.factualSnapshot(chatId)
     internal fun memorySearch(chatId: Long, query: String) = memory.search(chatId, query)
-    internal fun setRules(chatId: Long, text: String) { if (mutable.value.activeChatId == null) memory.setRules(chatId, text) }
-    internal fun deleteCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) memory.delete(chatId, id) }
-    internal fun activateCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) memory.activate(chatId, id) }
+    internal fun setRules(chatId: Long, text: String) { if (mutable.value.activeChatId == null) { memory.setRules(chatId, text); invalidateGauge(chatId) } }
+    internal fun deleteCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) { memory.delete(chatId, id); invalidateGauge(chatId) } }
+    internal fun activateCapsule(chatId: Long, id: Long) { if (mutable.value.activeChatId == null) { memory.activate(chatId, id); invalidateGauge(chatId) } }
     fun compact(chatId: Long) { if (mutable.value.activeChatId == null) generate(chatId, true) }
     fun usage(chatId: Long) = store.usage(chatId)
+    internal fun interventionIsCurrent(chat: Long, item: ChatStore.Intervention): Boolean =
+        item.taskId != null && mutable.value.activeChatId == chat && runtime.getString("active_task", null) == item.taskId
+    private fun projectionFingerprint(chat: Long): String {
+        val app = getApplication<Application>()
+        val model = registry.modelForChat(chat)
+        val configuration = listOf("ilmar_context", "ilmar_limits", "ilmar_chat_modes").joinToString { name ->
+            app.getSharedPreferences(name, Context.MODE_PRIVATE).all.filterKeys { name != "ilmar_chat_modes" || it.startsWith("${chat}_") }
+                .toSortedMap().toString()
+        }
+        return com.ayuemin.ilmar.memory.ContextEstimate.hash(configuration + model?.id + model?.let { registry.capabilities(it.id).toJson() })
+    }
+    fun compactGauge(chat: Long): CompactGauge? = mutable.value.compactGauges[chat]?.takeIf { it.fingerprint == projectionFingerprint(chat) }
+    private fun invalidateGauge(chat: Long) { mutable.update { it.copy(compactGauges = it.compactGauges - chat) } }
     fun importAttachment(chatId: Long, uri: android.net.Uri, cleanup: java.io.File? = null) {
-        if (chatId in mutable.value.importing || mutable.value.chats.none { it.id == chatId }) { cleanup?.delete(); return }
+        if (mutable.value.mutating.isNotEmpty() || chatId in mutable.value.importing || mutable.value.chats.none { it.id == chatId }) { cleanup?.delete(); return }
         mutable.update { it.copy(importing = it.importing + chatId, errors = it.errors - chatId) }
+        val epoch = chatEpochs[chatId] ?: 0L
         viewModelScope.launch {
             try {
                 require(mutable.value.attachments[chatId].orEmpty().size < Limits.get("attachments")) { "Достигнут глобальный лимит вложений" }
                 val item = attachmentStore.import(uri)
-                if (mutable.value.chats.any { it.id == chatId }) {
+                if (mutable.value.chats.any { it.id == chatId } && (chatEpochs[chatId] ?: 0L) == epoch) {
                     val items = mutable.value.attachments[chatId].orEmpty() + item
                     if (items.sumOf { it.text?.length ?: 0 } > Limits.get("message_chars")) {
                         releaseAttachments(listOf(item)); throw IllegalArgumentException("Текст вложений превышает глобальный лимит сообщения")
@@ -105,8 +131,11 @@ class ChatViewModel @JvmOverloads constructor(
                     mutable.update { it.copy(attachments = it.attachments + (chatId to items)) }
                 } else releaseAttachments(listOf(item))
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(errors = it.errors + (chatId to
-                (if (e is IllegalArgumentException || e is IllegalStateException) e.message ?: "Не удалось прочитать вложение" else "Не удалось прочитать вложение. Проверь формат и доступ к файлу."))) } }
+            catch (e: Exception) { mutable.update { state ->
+                if (state.chats.none { it.id == chatId } || (chatEpochs[chatId] ?: 0L) != epoch) state
+                else state.copy(errors = state.errors + (chatId to
+                    (if (e is IllegalArgumentException || e is IllegalStateException) e.message ?: "Не удалось прочитать вложение" else "Не удалось прочитать вложение. Проверь формат и доступ к файлу.")))
+            } }
             finally { cleanup?.delete(); mutable.update { it.copy(importing = it.importing - chatId) } }
         }
     }
@@ -152,8 +181,9 @@ class ChatViewModel @JvmOverloads constructor(
         generate(chatId)
     }
     fun setDraft(id: Long, text: String) { mutable.update { it.copy(drafts = it.drafts + (id to text)) } }
-    fun select(id: Long) { if (mutable.value.chats.any { it.id == id }) { mutable.update { it.copy(selectedId = id) }; indexArchive(id) } }
+    fun select(id: Long) { com.ayuemin.ilmar.browser.BrowserRuntime.hide(); if (mutable.value.chats.any { it.id == id }) { mutable.update { it.copy(selectedId = id) }; indexArchive(id) } }
     fun create() {
+        com.ayuemin.ilmar.browser.BrowserRuntime.hide()
         val id = maxOf(System.currentTimeMillis(), (mutable.value.chats.maxOfOrNull { it.id } ?: 0) + 1)
         store.create(id, "Новый чат")
         mutable.update { it.copy(chats = it.chats + ChatSession(id, "Новый чат"), selectedId = id) }
@@ -163,27 +193,68 @@ class ChatViewModel @JvmOverloads constructor(
         store.rename(id, title.trim())
         mutable.update { it.copy(chats = it.chats.map { chat -> if (chat.id == id) chat.copy(title = title.trim()) else chat }) }
     }
-    fun clear(id: Long) {
-        archive.cancel(id)
-        val removed = mutable.value.chats.firstOrNull { it.id == id }?.messages.orEmpty().flatMap { it.attachments }
-        if (mutable.value.activeChatId == id) stop()
-        store.clearMessages(id)
-        mutable.update { it.copy(chats = it.chats.map { chat -> if (chat.id == id) chat.copy(messages = emptyList()) else chat }, errors = it.errors - id) }
-        releaseAttachments(removed)
+    fun clear(id: Long) = removeChatData(id, deleteChat = false)
+    fun delete(id: Long) = removeChatData(id, deleteChat = true)
+    private fun removeChatData(id: Long, deleteChat: Boolean) {
+        if (id in mutable.value.mutating || mutable.value.chats.none { it.id == id }) return
+        chatEpochs[id] = (chatEpochs[id] ?: 0L) + 1
+        mutable.update { it.copy(mutating = it.mutating + id) }
+        val active = request.takeIf { mutable.value.activeChatId == id }
+        active?.cancel()
+        viewModelScope.launch {
+            try {
+                active?.join()
+                archive.cancelAndJoin(id)
+                val removed = mutable.value.chats.firstOrNull { it.id == id }?.messages.orEmpty().flatMap { it.attachments } + mutable.value.attachments[id].orEmpty()
+                if (deleteChat) store.delete(id) else store.clearMessages(id)
+                com.ayuemin.ilmar.tools.ToolDataStore(getApplication()).use { it.clear(id) }
+                diagnostics.deleteChat(id)
+                com.ayuemin.ilmar.browser.BrowserRuntime.forgetChat(id)
+                mutable.update { state ->
+                    val remaining = if (deleteChat) state.chats.filterNot { it.id == id } else state.chats.map { if (it.id == id) it.copy(messages = emptyList()) else it }
+                    state.copy(chats = remaining, selectedId = if (deleteChat && state.selectedId == id) remaining.firstOrNull()?.id ?: 0 else state.selectedId,
+                        errors = state.errors - id, drafts = state.drafts - id, attachments = state.attachments - id,
+                        contextStatus = state.contextStatus - id, compactGauges = state.compactGauges - id,
+                        interventions = state.interventions - id, archiveStatus = state.archiveStatus - id, taskRevision = state.taskRevision - id)
+                }
+                releaseAttachments(removed)
+                if (mutable.value.chats.isEmpty()) create()
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                val chats = runCatching { store.load() }.getOrElse { mutable.value.chats }
+                mutable.update { it.copy(chats = chats, errors = it.errors + (id to "Не удалось полностью очистить данные чата. Проверь свободное место и повтори действие.")) }
+                if (chats.isEmpty()) create()
+            } finally { mutable.update { it.copy(mutating = it.mutating - id) } }
+        }
     }
-    fun delete(id: Long) {
-        archive.cancel(id)
-        val removed = mutable.value.chats.firstOrNull { it.id == id }?.messages.orEmpty().flatMap { it.attachments } + mutable.value.attachments[id].orEmpty()
-        if (mutable.value.activeChatId == id) stop()
-        store.delete(id)
-        com.ayuemin.ilmar.tools.ToolDataStore(getApplication()).use { it.clear(id) }
-        val remaining = mutable.value.chats.filterNot { it.id == id }
-        mutable.update { it.copy(chats = remaining, selectedId = if (it.selectedId == id) remaining.firstOrNull()?.id ?: 0 else it.selectedId, errors = it.errors - id, drafts = it.drafts - id, attachments = it.attachments - id, contextStatus = it.contextStatus - id) }
-        releaseAttachments(removed)
-        if (remaining.isEmpty()) create()
+    private fun activity(chatId: Long, label: String) {
+        mutable.update { state -> if (state.activeChatId != chatId || state.activityLabel == label) state else state.copy(
+            activityLabel = label, activityEvents = (state.activityEvents + label).takeLast(40)) }
+    }
+    private fun refreshInterventions(chatId: Long) {
+        val items = store.interventions(chatId)
+        mutable.update { it.copy(interventions = it.interventions + (chatId to items)) }
+    }
+    fun stageIntervention(chatId: Long, text: String) {
+        if (text.isBlank() || mutable.value.activeChatId != chatId) return
+        val task = runtime.getString("active_task", null) ?: return
+        store.stageIntervention(chatId, text, task)
+        setDraft(chatId, "")
+        refreshInterventions(chatId)
+    }
+    fun chooseIntervention(chatId: Long, id: Long, action: String) {
+        val item = store.interventions(chatId).find { it.id == id } ?: return
+        when (action) {
+            "EDIT" -> { setDraft(chatId, item.text); store.updateIntervention(chatId,id,"CANCELLED") }
+            "NOW" -> if (item.status == "PENDING" && mutable.value.activeChatId == chatId) runtime.getString("active_task", null)?.let { store.updateIntervention(chatId,id,"NOW",it) }
+            "QUEUED" -> if (item.status == "PENDING" && mutable.value.activeChatId == chatId) runtime.getString("active_task", null)?.let { store.updateIntervention(chatId,id,"QUEUED",it) }
+            "DELETE" -> store.updateIntervention(chatId,id,"CANCELLED")
+            else -> return
+        }
+        refreshInterventions(chatId)
     }
     fun send(text: String) {
-        if ((text.isBlank() && mutable.value.attachments[mutable.value.selectedId].orEmpty().isEmpty()) || mutable.value.activeChatId != null || mutable.value.selectedId in mutable.value.importing) return
+        if (mutable.value.mutating.isNotEmpty() || (text.isBlank() && mutable.value.attachments[mutable.value.selectedId].orEmpty().isEmpty()) || mutable.value.activeChatId != null || mutable.value.selectedId in mutable.value.importing) return
         val chat = mutable.value.chats.first { it.id == mutable.value.selectedId }
         val pending = ChatMessage(text.trim(), true, attachments = mutable.value.attachments[chat.id].orEmpty())
         val title = if (chat.messages.isEmpty()) text.trim().ifBlank { pending.attachments.first().name }.take(40) else null
@@ -203,15 +274,19 @@ class ChatViewModel @JvmOverloads constructor(
         if (mutable.value.activeChatId == null && (chat.messages.lastOrNull()?.fromUser == true || mutable.value.errors.containsKey(chat.id) && chat.messages.any { it.fromUser })) generate(chat.id)
     }
     private fun generate(chatId: Long, compactOnly: Boolean = false) {
+        if (mutable.value.mutating.isNotEmpty() || mutable.value.activeChatId != null) return
+        if (compactOnly) invalidateGauge(chatId)
         val target = try { registry.target(chatId) } catch (e: IllegalStateException) {
             mutable.update { it.copy(errors = it.errors + (chatId to (e.message ?: "Настрой подключение"))) }; return
         } catch (e: IllegalArgumentException) {
             mutable.update { it.copy(errors = it.errors + (chatId to (e.message ?: "Проверь подключение"))) }; return
         }
         val history = mutable.value.chats.first { it.id == chatId }.messages.toList()
+        val projectionKey = projectionFingerprint(chatId)
         check(runtime.edit().putLong("active_chat", chatId).commit())
-        mutable.update { it.copy(activeChatId = chatId, streamingText = "", errors = it.errors - chatId) }
+        mutable.update { it.copy(activeChatId = chatId, streamingText = "", activityLabel = "Подготавливает запрос…", activityEvents = listOf("Подготавливает запрос…"), errors = it.errors - chatId) }
         var cleanupSession: com.ayuemin.ilmar.agent.TaskSession? = null
+        var completedNormally = false
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val taskSession = memory.tasks.begin(chatId, history)
@@ -221,17 +296,31 @@ class ChatViewModel @JvmOverloads constructor(
                 diagnostics.record("START", chatId, taskSession.json().put("limits", org.json.JSONObject(Limits.fields.associate { it.key to Limits.get(it.key) })))
                 val started = System.currentTimeMillis()
                 val roundUsage = mutableListOf<UsageRecord>()
+                var modelRound = 0
                 val capabilities = registry.capabilities(target.model.id)
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
+                val searchEngine = com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).engine(target.connection.id)
+                val browserForAgent = !compactOnly && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
                 val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
                     modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
+                if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER && !permissions.granted("Браузер"))
+                    throw com.ayuemin.ilmar.agent.AgentFailure("PERMISSION_REVOKED", "Разреши локальный браузер в настройках инструментов")
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val tools = agentTools + if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
-                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId) else emptyList()
+                val browserFallback = !compactOnly && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
+                    com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO
+                var primarySearchReady = searchRoute != com.ayuemin.ilmar.browser.SearchRoute.PROVIDER
+                val browserControl = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                    com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
+                        event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
+                        notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
+                val tools = agentTools + if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl,
+                        fallbackAllowed = browserFallback, primaryReady = { primarySearchReady }, approveAction = browserApproval) else emptyList()
+                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol, browserControl != null)
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
@@ -245,17 +334,39 @@ class ChatViewModel @JvmOverloads constructor(
                     com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPolicy, capabilities, target,
                         status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
                         compactTarget = compactTarget, compactCaps = compactCaps,
+                        internetInstructions = if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER)
+                            "\nИнтернет: сначала используй результаты подключённого поиска поставщика. ${if (searchProtocol == com.ayuemin.ilmar.browser.ProviderSearchProtocol.OPENROUTER) "Движок OpenRouter: ${searchEngine.title}." else "Используй настроенный протокол поиска поставщика."} Если информации достаточно, ответь без браузера. Локальный браузер — дополнительный инструмент только для недостающих сведений, JavaScript, загрузки файлов или действий на конкретной странице. Не открывай браузер для повторения уже полученного поиска и не проводи дополнительные тесты без запроса пользователя.\n" else "",
                         event = { code, details ->
                             diagnostics.record(code, chatId, details.put("task_id", taskSession.taskId).put("run_id", taskSession.runId).put("parent_run_id", taskSession.parentRunId ?: org.json.JSONObject.NULL))
+                            if (code == "TOOL_ROUND") activity(chatId, "Обрабатывает результаты инструментов…")
+                            if (code == "TASK_CHECKPOINT") activity(chatId, "Сохраняет результат действия…")
+                            if (code == "TOOL_ROUND_ERROR") activity(chatId, "Ошибка инструмента")
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
+                        onProjection = { projection -> mutable.update { it.copy(compactGauges = it.compactGauges + (chatId to CompactGauge(projection.estimatedInput, projection.output, projection.limit, projection.saved, contextPolicy.automatic, projection.compactOutcome, projectionKey))) } },
+                        takeInterventions = {
+                            val delivered = store.deliverInterventions(chatId, "NOW", taskSession.taskId)
+                            if (delivered.isNotEmpty()) {
+                                mutable.update { it.copy(chats = store.load()) }
+                                refreshInterventions(chatId)
+                                activity(chatId, "Получено уточнение пользователя")
+                            }
+                            delivered
+                        },
                         observation = { com.ayuemin.ilmar.browser.BrowserVision.peek(taskSession.runId) },
                         consumeObservation = { com.ayuemin.ilmar.browser.BrowserVision.consume(taskSession.runId) },
                         request = { projectedHistory, options, purpose, estimatedInput, saved ->
-                            if (purpose == "answer") mutable.update { it.copy(streamingText = "") }
+                            if (purpose == "answer") activity(chatId, "Обращается к модели…")
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
+                            var providerStarted = false
+                            val roundId = "${taskSession.runId}:${++modelRound}"
+                            val lifecycle = taskSession.json().put("request_id", requestId).put("round_id", roundId).put("purpose", purpose)
+                            var terminalStatus = "not_sent"
+                            var knownUsage: TokenUsage? = null
+                            val lifecycleStarted = android.os.SystemClock.elapsedRealtime()
+                            val notSent = TokenUsage(input = 0, output = 0, total = 0, costUsd = "0")
                             try {
                                 val callTarget = if (purpose == "compact" && compactId != null) {
                                     try { registry.targetModel(compactId) } catch (_: Exception) {
@@ -263,8 +374,14 @@ class ChatViewModel @JvmOverloads constructor(
                                     }
                                 } else target
                                 val callCaps = if (purpose == "compact") compactCaps else capabilities
+                                browserControl?.beforeModel(estimatedInput, options.maxOutput ?: contextPolicy.reserve(callCaps), callCaps,
+                                    options.observation != null || projectedHistory.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } })
+                                val requestSearch = providerSearchBudget.next(purpose)
+                                if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && !primarySearchReady && requestSearch == null)
+                                    throw com.ayuemin.ilmar.agent.AgentFailure("PRIMARY_SEARCH_DISABLED", "Первичный поиск поставщика выключен лимитом запросов. Увеличь лимит либо явно выбери локальный браузер.")
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
                                 val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
+                                    .put("round_id", roundId)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
                                     .put("estimated_input", estimatedInput).put("messages", projectedHistory.size).put("tools", options.tools.map { it.name }.joinToString())
                                     .put("working_window_tokens", contextPolicy.limit(callCaps)).put("physical_window_tokens", callCaps.contextLength ?: org.json.JSONObject.NULL)
@@ -272,26 +389,46 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("automatic_compact", contextPolicy.automatic).put("recent_messages_target", contextPolicy.recent)
                                     .put("compact_model", compactTarget.model.name).put("compact_window_tokens", contextPolicy.limit(compactCaps)).put("cache_requested", options.ephemeralCache)
                                     .put("estimated_saved_tokens", saved).put("context_policy", contextPolicy.diagnosticJson())
-                                    .put("search_route", if (purpose == "answer") searchRoute.name else "OFF")
-                                    .put("search_protocol", if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) searchProtocol?.name else org.json.JSONObject.NULL)
+                                    .put("configured_search_route", searchRoute.name)
+                                    .put("search_route", if (requestSearch != null) "PROVIDER" else if (purpose == "answer" && browserControl != null) "BROWSER" else "OFF")
+                                    .put("search_protocol", requestSearch ?: org.json.JSONObject.NULL)
+                                    .put("search_engine", if (requestSearch == "OPENROUTER") searchEngine.wire ?: "auto" else org.json.JSONObject.NULL)
+                                    .put("provider_intrinsic_search", searchProtocol == com.ayuemin.ilmar.browser.ProviderSearchProtocol.NATIVE)
+                                    .put("input_breakdown_estimate", com.ayuemin.ilmar.memory.ContextInputMetrics.estimate(projectedHistory, options))
                                 diagnostics.record("MODEL_REQUEST", chatId, callDetails)
+                                providerStarted = true
+                                diagnostics.record("MODEL_START", chatId, lifecycle)
                                 val completion = provider.generate(callTarget.connection.endpoint, callTarget.model.name, callTarget.apiKey, projectedHistory,
-                                    if (purpose == "answer" && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER) options.copy(webSearch = searchProtocol!!.name) else options) { delta ->
-                                    if (purpose == "answer") mutable.update { current -> if (current.activeChatId == chatId) current.copy(streamingText = current.streamingText + delta) else current }
+                                    options.copy(webSearch = requestSearch, webSearchEngine = if (requestSearch == "OPENROUTER") searchEngine.wire else null)) { delta ->
+                                    if (purpose == "answer" && delta.isNotEmpty()) activity(chatId, "Модель формирует ответ…")
                                 }
+                                knownUsage = completion.usage
+                                terminalStatus = "completed"
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
                                     .put("finish_reason", completion.finishReason).put("input_tokens", completion.usage.input).put("output_tokens", completion.usage.output)
                                     .put("cost_usd", completion.usage.costUsd ?: org.json.JSONObject.NULL).put("cached_tokens", completion.usage.cached ?: org.json.JSONObject.NULL)
                                     .put("reasoning_tokens", completion.usage.reasoning ?: org.json.JSONObject.NULL).put("usage", com.ayuemin.ilmar.model.usageJson(completion.usage))
                                     .put("tool_calls", completion.toolCalls.map { it.name }.joinToString()))
+                                browserControl?.afterModel(completion.usage, callCaps)
+                                if (requestSearch != null) primarySearchReady = true
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
-                                if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
+                                roundUsage += UsageRecord(completion.usage, "completed", purpose)
+                                if (purpose == "answer" && completion.toolCalls.isNotEmpty()) activity(chatId, "Выполняет ${completion.toolCalls.first().name}…")
                                 completion
                             } catch (e: CancellationException) {
-                                recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
+                                terminalStatus = if (providerStarted) "cancelled" else "not_sent"
+                                recordCall(chatId, requestId, if (providerStarted) TokenUsage() else notSent, if (providerStarted) "cancelled" else "not_sent", purpose); throw e
                             } catch (e: Exception) {
-                                diagnostics.failure("MODEL_ERROR", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
-                                recordCall(chatId, requestId, (e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), "failed", purpose); throw e
+                                diagnostics.failure(if (providerStarted) "MODEL_ERROR" else "MODEL_NOT_SENT", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
+                                terminalStatus = if (providerStarted) "failed" else "not_sent"
+                                val usage = if (providerStarted) knownUsage ?: (e as? ProviderFailure)?.reportedUsage ?: TokenUsage() else notSent
+                                knownUsage = usage
+                                if (providerStarted) browserControl?.afterModel(usage, if (purpose == "compact") compactCaps else capabilities)
+                                recordCall(chatId, requestId, usage, if (providerStarted) "failed" else "not_sent", purpose); throw e
+                            } finally {
+                                diagnostics.record("MODEL_FINISH", chatId, lifecycle.put("status", terminalStatus).put("provider_started", providerStarted)
+                                    .put("duration_ms", android.os.SystemClock.elapsedRealtime() - lifecycleStarted)
+                                    .put("usage", com.ayuemin.ilmar.model.usageJson(knownUsage ?: if (providerStarted) TokenUsage() else notSent)))
                             }
                         }).run(history, compactOnly, reasoning, tools)
                 }
@@ -300,10 +437,11 @@ class ChatViewModel @JvmOverloads constructor(
                 if (mutable.value.activeChatId == chatId && mutable.value.chats.any { it.id == chatId }) {
                     val ledger = UsageLedger(roundUsage)
                     val info = ReplyInfo(target.model.name, target.connection.name, System.currentTimeMillis(), System.currentTimeMillis() - started,
-                        TokenUsage(ledger.input, ledger.output, ledger.total, ledger.cached, ledger.reasoning, ledger.costUsd), ledger.calls, roundUsage.any { it.usage.input == null || it.usage.output == null || it.usage.costUsd == null })
+                        TokenUsage(ledger.input, ledger.output, ledger.total, ledger.cached, ledger.reasoning, ledger.costUsd), ledger.sent, roundUsage.any { it.usage.input == null || it.usage.output == null || it.usage.costUsd == null })
                     store.append(chatId, ChatMessage(reply, false, info = info), null)
                     mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = store.load().first { it.id == chatId }.messages) else c }) }
                     diagnostics.record("SUCCESS", chatId)
+                    completedNormally = true
                     indexArchive(chatId)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -333,8 +471,16 @@ class ChatViewModel @JvmOverloads constructor(
                 cleanupSession?.let { com.ayuemin.ilmar.browser.BrowserVision.consume(it.runId) }
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }
                 runtime.edit().remove("active_chat").remove("active_task").remove("active_run").remove("active_parent_run").commit()
-                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "") }
+                mutable.update { it.copy(chats = store.load(), activeChatId = null, streamingText = "", activityLabel = "", activityEvents = emptyList()) }
+                // Follow-up is a new task, never an interruption of an in-flight request.
+                // On cancellation/failure, leave queued turns untouched for explicit recovery.
+                val followUp = if (completedNormally) cleanupSession?.let { store.deliverInterventions(chatId, "FOLLOW_UP", it.taskId) }.orEmpty() else emptyList()
+                mutable.update { it.copy(chats = store.load()) }
+                refreshInterventions(chatId)
                 request = null
+                if (followUp.isNotEmpty() && mutable.value.chats.any { it.id == chatId }) {
+                    viewModelScope.launch { kotlinx.coroutines.yield(); if (mutable.value.activeChatId == null) generate(chatId) }
+                }
             }
         }
         val job = request!!

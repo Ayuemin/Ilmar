@@ -8,7 +8,12 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 internal interface BrowserPage {
+    fun configure(policy: BrowserPolicy) = Unit
+    fun activate(chat: Long) = Unit
+    fun forget(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
+    suspend fun find(query: String, exact: Boolean): JSONObject = error("Поиск элемента недоступен")
+    suspend fun readFull(): JSONObject = read()
     suspend fun read(): JSONObject
     suspend fun scroll(down: Boolean): JSONObject
     suspend fun act(command: String, args: JSONObject): JSONObject = error("Действия браузера не подключены")
@@ -17,6 +22,7 @@ internal interface BrowserPage {
     fun stop()
     fun resume() = Unit
     fun saveSession() = Unit
+    fun downloadHeaders(url: String): Map<String, String> = emptyMap()
 }
 internal data class BrowserFrame(val bytes: ByteArray, val url: String, val pageId: String, val capturedAt: Long)
 internal data class BrowserUi(val chat: Long? = null, val url: String = "", val status: String = "", val visible: Boolean = false, val waitingUser: Boolean = false, val pageId: String = "")
@@ -24,17 +30,43 @@ internal data class BrowserUi(val chat: Long? = null, val url: String = "", val 
 /** A foreground browser with an exclusive human-control gate. Commands cannot read another chat's page. */
 internal object BrowserRuntime {
     private var page: BrowserPage? = null
+    private var documentChat: Long? = null
+    private var sessionOwner: Long? = null
+    suspend fun confirmSession(chat: Long, ask: suspend (Long, String, String) -> Boolean) {
+        if (sessionOwner == chat) return
+        if (!ask(chat, "Общая сессия браузера", "Cookies и входы на сайты общие для приложения, а не отдельные для каждого чата. Этот чат может использовать уже выполненный вход. Продолжить с общей сессией?"))
+            throw com.ayuemin.ilmar.agent.AgentFailure("BROWSER_CANCELLED", "Использование общей сессии отменено")
+        sessionOwner = chat
+    }
+    fun forgetChat(chat: Long) {
+        page?.forget(chat)
+        policies.remove(chat)
+        if (sessionOwner == chat) sessionOwner = null
+        if (mutable.value.chat == chat) { page?.stop(); documentChat = null; mutable.value = BrowserUi(); observations.clear() }
+    }
     private val lock = Mutex()
+    private val policies = mutableMapOf<Long, BrowserPolicy>()
+    fun configure(chat: Long, policy: BrowserPolicy) { policies[chat] = policy; invalidateObservations(chat) }
+    private val observations = BrowserObservations()
+    private var lastObservationChat: Long? = null
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
+    fun invalidateObservations(chat: Long) { if (lastObservationChat == chat) observations.clear() }
+    suspend fun downloadHeaders(chat: Long, url: String): Map<String, String> = lock.withLock {
+        withContext(Dispatchers.Main.immediate) {
+            require(!mutable.value.waitingUser) { "Сначала верни управление из браузера" }
+            if (documentChat == chat && mutable.value.chat == chat) page?.downloadHeaders(url).orEmpty() else emptyMap()
+        }
+    }
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi() } }
-    fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; sessionOwner = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null; policies.clear() } }
+    fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
     fun completeHandoff(chat: Long): Boolean {
         if (mutable.value.chat != chat || !mutable.value.waitingUser) return false
         mutable.value = mutable.value.copy(waitingUser = false, visible = false, status = "Управление возвращено модели")
+        observations.clear()
         page?.saveSession()
         return true
     }
@@ -43,7 +75,9 @@ internal object BrowserRuntime {
     suspend fun command(chat: Long, operation: String, argument: String = "", details: JSONObject = JSONObject()): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")
-            if (operation != "open" && operation != "search") require(mutable.value.chat == chat) { "Сначала открой страницу для текущего чата" }
+            val policy = policies[chat] ?: BrowserPolicy.load()
+            browser.configure(policy)
+            if (operation != "open" && operation != "search") require(mutable.value.chat == chat && documentChat == chat) { "Сначала открой страницу для текущего чата" }
             if (mutable.value.waitingUser) {
                 require(mutable.value.chat == chat) { "Браузером управляет пользователь другого чата" }
                 return@withContext awaitingUser().toString()
@@ -53,38 +87,79 @@ internal object BrowserRuntime {
             }
             val url = when (operation) { "search" -> BrowserAddress.search(argument); "open" -> argument; else -> null }
             if (url != null) BrowserAddress.parse(url)
+            if (lastObservationChat != chat || operation == "open" || operation == "search") { observations.clear(); lastObservationChat = chat }
+            val previousOwner = documentChat
+            if (url != null) { documentChat = null; browser.activate(chat) }
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
             try {
-                val result = withTimeout(25000) {
+                val result = withTimeout(if (operation == "wait") policy.waitMs.toLong() + 5000 else 25000) {
                     when (operation) {
                         "open", "search" -> browser.open(url!!)
-                        "read" -> browser.read()
+                        "read" -> if (details.optBoolean("full")) browser.readFull() else browser.read()
                         "back" -> browser.back()
+                        "find" -> browser.find(details.getString("query"), details.optBoolean("exact"))
+                        "wait" -> {
+                            val milliseconds = if (details.has("timeout_ms")) details.getLong("timeout_ms") else policy.waitMs.toLong()
+                            require(milliseconds in 0..policy.waitMs.toLong()) { "Ожидание превышает лимит ${policy.waitMs} мс" }
+                            waitForChange(browser, milliseconds)
+                        }
                         "click", "type", "select" -> browser.act(operation, details)
                         "scroll" -> { require(argument in setOf("up", "down")); browser.scroll(argument == "down") }
                         else -> error("Неизвестная команда браузера")
                     }
                 }
-                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
+                if (url != null && (result.has("text") || result.optBoolean("download_available") && previousOwner == chat)) documentChat = chat
+                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user") || BrowserUserGate.requiresUser(result)) {
                     show(chat)
                     return@withContext awaitingUser().toString()
                 }
                 mutable.value = mutable.value.copy(pageId = result.optString("page_id", mutable.value.pageId), url = result.optString("url", mutable.value.url), status = result.optString("title").ifBlank { "Страница прочитана" })
-                result.toString()
+                observations.encode(result, force = operation in setOf("open", "search", "read"), full = operation == "read" && details.optBoolean("full")).toString()
             } catch (e: Exception) {
+                // HTTP 403 is an access denial, not proof of CAPTCHA or a login form.
+                // Preserve the WebView and hand it to the user instead of making the
+                // agent retry the blocked URL or spending more model rounds.
+                if (url != null && e is IllegalStateException &&
+                    e.message?.startsWith("Страница: HTTP 403.") == true) {
+                    documentChat = chat
+                    show(chat)
+                    mutable.value = mutable.value.copy(status = "HTTP 403 — открой страницу вручную")
+                    return@withContext awaitingUser().put(
+                        "message",
+                        "Сайт вернул HTTP 403. Автоматические попытки остановлены. Открой страницу вручную в браузере; когда закончишь, нажми «Готово, вернуть модели»."
+                    ).put("http_status", 403).toString()
+                }
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
                 throw e
             }
         }
     }
+    private suspend fun waitForChange(browser: BrowserPage, milliseconds: Long): JSONObject {
+        fun signature(value: JSONObject) = listOf("page_id", "url", "title", "text", "controls", "links", "scroll_y", "requires_user").joinToString { value.opt(it)?.toString().orEmpty() }
+        val baseline = observations.latest() ?: browser.read()
+        var polls = 0
+        val started = android.os.SystemClock.uptimeMillis()
+        var elapsed = 0L
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            if (mutable.value.waitingUser) return awaitingUser()
+            val current = browser.read(); polls++
+            val changed = signature(current) != signature(baseline)
+            if (changed || current.optBoolean("requires_user") || elapsed >= milliseconds) return current
+                .put("wait_changed", changed).put("local_polls", polls).put("wait_elapsed_ms", elapsed)
+            val pause = minOf(200L, milliseconds - elapsed)
+            delay(pause)
+            elapsed = maxOf(elapsed + pause, android.os.SystemClock.uptimeMillis() - started)
+        }
+    }
     suspend fun screenshot(chat: Long): ByteArray = captureFrame(chat).bytes
     suspend fun captureFrame(chat: Long): BrowserFrame = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
-            require(mutable.value.chat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
+            require(mutable.value.chat == chat && documentChat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
             val browser = page ?: error("Браузер не готов")
             val state = browser.read()
             mutable.value = mutable.value.copy(pageId = state.optString("page_id"))
-            require(!state.optBoolean("requires_user")) { "Нельзя снимать страницу ввода пароля или CAPTCHA; передай её пользователю" }
+            if (state.optBoolean("requires_user") || BrowserUserGate.requiresUser(state)) { show(chat); error("USER_REQUIRED: авторизация или CAPTCHA — управление передано пользователю") }
             val bytes = withTimeout(5000) { browser.screenshot() }
             require(!mutable.value.waitingUser && mutable.value.chat == chat) { "Снимок отменён: управление передано пользователю" }
             require(browser.read().optString("page_id") == state.optString("page_id")) { "Страница изменилась во время снимка" }

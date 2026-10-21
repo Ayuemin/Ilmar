@@ -21,9 +21,23 @@ class SearchRoutingTest {
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.AUTO, false, true))
         assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.AUTO, true, false))
         assertEquals(SearchRoute.BROWSER, SearchRouting.resolve(true, SearchSource.BROWSER, true, true))
+        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.AUTO, true, true))
+        assertEquals(SearchRoute.PROVIDER, SearchRouting.resolve(true, SearchSource.PROVIDER, true, true))
+        assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.AUTO, true, true))
         assertEquals(SearchRoute.OFF, SearchRouting.resolve(false, SearchSource.PROVIDER, false, false))
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.PROVIDER, false, true) }.isFailure)
         assertTrue(runCatching { SearchRouting.resolve(true, SearchSource.BROWSER, true, false) }.isFailure)
+    }
+    @Test fun providerAddonIsBoundedOnlyForBrowserRunsAndCompactNeverConsumesQuota() {
+        val budget = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.OPENROUTER, true, 1)
+        assertNull(budget.next("compact")); assertEquals("OPENROUTER", budget.next("answer")); assertNull(budget.next("answer"))
+        val disabled = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.CHAT_COMPLETIONS, true, 0)
+        assertNull(disabled.next("answer"))
+        val nonBrowser = ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.OPENROUTER, false, 0)
+        repeat(3) { assertEquals("OPENROUTER", nonBrowser.next("answer")) }
+        assertNull(ProviderSearchBudget(SearchRoute.BROWSER, ProviderSearchProtocol.OPENROUTER, true, 8).next("answer"))
+        // Intrinsic provider behavior is explicitly not represented as an addon switch.
+        assertEquals("NATIVE", ProviderSearchBudget(SearchRoute.PROVIDER, ProviderSearchProtocol.NATIVE, true, 0).next("answer"))
     }
     @Test fun payloadAdaptersAreSeparateAndAbsentByDefaultAndForCompact() {
         fun payload(mode: String?) = GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = mode))
@@ -32,6 +46,11 @@ class SearchRoutingTest {
         assertFalse(payload("CHAT_COMPLETIONS").has("plugins"))
         assertEquals("low", payload("CHAT_COMPLETIONS").getJSONObject("web_search_options").getString("search_context_size"))
         assertFalse(payload("NATIVE").has("plugins")); assertFalse(payload("NATIVE").has("web_search_options"))
+        for (engine in listOf("exa", "parallel", "native", "firecrawl", "perplexity")) {
+            val body = GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = "OPENROUTER", webSearchEngine = engine))
+            assertEquals(engine, body.getJSONArray("plugins").getJSONObject(0).getString("engine"))
+        }
+        assertFalse(GenerationPayload.build("model", emptyList(), GenerationOptions(webSearch = "CHAT_COMPLETIONS", webSearchEngine = "exa")).has("plugins"))
     }
     @Test fun providerProtocolPersistsPerConnectionAndSearchDoesNotEnableAgent() {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -39,16 +58,19 @@ class SearchRoutingTest {
         config.save("a", ProviderSearchProtocol.CHAT_COMPLETIONS); config.save("b", ProviderSearchProtocol.NATIVE)
         assertEquals(ProviderSearchProtocol.CHAT_COMPLETIONS, ProviderSearchPreferences(app).selected("a"))
         assertEquals(ProviderSearchProtocol.NATIVE, ProviderSearchPreferences(app).selected("b"))
+        config.saveEngine("a", ProviderSearchEngine.PARALLEL)
+        assertEquals(ProviderSearchEngine.PARALLEL, ProviderSearchPreferences(app).engine("a"))
+        assertEquals(ProviderSearchEngine.AUTO, ProviderSearchPreferences(app).engine("b"))
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
         modes.setEnabled(91, "Агент", false); modes.setEnabled(91, "Поиск", true); modes.setChoice(91, "search_source", "browser")
         assertFalse(modes.enabled(91, "Агент"))
-        assertEquals(9, BrowserTools.forChat(91, modes, false, true).size)
+        assertEquals(12, BrowserTools.forChat(91, modes, false, true, globalAllowed = { true }, approveAction = { _, _, _ -> true }).size)
     }
     @Test fun snapshotsRejectInvalidDataAndBoundUntrustedContent() {
         val page = JSONObject().put("url", "https://example.com/").put("title", "Example").put("text", "x".repeat(15000))
             .put("links", org.json.JSONArray("""[{"ref":1,"title":"bad","url":"file:///etc/passwd"},{"ref":2,"title":"ok","url":"https://example.com/page"}]"""))
         val decoded = BrowserSnapshot.decode(JSONObject.quote(page.toString()))
-        assertEquals(12000, decoded.getString("text").length); assertTrue(decoded.getBoolean("untrusted"))
+        assertEquals(4000, decoded.getString("text").length); assertTrue(decoded.getBoolean("untrusted"))
         assertEquals(1, decoded.getJSONArray("links").length())
         assertTrue(runCatching { BrowserSnapshot.decode("null") }.isFailure)
         listOf("file:///etc/passwd", "content://local", "javascript:alert(1)", "https://user:secret@example.com/").forEach { assertFalse(BrowserAddress.valid(it)) }

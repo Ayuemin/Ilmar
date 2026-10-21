@@ -3,6 +3,7 @@ package com.ayuemin.ilmar.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Folder
@@ -107,7 +108,7 @@ fun ChatDrawer(
                         modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp)
                     )
                     Box {
-                        IconButton(onClick = { menuId = chat.id }) { Text("⋮") }
+                        IconButton(onClick = { menuId = chat.id }) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.MoreVert, "Действия с чатом ${chat.title}") }
                         DropdownMenu(expanded = menuId == chat.id, onDismissRequest = { menuId = null }) {
                             DropdownMenuItem(text = { Text("Переименовать") }, onClick = {
                                 menuId = null; renameId = chat.id; renameDraft = chat.title

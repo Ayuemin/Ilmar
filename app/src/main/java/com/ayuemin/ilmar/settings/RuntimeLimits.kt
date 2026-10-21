@@ -7,10 +7,26 @@ internal data class LimitField(val key: String, val group: String, val label: St
 /** Global operational settings. Zero disables only explicitly optional budgets, deadlines and quotas. */
 internal object RuntimeLimits {
     val fields = listOf(
+        LimitField("browser_text_chars", "Объём браузерных запросов", "Текст compact-снимка, символов", 4000, 32000),
+        LimitField("browser_full_chars", "Объём браузерных запросов", "Текст расширенного чтения, символов", 12000, 128000),
+        LimitField("browser_controls", "Объём браузерных запросов", "Элементов управления в compact-снимке", 35, 200),
+        LimitField("browser_links", "Объём браузерных запросов", "Ссылок в compact-снимке", 20, 100),
+        LimitField("browser_history_items", "Объём браузерных запросов", "Последних полных DOM-ответов в контексте", 2, 32),
+        LimitField("browser_history_tokens", "Объём браузерных запросов", "История браузера в запросе, оценка токенов", 8000, 200000),
+        LimitField("browser_output_tokens", "Объём браузерных запросов", "Резерв ответа модели с браузером, токенов; 0 — настройки памяти", 0, 100000, true),
+        LimitField("browser_batch_steps", "Браузер", "Шагов локальной цепочки за один вызов; 0 — выключить", 8, 64, true),
+        LimitField("browser_wait_ms", "Браузер", "Максимальное локальное ожидание DOM, миллисекунд", 3000, 30000),
+        LimitField("browser_provider_search_requests", "Браузер", "Запросов с дополнительным поиском поставщика за запуск; 0 — выключить", 1, 64, true),
+        LimitField("download_mib", "Загрузки для пользователя", "Размер одного скачивания, МиБ; 0 — без лимита размера", 0, 1000000, true),
+        LimitField("download_seconds", "Загрузки для пользователя", "Общее время скачивания, секунд; 0 — без лимита времени", 0, 604800, true),
+        LimitField("browser_actions", "Браузер", "Действий браузера за запуск; 0 — без лимита", 128, 1000000, true),
+        LimitField("browser_rounds", "Браузер", "Запросов модели с браузером за запуск; 0 — без лимита", 64, 100000, true),
+        LimitField("browser_budget_cents", "Браузер", "Бюджет запуска, центы USD; 0 — без лимита", 0, 1000000, true),
         LimitField("rounds", "Агент", "Модельных раундов; 0 — без лимита", 64, 100000, true),
         LimitField("calls", "Агент", "Вызовов tools; 0 — без лимита", 256, 1000000, true),
         LimitField("task_seconds", "Агент", "Время одного запуска задачи, секунд; 0 — без лимита", 0, 604800, true),
         LimitField("model_seconds", "Агент", "Время запроса модели, секунд; 0 — без лимита", 0, 604800, true),
+        LimitField("stream_mib", "Агент", "Максимальный объём SSE-ответа, МиБ", 32, 128),
         LimitField("tool_seconds", "Агент", "Время одного tool, секунд; 0 — без лимита", 120, 86400, true),
         LimitField("repeat_threshold", "Агент", "Повторений без прогресса; 0 — отключить защиту", 3, 1000, true),
         LimitField("argument_kib", "Агент", "Аргументы tool, КиБ", 16384, 65536),
@@ -65,14 +81,20 @@ internal object RuntimeLimits {
     }
     fun definitions() = org.json.JSONArray().apply { fields.forEach { field ->
         val unit = when {
+            field.key == "browser_budget_cents" -> "USD_cents"
             field.key.endsWith("_kib") -> "KiB"; field.key.endsWith("_mib") -> "MiB"
+            field.key.endsWith("_ms") -> "milliseconds"
             field.key.endsWith("_seconds") -> "seconds"; field.key.endsWith("_minutes") -> "minutes"
-            field.key == "summary_tokens" -> "tokens"; field.key.endsWith("_tokens") -> "tokens_estimate"; field.key.endsWith("_chars") -> "characters"
+            field.key in setOf("summary_tokens", "browser_output_tokens") -> "tokens"; field.key.endsWith("_tokens") -> "tokens_estimate"; field.key.endsWith("_chars") -> "characters"
             else -> "count"
         }
         val applies = when (field.key) {
+            "browser_history_items", "browser_history_tokens", "browser_output_tokens" -> "one_browser_model_request"
+            "browser_text_chars", "browser_full_chars", "browser_controls", "browser_links" -> "one_browser_snapshot"
+            "browser_batch_steps" -> "one_browser_batch"; "browser_wait_ms" -> "one_browser_wait"
+            "browser_actions", "browser_rounds", "browser_budget_cents", "browser_provider_search_requests" -> "one_browser_run"
             "rounds", "calls", "task_seconds", "repeat_threshold" -> "one_agent_run"
-            "model_seconds" -> "one_model_request"; "tool_seconds", "argument_kib", "result_kib" -> "one_tool_call"
+            "model_seconds" -> "one_model_request"; "download_mib", "download_seconds" -> "one_user_download"; "tool_seconds", "argument_kib", "result_kib" -> "one_tool_call"
             "embedding_batch", "embedding_response_kib", "embedding_seconds" -> "one_embedding_request"
             "embedding_chars" -> "one_embedding_fragment"; "log_chars" -> "one_diagnostic_field"
             "log_events" -> "diagnostic_journal"; "storage_mib" -> "installation_attachment_storage"
@@ -80,7 +102,7 @@ internal object RuntimeLimits {
             "rules_chars", "memory_records", "memory_chars", "plan_steps" -> "one_chat"
             else -> "working_context_or_cache"
         }
-        val zero = when { !field.zero -> "not_allowed"; field.key == "cache_minutes" -> "cache_disabled"; field.key == "repeat_threshold" -> "repeat_guard_disabled"; else -> "limit_disabled" }
+        val zero = when { field.key == "browser_provider_search_requests" -> "provider_search_addon_disabled"; field.key == "browser_output_tokens" -> "inherit_context_output"; field.key == "browser_batch_steps" -> "batch_disabled"; !field.zero -> "not_allowed"; field.key == "cache_minutes" -> "cache_disabled"; field.key == "repeat_threshold" -> "repeat_guard_disabled"; else -> "limit_disabled" }
         put(org.json.JSONObject().put("key", field.key).put("value", get(field.key)).put("unit", unit)
             .put("scope", "global_all_chats").put("applies_to", applies).put("zero_meaning", zero).put("label", field.label))
     } }

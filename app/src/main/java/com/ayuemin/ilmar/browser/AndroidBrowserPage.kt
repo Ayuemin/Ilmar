@@ -11,6 +11,30 @@ import kotlin.coroutines.resume
 /** Android adapter kept separate from routing, tool schemas and Compose. Based on Umnik's WebView host. */
 @SuppressLint("SetJavaScriptEnabled")
 internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
+    private var policy = BrowserPolicy()
+    override fun configure(policy: BrowserPolicy) { this.policy = policy }
+    private val sessions = mutableMapOf<Long, android.os.Bundle>()
+    private var sessionChat: Long? = null
+    private var requestedChat: Long? = null
+    private var clearHistoryAfterOpen = false
+    private var downloadHint: JSONObject? = null
+    override fun forget(chat: Long) {
+        sessions.remove(chat)
+        if (sessionChat == chat || requestedChat == chat) {
+            stop(); sessionChat = null; requestedChat = null; clearHistoryAfterOpen = true
+            view.loadUrl("about:blank"); view.clearHistory()
+        }
+    }
+    override fun activate(chat: Long) {
+        requestedChat = chat
+        if (sessionChat == chat) return
+        stop()
+        sessionChat?.let { owner -> sessions[owner] = android.os.Bundle().also { view.saveState(it) } }
+        sessionChat = null
+        val saved = sessions[chat]
+        clearHistoryAfterOpen = saved == null || view.restoreState(saved) == null
+        if (!clearHistoryAfterOpen) sessionChat = chat
+    }
     private var pending: CompletableDeferred<Unit>? = null
     private var navigationUrl: String? = null
     init {
@@ -37,7 +61,10 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
                 !BrowserAddress.valid(request.url.toString())
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 // Same per-resource public-host policy as Umnik. No local/file/content/custom schemes.
-                return try { BrowserAddress.publicHost(request.url.toString()); null }
+                return try {
+                    com.ayuemin.ilmar.downloads.UserDownloadStore(view.context).requireModelReadable(request.url.toString())
+                    BrowserAddress.publicHost(request.url.toString()); null
+                }
                 catch (_: Exception) {
                     if (request.isForMainFrame) view.post { pending?.completeExceptionally(IllegalStateException("Адрес страницы запрещён")) }
                     WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("Blocked".toByteArray()))
@@ -64,24 +91,51 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
                 handler.cancel(); pending?.completeExceptionally(IllegalStateException("HTTP-аутентификация страницы не поддерживается"))
             }
         }
-        view.setDownloadListener { _, _, _, _, _ -> pending?.completeExceptionally(IllegalStateException("Загрузка файлов через браузер не подключена")) }
+        view.setDownloadListener { url, _, disposition, mime, _ ->
+            val supported = BrowserAddress.valid(url)
+            downloadHint = JSONObject().put("download_available", supported).apply { if (supported) put("url", url) }
+                .put("name", if (supported) com.ayuemin.ilmar.downloads.UserDownloadStore.safeName(URLUtil.guessFileName(url, disposition, mime)) else "Файл сайта")
+                .put("status", if (supported) "not_downloaded" else "download_source_unsupported").put("user_only", true).put("untrusted", true)
+                .put("notice", "Сайт предложил файл. Скачивать только по просьбе пользователя через browser_download с подтверждением. Содержимое не читать и не отправлять модели.")
+            pending?.complete(Unit)
+        }
     }
     override suspend fun open(url: String): JSONObject {
+        com.ayuemin.ilmar.downloads.UserDownloadStore(view.context).requireModelReadable(url)
         withContext(Dispatchers.IO) { BrowserAddress.publicHost(url) }
         stop()
+        downloadHint = null
         val navigation = CompletableDeferred<Unit>(); pending = navigation; navigationUrl = url
         resume()
-        try { view.loadUrl(url); navigation.await(); delay(300); return read() }
+        try {
+            view.loadUrl(url); navigation.await(); delay(300)
+            downloadHint?.let { return JSONObject(it.toString()) }
+            if (clearHistoryAfterOpen) { view.clearHistory(); clearHistoryAfterOpen = false }
+            sessionChat = requestedChat
+            return read()
+        }
         finally { if (pending === navigation) pending = null }
     }
-    override suspend fun read(): JSONObject {
+    override suspend fun find(query: String, exact: Boolean): JSONObject {
         resume()
         require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
+        com.ayuemin.ilmar.downloads.UserDownloadStore(view.context).requireModelReadable(view.url.orEmpty())
+        val result = JSONObject(org.json.JSONTokener(evaluate(BrowserFind.script(query, exact, policy))).nextValue() as String)
+        require(result.optString("url") == view.url) { "Страница изменилась во время поиска" }
+        return result
+    }
+    override suspend fun read(): JSONObject = snapshot(false)
+    override suspend fun readFull(): JSONObject = snapshot(true)
+    private suspend fun snapshot(full: Boolean): JSONObject {
+        resume()
+        require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
+        com.ayuemin.ilmar.downloads.UserDownloadStore(view.context).requireModelReadable(view.url.orEmpty())
         val evaluation = suspendCancellableCoroutine<String> { continuation ->
-            view.evaluateJavascript(BrowserSnapshot.SCRIPT) { value -> if (continuation.isActive) continuation.resume(value) }
+            view.evaluateJavascript(BrowserSnapshot.script(full, policy)) { value -> if (continuation.isActive) continuation.resume(value) }
         }
-        return BrowserSnapshot.decode(evaluation).also {
+        return BrowserSnapshot.decode(evaluation, full, policy).also {
             require(it.getString("url") == view.url) { "Страница изменилась при чтении. Повтори browser_read." }
+            downloadHint?.let { hint -> it.put("download", JSONObject(hint.toString())) }
         }
     }
     override suspend fun scroll(down: Boolean): JSONObject {
@@ -93,12 +147,15 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
     }
     override suspend fun act(command: String, args: JSONObject): JSONObject {
         resume()
+        com.ayuemin.ilmar.downloads.UserDownloadStore(view.context).requireModelReadable(view.url.orEmpty())
+        downloadHint = null
         if (pending?.isCompleted == true) pending = null
         val action = JSONObject(org.json.JSONTokener(evaluate(BrowserActions.script(command, args))).nextValue() as String)
         if (action.has("error")) return action
         // A failed read after a click throws; the durable journal retains UNKNOWN instead of repeating the click.
         delay(500)
         pending?.await()
+        downloadHint?.let { return JSONObject(it.toString()).put("browser_action", action) }
         return read().put("browser_action", action)
     }
     override suspend fun back(): JSONObject {
@@ -122,6 +179,15 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         } finally { bitmap.recycle() }
     }
     override fun saveSession() { CookieManager.getInstance().flush() }
+    override fun downloadHeaders(url: String): Map<String, String> {
+        val current = runCatching { BrowserAddress.parse(view.url.orEmpty()) }.getOrNull() ?: return emptyMap()
+        val target = BrowserAddress.parse(url)
+        if (current.host != target.host || (current.port.takeIf { it >= 0 } ?: 443) != (target.port.takeIf { it >= 0 } ?: 443)) return emptyMap()
+        return buildMap {
+            put("User-Agent", view.settings.userAgentString)
+            CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        }
+    }
     override fun resume() { view.onResume(); view.resumeTimers() }
     override fun stop() { pending?.cancel(); pending = null; navigationUrl = null; view.stopLoading(); view.onPause(); view.pauseTimers() }
 }

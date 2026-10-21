@@ -15,14 +15,17 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private val session: TaskSession? = null,
     private val observation: () -> ChatMessage? = { null },
     private val consumeObservation: () -> Unit = {},
+    private val internetInstructions: String = "",
+    private val takeInterventions: () -> List<ChatMessage> = { emptyList() },
+    private val onProjection: (ContextProjection) -> Unit = {},
     private val request: suspend (List<ChatMessage>, GenerationOptions, String, Int, Int) -> GenerationResult) {
     private var budget = TaskBudget(policy, caps)
     private lateinit var activeSession: TaskSession
     private val engine = ContextEngine(chat, memory, files, policy, caps, target,
         { history, options, purpose, input, saved -> invoke(history, options, purpose, input, saved) }, compactCaps, compactTarget,
-        notice = { status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
+        notice = { com.ayuemin.ilmar.browser.BrowserRuntime.invalidateObservations(chat); status(it); event("COMPACT_NOTICE", JSONObject().put("message", it)) },
         failure = { event("COMPACT_ERROR", JSONObject().put("message", it.message).put("exception", it.javaClass.simpleName).put("stack", it.stackTraceToString())) },
-        semanticSearch = semanticSearch, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
+        semanticSearch = semanticSearch, internetInstructions = internetInstructions, factualState = { memory.planNote(chat, maxOf(128, minOf(512, policy.limit(caps) / 12))) + memory.tasks.note(activeSession, maxOf(128, minOf(512, policy.limit(caps) / 12))) })
     private suspend fun invoke(history: List<ChatMessage>, options: GenerationOptions, purpose: String, input: Int, saved: Int): GenerationResult {
         val modelCaps = if (purpose == "compact") compactCaps else caps
         budget.before(input, options.maxOutput ?: policy.reserve(modelCaps), options.observation != null || history.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } }, options.outputParameter != null, modelCaps)
@@ -43,12 +46,14 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     }
     suspend fun run(history: List<ChatMessage>, manual: Boolean, reasoning: ReasoningConfig?, tools: List<BoundTool>): GenerationResult? {
         activeSession = session ?: memory.tasks.begin(chat, history)
+        val injected = mutableListOf<ChatMessage>()
         try {
             val spent = memory.tasks.spent(activeSession.taskId)
             if (policy.taskUsd != null && spent.unknownCost) throw ContextFailure("Стоимость предыдущего запроса задачи неизвестна; денежный бюджет нельзя подтвердить. Проверь расходы у провайдера.")
             budget = TaskBudget(policy, caps, spent.tokens, spent.cost)
             val result = if (manual) {
                 val projection = engine.prepare(history, emptyList(), emptyList(), force = true)
+                onProjection(projection)
                 status(engine.lastNotice ?: "Compact сохранён · оценка контекста ${projection.estimatedInput} + ${projection.output} / ${projection.limit}")
                 null
             } else AgentLoopRunner(
@@ -60,11 +65,14 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 },
                 onProgress = { status(it); event("AGENT_PROGRESS", activeSession.json().put("message", it)) },
                 blockUnresolved = { id, name, args -> memory.unresolvedExecution(chat, id, name, args) },
+                onHistoryReduced = { com.ayuemin.ilmar.browser.BrowserRuntime.invalidateObservations(chat) },
                 replayConfirmed = { name, args -> memory.tasks.confirmed(activeSession, name, args) }
             ).run(tools) { toolHistory, schemas ->
                 val frame = observation()
                 val extraTokens = frame?.let { ContextEstimate.messages(listOf(it)) } ?: 0
-                val projection = engine.prepare(history, schemas, toolHistory, extraInputTokens = extraTokens)
+                injected += takeInterventions()
+                val projection = engine.prepare(history + injected, schemas, toolHistory, extraInputTokens = extraTokens)
+                onProjection(projection)
                 val image = frame?.let { com.ayuemin.ilmar.attachments.AttachmentPayload.build(listOf(it), caps, files)[it.id] }
                 status("Контекст ≈ ${projection.estimatedInput} + ${projection.output} / ${projection.limit} · сокращён на ≈ ${projection.saved}")
                 invoke(projection.history, projection.options.copy(reasoning = reasoning, observation = image), "answer", projection.estimatedInput, projection.saved).also { if (frame != null) consumeObservation() }

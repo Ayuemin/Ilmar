@@ -28,7 +28,7 @@ class DiagnosticsAcceptanceTest {
         val item = AttachmentStore(app).ingest(text.byteInputStream(), "Ilmar-log.jsonl", "application/octet-stream")
         assertEquals(text, item.text)
         item.text!!.lineSequence().filter { it.isNotBlank() }.forEach { JSONObject(it) }
-        assertTrue(item.text!!.contains("Короткий факт 42"))
+        assertFalse(item.text!!.contains("Короткий факт 42"))
         assertTrue(runCatching { AttachmentStore(app).ingest(byteArrayOf(0xC3.toByte(), 0x28).inputStream(), "bad.jsonl", "application/octet-stream") }.isFailure)
         assertTrue(runCatching { AttachmentStore(app).ingest(byteArrayOf(0, 1, 2).inputStream(), "binary.jsonl", "application/octet-stream") }.isFailure)
     }

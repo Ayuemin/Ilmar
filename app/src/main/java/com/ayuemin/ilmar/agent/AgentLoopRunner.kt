@@ -10,7 +10,7 @@ import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 
 internal data class ConfirmedToolResult(val executionId: String, val result: String)
 
-internal data class BoundTool(val schema: ToolSchema, val execute: suspend (JSONObject) -> String)
+internal data class BoundTool(val schema: ToolSchema, val localPrimitive: Boolean = false, val beforeExecute: suspend (JSONObject) -> Unit = {}, val execute: suspend (JSONObject) -> String)
 
 /** Every execution crosses a bound permission check. No arbitrary downloaded code or implicit retries. */
 internal class AgentFailure(val code: String, message: String) : IllegalStateException(message)
@@ -22,12 +22,21 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
     private val onRound: (String, List<JSONObject>) -> Unit = { _, _ -> },
     private val onCheckpoint: (String, List<JSONObject>) -> Unit = { _, _ -> }, private val onProgress: (String) -> Unit = {},
     private val blockUnresolved: (String, String, String) -> Boolean = { _, _, _ -> false },
+    private val onHistoryReduced: () -> Unit = {},
     private val replayConfirmed: (String, String) -> ConfirmedToolResult? = { _, _ -> null }) {
     suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
+        val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
         val history = mutableListOf<JSONObject>()
         val repeatThreshold = Limits.get("repeat_threshold")
         val guard = AgentToolLoopGuard(threshold = repeatThreshold.coerceAtLeast(2))
         var calls = 0
+        fun reserveCall() {
+            calls++
+            if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools, включая локальные шаги.")
+        }
+        val local = LocalToolExecutor(tools, ::reserveCall, onCheckpoint, blockUnresolved, replayConfirmed, onProgress) { name, args, output ->
+            if (repeatThreshold > 0 && guard.observe(name, args, output)) throw AgentFailure("NO_PROGRESS", "$name: локальные шаги повторяются без прогресса")
+        }
         var round = 0
         while (maxRounds == 0 || round < maxRounds) {
             round++
@@ -47,8 +56,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
             // Persist the call group before any side-effectful tool can begin.
             onCheckpoint(traceId, history.drop(groupStart))
             for (call in result.toolCalls) {
-                calls++
-                if (maxCalls > 0 && calls > maxCalls) throw AgentFailure("CALL_LIMIT", "Достигнут лимит $maxCalls вызовов tools. Его можно изменить в расширенных настройках.")
+                reserveCall()
                 val tool = tools.find { it.schema.name == call.name }
                 if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
                 if (blockUnresolved("$traceId:${call.id}", call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
@@ -58,13 +66,16 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
                     confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
                 } else {
+                    val preflight = try { JSONObject(call.arguments) } catch (_: org.json.JSONException) { null }
+                    if (preflight != null) tool?.beforeExecute?.invoke(preflight)
+                    currentCoroutineContext().ensureActive()
                     // Planned calls are not execution intents. Persist only this call immediately before entering its executor.
                     history[groupStart].getJSONArray("_started_calls").put(call.id)
                     onCheckpoint(traceId, history.drop(groupStart))
                     onProgress("Раунд $round · выполняется ${call.name}")
                     try {
                         if (tool == null) JSONObject().put("error", "UNKNOWN_TOOL").put("message", "Инструмент ${call.name} не доступен; используй только предоставленные schemas.").toString()
-                        else optionalTimeout(Limits.get("tool_seconds")) { tool.execute(JSONObject(call.arguments)) }
+                        else optionalTimeout(Limits.get(if (call.name == "browser_download") "download_seconds" else "tool_seconds")) { kotlinx.coroutines.withContext(local) { tool.execute(JSONObject(call.arguments)) } }
                     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                         currentCoroutineContext().ensureActive()
                         JSONObject().put("error", "TOOL_TIMEOUT").put("tool", call.name).put("message", "Истекло время вызова. Проверь аргументы или расширенные настройки.").toString()
@@ -82,7 +93,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, replay?.result ?: output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))
-            val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(history, Limits.get("trace_tokens"), preserveTrace = true)
+            val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(com.ayuemin.ilmar.browser.BrowserHistoryProjection.project(history, browserPolicy), Limits.get("trace_tokens"), preserveTrace = true, preserveLatestBrowser = tools.any { it.schema.name.startsWith("browser_") })
+            if (working.size < history.size) onHistoryReduced()
             history.clear(); history.addAll(working)
         }
         throw AgentFailure("ROUND_LIMIT", "Достигнут лимит $maxRounds раундов агента. История сохранена; лимит можно увеличить или отключить в расширенных настройках.")

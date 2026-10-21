@@ -1,0 +1,2829 @@
+[
+  {
+    "operation": "search",
+    "before": {
+      "url": "https://www.google.com/search?q=IANA+example+domains",
+      "title": "IANA search fixture",
+      "requires_user": false,
+      "page_id": "fixture-page-0",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "Example Domains — IANA",
+          "sensitive": false
+        }
+      ],
+      "text": "IANA example domainsExample Domains — IANAReserved example domains for documentation.",
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 1,
+          "title": "Example Domains — IANA",
+          "url": "https://www.iana.org/help/example-domains"
+        }
+      ]
+    },
+    "after": {
+      "url": "https://www.google.com/search?q=IANA+example+domains",
+      "title": "IANA search fixture",
+      "requires_user": false,
+      "page_id": "fixture-page-0",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "Example Domains — IANA",
+          "sensitive": false
+        }
+      ],
+      "text": "IANA example domainsExample Domains — IANAReserved example domains for documentation.",
+      "text_truncated": false,
+      "full_read_available": true,
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 1,
+          "title": "Example Domains — IANA",
+          "url": "https://www.iana.org/help/example-domains"
+        }
+      ]
+    }
+  },
+  {
+    "operation": "open",
+    "before": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-1",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions and Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "IANA-managed Reserved Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "Reserved Top Level DNS Names",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Number Resources",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Number Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "RIR Allocation Data",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Abuse Information",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": "Protocol Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Time Zone Database",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "About Us",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "News",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": "Performance",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "The Organization",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Archive",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Contact Us",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Public Technical Identifiers",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Privacy Policy",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Terms of Service",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About Instructions and Guides Example Domains A number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. We strongly recommend you do not design applications that require the example domains to have operating HTTP service. Further Reading IANA-managed Reserved Domains Special-Use Domain Names (RFC 6761) Reserved Top Level DNS Names (RFC 2606) Last revised 2026-09-27. Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "Instructions and Guides",
+          "url": "https://www.iana.org/help"
+        },
+        {
+          "ref": 7,
+          "title": "IANA-managed Reserved Domains",
+          "url": "https://www.iana.org/domains/reserved"
+        },
+        {
+          "ref": 8,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 9,
+          "title": "Reserved Top Level DNS Names",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 10,
+          "title": "Domain Names",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 11,
+          "title": "Root Zone Registry",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 12,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 13,
+          "title": ".ARPA Registry",
+          "url": "https://www.iana.org/domains/arpa"
+        },
+        {
+          "ref": 14,
+          "title": "IDN Repository",
+          "url": "https://www.iana.org/domains/idn-tables"
+        },
+        {
+          "ref": 15,
+          "title": "Number Resources",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 16,
+          "title": "Number Registries",
+          "url": "https://www.iana.org/numbers/registries"
+        },
+        {
+          "ref": 17,
+          "title": "RIR Allocation Data",
+          "url": "https://www.iana.org/numbers/allocations/"
+        },
+        {
+          "ref": 18,
+          "title": "Abuse Information",
+          "url": "https://www.iana.org/help/abuse"
+        },
+        {
+          "ref": 19,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 20,
+          "title": "Protocol Registries",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 21,
+          "title": "Time Zone Database",
+          "url": "https://www.iana.org/time-zones"
+        }
+      ]
+    },
+    "after": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-1",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions and Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "IANA-managed Reserved Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "Reserved Top Level DNS Names",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Number Resources",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Number Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "RIR Allocation Data",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Abuse Information",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": "Protocol Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Time Zone Database",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "About Us",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "News",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": "Performance",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "The Organization",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Archive",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Contact Us",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Public Technical Identifiers",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Privacy Policy",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Terms of Service",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About Instructions and Guides Example Domains A number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. We strongly recommend you do not design applications that require the example domains to have operating HTTP service. Further Reading IANA-managed Reserved Domains Special-Use Domain Names (RFC 6761) Reserved Top Level DNS Names (RFC 2606) Last revised 2026-09-27. Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "text_truncated": false,
+      "full_read_available": true,
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "Instructions and Guides",
+          "url": "https://www.iana.org/help"
+        },
+        {
+          "ref": 7,
+          "title": "IANA-managed Reserved Domains",
+          "url": "https://www.iana.org/domains/reserved"
+        },
+        {
+          "ref": 8,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 9,
+          "title": "Reserved Top Level DNS Names",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 10,
+          "title": "Domain Names",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 11,
+          "title": "Root Zone Registry",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 12,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 13,
+          "title": ".ARPA Registry",
+          "url": "https://www.iana.org/domains/arpa"
+        },
+        {
+          "ref": 14,
+          "title": "IDN Repository",
+          "url": "https://www.iana.org/domains/idn-tables"
+        },
+        {
+          "ref": 15,
+          "title": "Number Resources",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 16,
+          "title": "Number Registries",
+          "url": "https://www.iana.org/numbers/registries"
+        },
+        {
+          "ref": 17,
+          "title": "RIR Allocation Data",
+          "url": "https://www.iana.org/numbers/allocations/"
+        },
+        {
+          "ref": 18,
+          "title": "Abuse Information",
+          "url": "https://www.iana.org/help/abuse"
+        },
+        {
+          "ref": 19,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 20,
+          "title": "Protocol Registries",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 21,
+          "title": "Time Zone Database",
+          "url": "https://www.iana.org/time-zones"
+        }
+      ]
+    }
+  },
+  {
+    "operation": "read",
+    "before": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-1",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions and Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "IANA-managed Reserved Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "Reserved Top Level DNS Names",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Number Resources",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Number Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "RIR Allocation Data",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Abuse Information",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": "Protocol Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Time Zone Database",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "About Us",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "News",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": "Performance",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "The Organization",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Archive",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Contact Us",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Public Technical Identifiers",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Privacy Policy",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Terms of Service",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About Instructions and Guides Example Domains A number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. We strongly recommend you do not design applications that require the example domains to have operating HTTP service. Further Reading IANA-managed Reserved Domains Special-Use Domain Names (RFC 6761) Reserved Top Level DNS Names (RFC 2606) Last revised 2026-09-27. Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "Instructions and Guides",
+          "url": "https://www.iana.org/help"
+        },
+        {
+          "ref": 7,
+          "title": "IANA-managed Reserved Domains",
+          "url": "https://www.iana.org/domains/reserved"
+        },
+        {
+          "ref": 8,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 9,
+          "title": "Reserved Top Level DNS Names",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 10,
+          "title": "Domain Names",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 11,
+          "title": "Root Zone Registry",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 12,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 13,
+          "title": ".ARPA Registry",
+          "url": "https://www.iana.org/domains/arpa"
+        },
+        {
+          "ref": 14,
+          "title": "IDN Repository",
+          "url": "https://www.iana.org/domains/idn-tables"
+        },
+        {
+          "ref": 15,
+          "title": "Number Resources",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 16,
+          "title": "Number Registries",
+          "url": "https://www.iana.org/numbers/registries"
+        },
+        {
+          "ref": 17,
+          "title": "RIR Allocation Data",
+          "url": "https://www.iana.org/numbers/allocations/"
+        },
+        {
+          "ref": 18,
+          "title": "Abuse Information",
+          "url": "https://www.iana.org/help/abuse"
+        },
+        {
+          "ref": 19,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 20,
+          "title": "Protocol Registries",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 21,
+          "title": "Time Zone Database",
+          "url": "https://www.iana.org/time-zones"
+        }
+      ]
+    },
+    "after": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-1",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions and Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "IANA-managed Reserved Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "Reserved Top Level DNS Names",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Number Resources",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Number Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "RIR Allocation Data",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Abuse Information",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": "Protocol Registries",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Time Zone Database",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "About Us",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "News",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": "Performance",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "The Organization",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Archive",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Contact Us",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Public Technical Identifiers",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Privacy Policy",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Terms of Service",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About Instructions and Guides Example Domains A number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. We strongly recommend you do not design applications that require the example domains to have operating HTTP service. Further Reading IANA-managed Reserved Domains Special-Use Domain Names (RFC 6761) Reserved Top Level DNS Names (RFC 2606) Last revised 2026-09-27. Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "text_truncated": false,
+      "full_read_available": true,
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "Instructions and Guides",
+          "url": "https://www.iana.org/help"
+        },
+        {
+          "ref": 7,
+          "title": "IANA-managed Reserved Domains",
+          "url": "https://www.iana.org/domains/reserved"
+        },
+        {
+          "ref": 8,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 9,
+          "title": "Reserved Top Level DNS Names",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 10,
+          "title": "Domain Names",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 11,
+          "title": "Root Zone Registry",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 12,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 13,
+          "title": ".ARPA Registry",
+          "url": "https://www.iana.org/domains/arpa"
+        },
+        {
+          "ref": 14,
+          "title": "IDN Repository",
+          "url": "https://www.iana.org/domains/idn-tables"
+        },
+        {
+          "ref": 15,
+          "title": "Number Resources",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 16,
+          "title": "Number Registries",
+          "url": "https://www.iana.org/numbers/registries"
+        },
+        {
+          "ref": 17,
+          "title": "RIR Allocation Data",
+          "url": "https://www.iana.org/numbers/allocations/"
+        },
+        {
+          "ref": 18,
+          "title": "Abuse Information",
+          "url": "https://www.iana.org/help/abuse"
+        },
+        {
+          "ref": 19,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 20,
+          "title": "Protocol Registries",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 21,
+          "title": "Time Zone Database",
+          "url": "https://www.iana.org/time-zones"
+        }
+      ]
+    }
+  },
+  {
+    "operation": "click",
+    "before": {
+      "url": "https://www.iana.org/domains/reserved",
+      "title": "IANA-managed Reserved Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-3",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 2606",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 6761",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Evaluation",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "contractual limitations",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Management",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Top-Level Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "Files and Downloads",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Manage Delegations",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions & Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "Register/modify an .INT domain",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "Eligibility",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Practices Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Submit a table",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Label Generation Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Ruleset",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Reference Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 32,
+          "tag": "a",
+          "type": "",
+          "label": "Root Key Signing Key (DNSSEC)",
+          "sensitive": false
+        },
+        {
+          "ref": 33,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 34,
+          "tag": "a",
+          "type": "",
+          "label": "Trust Anchors and Rollovers",
+          "sensitive": false
+        },
+        {
+          "ref": 35,
+          "tag": "a",
+          "type": "",
+          "label": "Key Signing Ceremonies",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About IANA-managed Reserved Domains Certain domains are set aside, and nominally registered to “IANA”, for specific policy or technical purposes. Example domains As described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. Test IDN top-level domains These domains were temporarily delegated by IANA for the IDN Evaluation being conducted by ICANN. DomainDomain (A-label)LanguageScript إختبارxn--kgbechtv ArabicArabic آزمایشیxn--hgbk6aj7f53bba PersianArabic 测试xn--0zwm56d ChineseHan (Simplified variant) 測試xn--g6w251d ChineseHan (Traditional variant) испытаниеxn--80akhbyknj4f RussianCyrillic परीक्षाxn--11b5bs3a9aj6g HindiDevanagari (Nagari) δοκιμήxn--jxalpdlp Greek, Modern (1453-)Greek 테스트xn--9t4b11yi5a KoreanHangul (Hangŭl, Hangeul) טעסטxn--deba0ad YiddishHebrew テストxn--zckzah JapaneseKatakana பரிட்சைxn--hlcj6aya9esc7a TamilTamil Policy-reserved domains We act as both the registrant and registrar for a select number of domains which have been reserved under policy grounds. These exclusions are typically indicated in either technical standards (RFC documents), or contractual limitations. Domains which are described as registered to IANA or ICANN on policy grounds are not available for registration or transfer, with the exception of country-name.info domains. These domains are available for release by the ICANN Governmental Advisory Committee Secretariat. Other Special-Use Domains There is additionally a Special-Use Domain Names registry documenting special-use domains designated by technical standards. For further information, see Special-Use Domain Names (RFC 6761). Domain Names Overview Root Zone Management Overview Top-Level Domains Files and Downloads Manage Delegations Instructions & Guides .INT Registry Overview Register/modify an .INT domain Eligibility .ARPA Registry IDN Practices Repository Overview Submit a table Label Generation Rulesets Overview Root Zone Ruleset Reference Rulesets Root Key Signing Key (DNSSEC) Overview Trust Anchors and Rollovers Key Signing Ceremonies Policies & Procedures Community Representatives Reserved Domains Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "RFC 2606",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 7,
+          "title": "RFC 6761",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 8,
+          "title": "IDN Evaluation",
+          "url": "http://www.icann.org/topics/idn/"
+        },
+        {
+          "ref": 9,
+          "title": "ICANN",
+          "url": "http://www.icann.org/"
+        },
+        {
+          "ref": 10,
+          "title": "contractual limitations",
+          "url": "http://www.icann.org/en/registries/agreements.htm"
+        },
+        {
+          "ref": 11,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/assignments/special-use-domain-names"
+        },
+        {
+          "ref": 12,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 13,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 14,
+          "title": "Root Zone Management",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 15,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 16,
+          "title": "Top-Level Domains",
+          "url": "https://www.iana.org/domains/root/db"
+        },
+        {
+          "ref": 17,
+          "title": "Files and Downloads",
+          "url": "https://www.iana.org/domains/root/files"
+        },
+        {
+          "ref": 18,
+          "title": "Manage Delegations",
+          "url": "https://www.iana.org/domains/root/manage"
+        },
+        {
+          "ref": 19,
+          "title": "Instructions & Guides",
+          "url": "https://www.iana.org/domains/root/help"
+        },
+        {
+          "ref": 20,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 21,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/int"
+        }
+      ]
+    },
+    "after": {
+      "url": "https://www.iana.org/domains/reserved",
+      "title": "IANA-managed Reserved Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-3",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 2606",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 6761",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Evaluation",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "contractual limitations",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Management",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Top-Level Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "Files and Downloads",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Manage Delegations",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions & Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "Register/modify an .INT domain",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "Eligibility",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Practices Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Submit a table",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Label Generation Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Ruleset",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Reference Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 32,
+          "tag": "a",
+          "type": "",
+          "label": "Root Key Signing Key (DNSSEC)",
+          "sensitive": false
+        },
+        {
+          "ref": 33,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 34,
+          "tag": "a",
+          "type": "",
+          "label": "Trust Anchors and Rollovers",
+          "sensitive": false
+        },
+        {
+          "ref": 35,
+          "tag": "a",
+          "type": "",
+          "label": "Key Signing Ceremonies",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About IANA-managed Reserved Domains Certain domains are set aside, and nominally registered to “IANA”, for specific policy or technical purposes. Example domains As described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. Test IDN top-level domains These domains were temporarily delegated by IANA for the IDN Evaluation being conducted by ICANN. DomainDomain (A-label)LanguageScript إختبارxn--kgbechtv ArabicArabic آزمایشیxn--hgbk6aj7f53bba PersianArabic 测试xn--0zwm56d ChineseHan (Simplified variant) 測試xn--g6w251d ChineseHan (Traditional variant) испытаниеxn--80akhbyknj4f RussianCyrillic परीक्षाxn--11b5bs3a9aj6g HindiDevanagari (Nagari) δοκιμήxn--jxalpdlp Greek, Modern (1453-)Greek 테스트xn--9t4b11yi5a KoreanHangul (Hangŭl, Hangeul) טעסטxn--deba0ad YiddishHebrew テストxn--zckzah JapaneseKatakana பரிட்சைxn--hlcj6aya9esc7a TamilTamil Policy-reserved domains We act as both the registrant and registrar for a select number of domains which have been reserved under policy grounds. These exclusions are typically indicated in either technical standards (RFC documents), or contractual limitations. Domains which are described as registered to IANA or ICANN on policy grounds are not available for registration or transfer, with the exception of country-name.info domains. These domains are available for release by the ICANN Governmental Advisory Committee Secretariat. Other Special-Use Domains There is additionally a Special-Use Domain Names registry documenting special-use domains designated by technical standards. For further information, see Special-Use Domain Names (RFC 6761). Domain Names Overview Root Zone Management Overview Top-Level Domains Files and Downloads Manage Delegations Instructions & Guides .INT Registry Overview Register/modify an .INT domain Eligibility .ARPA Registry IDN Practices Repository Overview Submit a table Label Generation Rulesets Overview Root Zone Ruleset Reference Rulesets Root Key Signing Key (DNSSEC) Overview Trust Anchors and Rollovers Key Signing Ceremonies Policies & Procedures Community Representatives Reserved Domains Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "text_truncated": false,
+      "full_read_available": true,
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "RFC 2606",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 7,
+          "title": "RFC 6761",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 8,
+          "title": "IDN Evaluation",
+          "url": "http://www.icann.org/topics/idn/"
+        },
+        {
+          "ref": 9,
+          "title": "ICANN",
+          "url": "http://www.icann.org/"
+        },
+        {
+          "ref": 10,
+          "title": "contractual limitations",
+          "url": "http://www.icann.org/en/registries/agreements.htm"
+        },
+        {
+          "ref": 11,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/assignments/special-use-domain-names"
+        },
+        {
+          "ref": 12,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 13,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 14,
+          "title": "Root Zone Management",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 15,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 16,
+          "title": "Top-Level Domains",
+          "url": "https://www.iana.org/domains/root/db"
+        },
+        {
+          "ref": 17,
+          "title": "Files and Downloads",
+          "url": "https://www.iana.org/domains/root/files"
+        },
+        {
+          "ref": 18,
+          "title": "Manage Delegations",
+          "url": "https://www.iana.org/domains/root/manage"
+        },
+        {
+          "ref": 19,
+          "title": "Instructions & Guides",
+          "url": "https://www.iana.org/domains/root/help"
+        },
+        {
+          "ref": 20,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 21,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/int"
+        }
+      ]
+    }
+  },
+  {
+    "operation": "scroll",
+    "before": {
+      "url": "https://www.iana.org/domains/reserved",
+      "title": "IANA-managed Reserved Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-3",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 2606",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 6761",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Evaluation",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "contractual limitations",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Management",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Top-Level Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "Files and Downloads",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Manage Delegations",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions & Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "Register/modify an .INT domain",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "Eligibility",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Practices Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Submit a table",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Label Generation Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Ruleset",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Reference Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 32,
+          "tag": "a",
+          "type": "",
+          "label": "Root Key Signing Key (DNSSEC)",
+          "sensitive": false
+        },
+        {
+          "ref": 33,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 34,
+          "tag": "a",
+          "type": "",
+          "label": "Trust Anchors and Rollovers",
+          "sensitive": false
+        },
+        {
+          "ref": 35,
+          "tag": "a",
+          "type": "",
+          "label": "Key Signing Ceremonies",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About IANA-managed Reserved Domains Certain domains are set aside, and nominally registered to “IANA”, for specific policy or technical purposes. Example domains As described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. Test IDN top-level domains These domains were temporarily delegated by IANA for the IDN Evaluation being conducted by ICANN. DomainDomain (A-label)LanguageScript إختبارxn--kgbechtv ArabicArabic آزمایشیxn--hgbk6aj7f53bba PersianArabic 测试xn--0zwm56d ChineseHan (Simplified variant) 測試xn--g6w251d ChineseHan (Traditional variant) испытаниеxn--80akhbyknj4f RussianCyrillic परीक्षाxn--11b5bs3a9aj6g HindiDevanagari (Nagari) δοκιμήxn--jxalpdlp Greek, Modern (1453-)Greek 테스트xn--9t4b11yi5a KoreanHangul (Hangŭl, Hangeul) טעסטxn--deba0ad YiddishHebrew テストxn--zckzah JapaneseKatakana பரிட்சைxn--hlcj6aya9esc7a TamilTamil Policy-reserved domains We act as both the registrant and registrar for a select number of domains which have been reserved under policy grounds. These exclusions are typically indicated in either technical standards (RFC documents), or contractual limitations. Domains which are described as registered to IANA or ICANN on policy grounds are not available for registration or transfer, with the exception of country-name.info domains. These domains are available for release by the ICANN Governmental Advisory Committee Secretariat. Other Special-Use Domains There is additionally a Special-Use Domain Names registry documenting special-use domains designated by technical standards. For further information, see Special-Use Domain Names (RFC 6761). Domain Names Overview Root Zone Management Overview Top-Level Domains Files and Downloads Manage Delegations Instructions & Guides .INT Registry Overview Register/modify an .INT domain Eligibility .ARPA Registry IDN Practices Repository Overview Submit a table Label Generation Rulesets Overview Root Zone Ruleset Reference Rulesets Root Key Signing Key (DNSSEC) Overview Trust Anchors and Rollovers Key Signing Ceremonies Policies & Procedures Community Representatives Reserved Domains Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "RFC 2606",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 7,
+          "title": "RFC 6761",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 8,
+          "title": "IDN Evaluation",
+          "url": "http://www.icann.org/topics/idn/"
+        },
+        {
+          "ref": 9,
+          "title": "ICANN",
+          "url": "http://www.icann.org/"
+        },
+        {
+          "ref": 10,
+          "title": "contractual limitations",
+          "url": "http://www.icann.org/en/registries/agreements.htm"
+        },
+        {
+          "ref": 11,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/assignments/special-use-domain-names"
+        },
+        {
+          "ref": 12,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 13,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 14,
+          "title": "Root Zone Management",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 15,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 16,
+          "title": "Top-Level Domains",
+          "url": "https://www.iana.org/domains/root/db"
+        },
+        {
+          "ref": 17,
+          "title": "Files and Downloads",
+          "url": "https://www.iana.org/domains/root/files"
+        },
+        {
+          "ref": 18,
+          "title": "Manage Delegations",
+          "url": "https://www.iana.org/domains/root/manage"
+        },
+        {
+          "ref": 19,
+          "title": "Instructions & Guides",
+          "url": "https://www.iana.org/domains/root/help"
+        },
+        {
+          "ref": 20,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 21,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/int"
+        }
+      ]
+    },
+    "after": {
+      "url": "https://www.iana.org/domains/reserved",
+      "title": "IANA-managed Reserved Domains",
+      "requires_user": false,
+      "page_id": "fixture-page-3",
+      "controls": [
+        {
+          "ref": 1,
+          "tag": "a",
+          "type": "",
+          "label": "",
+          "sensitive": false
+        },
+        {
+          "ref": 2,
+          "tag": "a",
+          "type": "",
+          "label": "Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 3,
+          "tag": "a",
+          "type": "",
+          "label": "Protocols",
+          "sensitive": false
+        },
+        {
+          "ref": 4,
+          "tag": "a",
+          "type": "",
+          "label": "Numbers",
+          "sensitive": false
+        },
+        {
+          "ref": 5,
+          "tag": "a",
+          "type": "",
+          "label": "About",
+          "sensitive": false
+        },
+        {
+          "ref": 6,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 2606",
+          "sensitive": false
+        },
+        {
+          "ref": 7,
+          "tag": "a",
+          "type": "",
+          "label": "RFC 6761",
+          "sensitive": false
+        },
+        {
+          "ref": 8,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Evaluation",
+          "sensitive": false
+        },
+        {
+          "ref": 9,
+          "tag": "a",
+          "type": "",
+          "label": "ICANN",
+          "sensitive": false
+        },
+        {
+          "ref": 10,
+          "tag": "a",
+          "type": "",
+          "label": "contractual limitations",
+          "sensitive": false
+        },
+        {
+          "ref": 11,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 12,
+          "tag": "a",
+          "type": "",
+          "label": "Special-Use Domain Names",
+          "sensitive": false
+        },
+        {
+          "ref": 13,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 14,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Management",
+          "sensitive": false
+        },
+        {
+          "ref": 15,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 16,
+          "tag": "a",
+          "type": "",
+          "label": "Top-Level Domains",
+          "sensitive": false
+        },
+        {
+          "ref": 17,
+          "tag": "a",
+          "type": "",
+          "label": "Files and Downloads",
+          "sensitive": false
+        },
+        {
+          "ref": 18,
+          "tag": "a",
+          "type": "",
+          "label": "Manage Delegations",
+          "sensitive": false
+        },
+        {
+          "ref": 19,
+          "tag": "a",
+          "type": "",
+          "label": "Instructions & Guides",
+          "sensitive": false
+        },
+        {
+          "ref": 20,
+          "tag": "a",
+          "type": "",
+          "label": ".INT Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 21,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 22,
+          "tag": "a",
+          "type": "",
+          "label": "Register/modify an .INT domain",
+          "sensitive": false
+        },
+        {
+          "ref": 23,
+          "tag": "a",
+          "type": "",
+          "label": "Eligibility",
+          "sensitive": false
+        },
+        {
+          "ref": 24,
+          "tag": "a",
+          "type": "",
+          "label": ".ARPA Registry",
+          "sensitive": false
+        },
+        {
+          "ref": 25,
+          "tag": "a",
+          "type": "",
+          "label": "IDN Practices Repository",
+          "sensitive": false
+        },
+        {
+          "ref": 26,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 27,
+          "tag": "a",
+          "type": "",
+          "label": "Submit a table",
+          "sensitive": false
+        },
+        {
+          "ref": 28,
+          "tag": "a",
+          "type": "",
+          "label": "Label Generation Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 29,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 30,
+          "tag": "a",
+          "type": "",
+          "label": "Root Zone Ruleset",
+          "sensitive": false
+        },
+        {
+          "ref": 31,
+          "tag": "a",
+          "type": "",
+          "label": "Reference Rulesets",
+          "sensitive": false
+        },
+        {
+          "ref": 32,
+          "tag": "a",
+          "type": "",
+          "label": "Root Key Signing Key (DNSSEC)",
+          "sensitive": false
+        },
+        {
+          "ref": 33,
+          "tag": "a",
+          "type": "",
+          "label": "Overview",
+          "sensitive": false
+        },
+        {
+          "ref": 34,
+          "tag": "a",
+          "type": "",
+          "label": "Trust Anchors and Rollovers",
+          "sensitive": false
+        },
+        {
+          "ref": 35,
+          "tag": "a",
+          "type": "",
+          "label": "Key Signing Ceremonies",
+          "sensitive": false
+        }
+      ],
+      "text": "Domains Protocols Numbers About IANA-managed Reserved Domains Certain domains are set aside, and nominally registered to “IANA”, for specific policy or technical purposes. Example domains As described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. Test IDN top-level domains These domains were temporarily delegated by IANA for the IDN Evaluation being conducted by ICANN. DomainDomain (A-label)LanguageScript إختبارxn--kgbechtv ArabicArabic آزمایشیxn--hgbk6aj7f53bba PersianArabic 测试xn--0zwm56d ChineseHan (Simplified variant) 測試xn--g6w251d ChineseHan (Traditional variant) испытаниеxn--80akhbyknj4f RussianCyrillic परीक्षाxn--11b5bs3a9aj6g HindiDevanagari (Nagari) δοκιμήxn--jxalpdlp Greek, Modern (1453-)Greek 테스트xn--9t4b11yi5a KoreanHangul (Hangŭl, Hangeul) טעסטxn--deba0ad YiddishHebrew テストxn--zckzah JapaneseKatakana பரிட்சைxn--hlcj6aya9esc7a TamilTamil Policy-reserved domains We act as both the registrant and registrar for a select number of domains which have been reserved under policy grounds. These exclusions are typically indicated in either technical standards (RFC documents), or contractual limitations. Domains which are described as registered to IANA or ICANN on policy grounds are not available for registration or transfer, with the exception of country-name.info domains. These domains are available for release by the ICANN Governmental Advisory Committee Secretariat. Other Special-Use Domains There is additionally a Special-Use Domain Names registry documenting special-use domains designated by technical standards. For further information, see Special-Use Domain Names (RFC 6761). Domain Names Overview Root Zone Management Overview Top-Level Domains Files and Downloads Manage Delegations Instructions & Guides .INT Registry Overview Register/modify an .INT domain Eligibility .ARPA Registry IDN Practices Repository Overview Submit a table Label Generation Rulesets Overview Root Zone Ruleset Reference Rulesets Root Key Signing Key (DNSSEC) Overview Trust Anchors and Rollovers Key Signing Ceremonies Policies & Procedures Community Representatives Reserved Domains Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository Number Resources Number Registries RIR Allocation Data Abuse Information Protocols Protocol Registries Time Zone Database About Us News Performance The Organization Archive Contact Us The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by Public Technical Identifiers, an affiliate of ICANN. Privacy Policy Terms of Service",
+      "text_truncated": false,
+      "full_read_available": true,
+      "scroll_y": 0,
+      "has_more": false,
+      "links": [
+        {
+          "ref": 2,
+          "title": "Domains",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 3,
+          "title": "Protocols",
+          "url": "https://www.iana.org/protocols"
+        },
+        {
+          "ref": 4,
+          "title": "Numbers",
+          "url": "https://www.iana.org/numbers"
+        },
+        {
+          "ref": 5,
+          "title": "About",
+          "url": "https://www.iana.org/about"
+        },
+        {
+          "ref": 6,
+          "title": "RFC 2606",
+          "url": "https://www.iana.org/go/rfc2606"
+        },
+        {
+          "ref": 7,
+          "title": "RFC 6761",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 8,
+          "title": "IDN Evaluation",
+          "url": "http://www.icann.org/topics/idn/"
+        },
+        {
+          "ref": 9,
+          "title": "ICANN",
+          "url": "http://www.icann.org/"
+        },
+        {
+          "ref": 10,
+          "title": "contractual limitations",
+          "url": "http://www.icann.org/en/registries/agreements.htm"
+        },
+        {
+          "ref": 11,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/assignments/special-use-domain-names"
+        },
+        {
+          "ref": 12,
+          "title": "Special-Use Domain Names",
+          "url": "https://www.iana.org/go/rfc6761"
+        },
+        {
+          "ref": 13,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains"
+        },
+        {
+          "ref": 14,
+          "title": "Root Zone Management",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 15,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/root"
+        },
+        {
+          "ref": 16,
+          "title": "Top-Level Domains",
+          "url": "https://www.iana.org/domains/root/db"
+        },
+        {
+          "ref": 17,
+          "title": "Files and Downloads",
+          "url": "https://www.iana.org/domains/root/files"
+        },
+        {
+          "ref": 18,
+          "title": "Manage Delegations",
+          "url": "https://www.iana.org/domains/root/manage"
+        },
+        {
+          "ref": 19,
+          "title": "Instructions & Guides",
+          "url": "https://www.iana.org/domains/root/help"
+        },
+        {
+          "ref": 20,
+          "title": ".INT Registry",
+          "url": "https://www.iana.org/domains/int"
+        },
+        {
+          "ref": 21,
+          "title": "Overview",
+          "url": "https://www.iana.org/domains/int"
+        }
+      ]
+    }
+  }
+]

@@ -18,7 +18,12 @@ data class ModelCapabilities(val parameters: Set<String> = emptySet(), val effor
         (host(endpoint) == "openrouter.ai" && parameters.any { it == "reasoning" || it.startsWith("reasoning.") }) ||
             ("reasoning_effort" in parameters && efforts.isNotEmpty())
     fun reasoningConfig(endpoint: String, enabled: Boolean, effort: String?): ReasoningConfig? {
-        if (!enabled || !supportsReasoning(endpoint)) return null
+        if (!supportsReasoning(endpoint)) return null
+        if (!enabled) return when {
+            host(endpoint) == "openrouter.ai" -> ReasoningConfig("openrouter", enabled = false)
+            "none" in efforts -> ReasoningConfig("effort", "none", enabled = false)
+            else -> null // This provider has no advertised off parameter; never invent one.
+        }
         val selected = effort?.takeIf { it in efforts }
         return if (host(endpoint) == "openrouter.ai") ReasoningConfig("openrouter", selected)
         else ReasoningConfig("effort", selected ?: efforts.first())

@@ -20,7 +20,7 @@ class BrowserRuntimeTest {
         var stopped = 0
         var gate: CompletableDeferred<Unit>? = null
         override suspend fun open(url: String): JSONObject { gate?.await(); return read() }
-        override suspend fun read() = JSONObject().put("url", "https://example.com/").put("title", "Example").put("text", "facts")
+        override suspend fun read() = JSONObject().put("url", "https://example.com/").put("title", "Example").put("page_id", "page").put("text", "facts")
         override suspend fun scroll(down: Boolean) = read()
         override fun stop() { stopped++ }
     }
@@ -36,6 +36,18 @@ class BrowserRuntimeTest {
         assertTrue(runCatching { BrowserRuntime.command(5, "read") }.isFailure)
         assertEquals(1, page.stopped)
     }
+    @Test fun unchangedScrollUsesDeltaButExplicitReadReturnsFullText() = runTest(dispatcher) {
+        val page = Page()
+        BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(42, "open", "https://example.com/")
+            val scroll = JSONObject(BrowserRuntime.command(42, "scroll", "down"))
+            assertEquals("", scroll.getString("text"))
+            assertTrue(scroll.getBoolean("text_unchanged"))
+            val read = JSONObject(BrowserRuntime.command(42, "read"))
+            assertEquals("facts", read.getString("text"))
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun cancellationStopsPendingNavigationAndNextCommandWorks() = runTest(dispatcher) {
         val page = Page().apply { gate = CompletableDeferred() }; BrowserRuntime.attach(page)
         try {
@@ -47,11 +59,39 @@ class BrowserRuntimeTest {
             assertTrue(runCatching { BrowserRuntime.command(10, "read") }.isFailure)
         } finally { BrowserRuntime.detach(page) }
     }
+    @Test fun reducedHistoryAndNewRunRequireFreshCompactBaseline() = runTest(dispatcher) {
+        val page = Page(); BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(80, "open", "https://example.com/")
+            BrowserRuntime.invalidateObservations(80)
+            val next = JSONObject(BrowserRuntime.command(80, "scroll", "down"))
+            assertEquals("DOM_COMPACT", next.getString("representation")); assertEquals("facts", next.getString("text"))
+            assertFalse(next.has("base_snapshot_id"))
+        } finally { BrowserRuntime.detach(page) }
+    }
+    @Test fun failedOpenInAnotherChatCannotExposePreviousDocumentOrCaptureIt() = runTest(dispatcher) {
+        var fail = false
+        val page = object : BrowserPage {
+            override suspend fun open(url: String): JSONObject { if (fail) error("DNS failed"); return read() }
+            override suspend fun read() = JSONObject().put("url", "https://example.com/").put("text", "private first chat").put("page_id", "old")
+            override suspend fun scroll(down: Boolean) = read()
+            override fun stop() = Unit
+        }
+        BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(50, "open", "https://example.com/")
+            fail = true
+            assertTrue(runCatching { BrowserRuntime.command(51, "open", "https://example.org/") }.isFailure)
+            assertTrue(runCatching { BrowserRuntime.command(51, "read") }.isFailure)
+            assertTrue(runCatching { BrowserRuntime.captureFrame(51) }.isFailure)
+            BrowserRuntime.show(51); assertFalse(BrowserRuntime.state.value.visible)
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun independentSearchGrantCanBeRevokedBeforeToolExecution() = runTest(dispatcher) {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
         modes.setChoice(100, "search_source", "browser"); modes.setEnabled(100, "Поиск", true)
-        val tools = BrowserTools.forChat(100, modes, false, true)
+        val tools = BrowserTools.forChat(100, modes, false, true, globalAllowed = { true }, approveAction = { _, _, _ -> true })
         modes.setEnabled(100, "Поиск", false)
         val error = runCatching { tools.first().execute(JSONObject().put("query", "test")) }.exceptionOrNull()
         assertTrue(error is com.ayuemin.ilmar.agent.AgentFailure)

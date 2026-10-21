@@ -14,16 +14,18 @@ internal fun SearchControls(chat: Long, preferences: ChatModePreferences, provid
     val context = LocalContext.current
     val providerPrefs = remember { ProviderSearchPreferences(context) }
     var protocol by remember(providerId) { mutableStateOf(providerId?.let(providerPrefs::selected) ?: ProviderSearchProtocol.AUTO) }
+    var engine by remember(providerId) { mutableStateOf(providerId?.let(providerPrefs::engine) ?: ProviderSearchEngine.AUTO) }
     var advanced by remember { mutableStateOf(false) }
     val browser by BrowserRuntime.state.collectAsState()
     Text("Источник поиска", style = MaterialTheme.typography.labelLarge)
+    Text("Локальному браузеру нужно глобальное разрешение в настройках инструментов. Cookies и авторизация общие для приложения; при передаче сессии чату требуется подтверждение.", style = MaterialTheme.typography.bodySmall)
     SearchSource.entries.forEach { option ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(source == option, onClick = { source = option; preferences.setChoice(chat, "search_source", option.name.lowercase()) })
             Text(option.title)
         }
     }
-    Text("Авто использует встроенный поиск текущего поставщика, если он подключён, иначе — браузер телефона. Агент включать не нужно. Поиск поставщика может оплачиваться отдельно; браузеру нужна модель с tools.", style = MaterialTheme.typography.bodySmall)
+    Text("Сначала — подключённый поиск поставщика с выбранным движком. В «Авто» локальный браузер доступен дополнительно, когда результатов недостаточно или нужны действия на странице; перед первым использованием он запросит разрешение. Поиск поставщика может оплачиваться отдельно.", style = MaterialTheme.typography.bodySmall)
     Text("Модель может нажимать элементы, заполнять обычные поля и смотреть снимок экрана при поддержке зрения. Пароли, CAPTCHA и подтверждения — в переданном вам браузере; после действий нажмите возврат модели.", style = MaterialTheme.typography.bodySmall)
     if (browser.chat == chat) {
         Text(browser.status, style = MaterialTheme.typography.bodySmall)
@@ -37,6 +39,14 @@ internal fun SearchControls(chat: Long, preferences: ChatModePreferences, provid
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(protocol == option, onClick = { protocol = option; providerPrefs.save(providerId, option) })
                 Text(option.title, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        Text("Движок веб-поиска OpenRouter", style = MaterialTheme.typography.labelLarge)
+        Text("Применяется только к протоколу OpenRouter. Для других API используется их собственная настройка поиска.", style = MaterialTheme.typography.bodySmall)
+        ProviderSearchEngine.entries.forEach { option ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(engine == option, onClick = { engine = option; providerPrefs.saveEngine(providerId, option) })
+                Text(option.title)
             }
         }
     }

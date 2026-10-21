@@ -10,23 +10,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
-internal fun BrowserHost(onResumeTask: (Long) -> Unit) {
+internal fun BrowserHost(onResumeTask: (Long) -> Unit, screenAllowed: Boolean = true) {
     val state by BrowserRuntime.state.collectAsState()
     var adapter by remember { mutableStateOf<AndroidBrowserPage?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
-    BackHandler(state.visible) { BrowserRuntime.hide() }
-    // Keep an actual viewport for layout/snapshots even while the reader is hidden, as in Umnik.
+    val visible = state.visible && screenAllowed
+    BackHandler(visible) { BrowserRuntime.hide() }
+    // Keep a stable viewport and instance. Move the entire hidden hit area off-screen.
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        Column(if (state.visible) Modifier.fillMaxSize() else Modifier.width(maxWidth).height(maxHeight).offset(x = maxWidth + 16.dp)) {
-            Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
-                Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                if (state.waitingUser) TextButton(onClick = { state.chat?.let(onResumeTask) }) { Text("Готово, вернуть модели") }
-                TextButton(onClick = { BrowserRuntime.hide() }) { Text("В чат") }
-            } }
+        Column(Modifier.fillMaxSize().offset(x = if (visible) 0.dp else maxWidth + 16.dp)) {
+            Box(Modifier.fillMaxWidth().height(56.dp)) {
+                if (visible) Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
+                    Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    if (state.waitingUser) TextButton(onClick = { state.chat?.let(onResumeTask) }) { Text("Готово, вернуть модели") }
+                    TextButton(onClick = { BrowserRuntime.hide() }) { Text("В чат") }
+                } }
+            }
             AndroidView(factory = { context -> WebView(context).also { view ->
                 webView = view
                 adapter = AndroidBrowserPage(view).also { BrowserRuntime.attach(it) }
-            } }, modifier = Modifier.fillMaxWidth().weight(1f))
+            } }, update = { view ->
+                BrowserViewVisibility.apply(view, visible)
+            }, modifier = Modifier.fillMaxWidth().weight(1f))
         }
     }
     DisposableEffect(Unit) { onDispose {

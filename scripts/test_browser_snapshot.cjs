@@ -34,7 +34,7 @@ function snapshot(scrollY) {
   }, {timeout: 1000}));
 }
 const first = snapshot(0);
-assert.equal(first.text.length, 12000);
+assert.equal(first.text.length, 4000);
 assert.equal(first.links.length, 2);
 assert.equal(first.has_more, true);
 const later = snapshot(900);
@@ -66,7 +66,7 @@ for (const opts of [{sensitive: true, command: 'type'}, {credentialForm: true}, 
 assert.equal(actionFixture({label: 'Display results'}).clicks, 1);
 console.log('Browser actions JavaScript: click, stale-page guard, credential and high-impact handoff passed');
 // Normal inputs/selects and coordinate clicks use the same shipped action implementation.
-function editableAction(command, args, tag = 'INPUT') {
+function editableAction(command, args, tag = 'INPUT', viewportWidth) {
   const events = []; let submitted = 0;
   const el = {isConnected: true, tagName: tag, type: 'text', innerText: '', value: '', options: [{value: 'chosen'}],
     matches: selector => selector === 'input,textarea,[contenteditable="true"]', getAttribute: () => '',
@@ -74,7 +74,7 @@ function editableAction(command, args, tag = 'INPUT') {
     dispatchEvent: event => {events.push(event)}, form: {querySelectorAll: () => [], requestSubmit: () => {submitted++}}};
   class Input { set value(value) { this.value = value; } }
   class Event { constructor(type, options) {this.type = type; Object.assign(this, options)} }
-  const state = {id: 'page', elements: new Map([[1, el]])};
+  const state = {id: 'page', elements: new Map([[1, el]]), viewportWidth, viewportHeight:800};
   const value = vm.runInNewContext('(function(){const command=' + JSON.stringify(command) + ';const args=' + JSON.stringify({page_id: 'page', ref: 1, text: 'chosen', ...args}) + ';' + actions + '})()', {
     window: {__ilmarBrowser: state}, innerWidth: 400, innerHeight: 800,
     document: {elementFromPoint: () => el}, HTMLInputElement: Input, HTMLTextAreaElement: Input,
@@ -91,3 +91,65 @@ assert.equal(point.result.action_performed, true);
 assert.deepEqual(point.events.map(e => e.type), ['mousedown', 'mouseup', 'click']);
 assert.equal(point.events[2].clientX, 200); assert.equal(point.events[2].clientY, 200);
 console.log('Browser input/select/submit and coordinate-click JavaScript passed');
+// Same-document mutation must invalidate both page ID and old element map before an action.
+{
+  let records = [];
+  class Observer {
+    constructor(callback) { this.callback = callback; }
+    observe() {}
+    takeRecords() { const result = records; records = []; return result; }
+  }
+  const button = {innerText: 'Search', tagName: 'BUTTON', type: 'button', isConnected: true,
+    getAttribute: () => '', matches: () => false, getClientRects: () => [{top: 1, bottom: 5, left: 1, right: 5}],
+    getBoundingClientRect: () => ({top: 1, bottom: 5, left: 1, right: 5})};
+  const context = vm.createContext({window: {}, MutationObserver: Observer,
+    document: {title: 'SPA', body: {innerText: 'Results'}, documentElement: {scrollHeight: 200},
+      querySelectorAll: selector => selector.startsWith('a[href],') ? [button] : []},
+    location: {href: 'https://example.com/'}, scrollY: 0, innerHeight: 800, innerWidth: 400});
+  const before = JSON.parse(vm.runInContext(script, context));
+  records = [{type: 'childList'}];
+  const result = vm.runInContext('(function(){const command="click";const args=' + JSON.stringify({page_id: before.page_id, ref: before.controls[0].ref}) + ';' + actions + '})()', context);
+  assert.equal(JSON.parse(result).error, 'STALE_PAGE');
+  const after = JSON.parse(vm.runInContext(script, context));
+  assert.notEqual(after.page_id, before.page_id);
+  assert.equal(JSON.parse(vm.runInContext(script, context)).page_id, after.page_id);
+}
+console.log('Same-document DOM mutation invalidates stale actions; unchanged DOM retains page ID');
+
+assert.equal(editableAction('click', {x:500,y:250}, 'INPUT', 800).result.error, 'STALE_VIEWPORT');
+console.log('Coordinate actions reject snapshots taken before a viewport resize');
+// Fixed selective lookup uses current refs, excludes values, and never guesses an ambiguous target.
+const findBody = fs.readFileSync('app/src/main/java/com/ayuemin/ilmar/browser/BrowserFind.kt', 'utf8').match(/const val BODY = """([\s\S]*?)"""/)[1];
+function findFixture(labels, query, exact = true) {
+  const elements = labels.map((label, index) => ({innerText: label, tagName:'BUTTON', type:'button', value:'private-value',
+    getAttribute: () => '', getClientRects: () => index === 2 ? [] : [{}], matches: () => false}));
+  const state = {id:'fresh-page',refs:new Map(),elements:new Map(),next:1};
+  return JSON.parse(vm.runInNewContext('(function(){const query='+JSON.stringify(query)+';const exact='+exact+';const baseline={url:"https://example.com/",title:"Test"};'+findBody+'})()', {
+    window:{__ilmarBrowser:state}, document:{querySelectorAll: () => elements}
+  }, {timeout:1000}));
+}
+// Selective lookup must not expose inline file/data/javascript links to the model.
+{
+  const runLink = href => {
+    const el = {innerText:'Download',tagName:'A',type:'',href,
+      getAttribute:()=>'',getClientRects:()=>[{}],matches:()=>false};
+    const state = {id:'page',refs:new Map(),elements:new Map(),next:1};
+    return JSON.parse(vm.runInNewContext('(function(){const query="Download";const exact=true;const baseline={url:"https://example.com/",title:"Test"};'+findBody+'})()', {
+      window:{__ilmarBrowser:state},document:{querySelectorAll:()=>[el]}
+    })).matches[0];
+  };
+  assert.equal(runLink('data:text/html;base64,SGVsbG8=').url, undefined);
+  assert.equal(runLink('javascript:alert(1)').url, undefined);
+  assert.equal(runLink('file:///private/secret').url, undefined);
+  assert.equal(runLink('https://example.com/file').url, 'https://example.com/file');
+  assert.equal(runLink('https://user:pass@example.com/').url, undefined);
+}
+assert.equal(findFixture(['Search', 'Other', 'Hidden Search'], '  SEARCH ').matches.length, 1);
+assert.equal(findFixture(['Search', 'Search'], 'Search').matches.length, 2);
+assert.equal(findFixture(['Start Search'], 'Search').matches.length, 0);
+assert.equal(findFixture(['Start Search'], 'Search', false).matches.length, 1);
+assert.equal(findFixture(['Search'], 'Search').page_id, 'fresh-page');
+assert.equal(JSON.stringify(findFixture(['Search'], 'Search')).includes('private-value'), false);
+assert.equal(findFixture(['x'.repeat(2)], '";throw Error(1);//').matches.length, 0);
+assert.equal(findFixture(Array(5001).fill('Search'), 'Search').matches_truncated, true);
+console.log('Browser find JavaScript: unique/ambiguous labels, fresh refs, hidden nodes, bounded lookup and no input values passed');

@@ -25,6 +25,7 @@ class AttachmentStore(context: Context) {
         return File(root, id)
     }
     suspend fun import(uri: Uri): ChatAttachment = withContext(Dispatchers.IO) {
+        require(!com.ayuemin.ilmar.downloads.UserDownloadStore(app).isUserFile(uri)) { "Этот файл скачан для пользователя и не передаётся модели" }
         val resolver = app.contentResolver
         val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null

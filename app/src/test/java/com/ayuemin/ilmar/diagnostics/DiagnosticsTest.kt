@@ -22,7 +22,7 @@ class DiagnosticsTest {
         log.failure("TOOL_ERROR", 42, IllegalStateException("test failure"))
         val output = java.io.ByteArrayOutputStream(); log.export(output)
         val text = output.toString("UTF-8")
-        assertTrue(text.contains("test failure")); assertTrue(text.contains("old event")); assertTrue(text.contains("123"))
+        assertFalse(text.contains("test failure")); assertFalse(text.contains("old event")); assertTrue(text.contains("123")); assertTrue(text.contains("IllegalStateException"))
         assertFalse(text.contains("private-key")); assertFalse(text.contains("private-value"))
         text.lineSequence().filter { it.isNotBlank() }.forEach { JSONObject(it) }
         assertTrue(log.read(errorsOnly = true).contains("TOOL_ERROR")); assertFalse(log.read(errorsOnly = true).contains("MODEL_RESPONSE"))

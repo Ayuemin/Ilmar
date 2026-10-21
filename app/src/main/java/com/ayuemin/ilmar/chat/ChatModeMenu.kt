@@ -36,13 +36,13 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
     var reasoningSettings by remember { mutableStateOf(false) }
     val broker = remember { com.ayuemin.ilmar.agent.ToolPermissionBroker(context) }
     var toolRevision by remember { mutableIntStateOf(0) }
-    val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && ToolRegistry.authorized(id, preferences, broker).isNotEmpty() }
+    val canAgent = remember(toolRevision, id, model?.id) { capabilities.tools && (ToolRegistry.authorized(id, preferences, broker).isNotEmpty() || preferences.enabled(id, "tool_Браузер")) }
     var agent by remember(id, model?.id) { mutableStateOf(preferences.enabled(id, "Агент") && canAgent) }
     var search by remember(id) { mutableStateOf(preferences.enabled(id, "Поиск")) }
     var searchSettings by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     val tools = ToolRegistry.catalogue()
-    val available = ToolRegistry.availableIds().filter { broker.granted(it) }.toSet()
+    val available = ToolRegistry.availableIds().filter { it == "Браузер" || broker.granted(it) }.toSet()
     var chosen by remember(id) { mutableStateOf(available.filter { preferences.enabled(id, "tool_$it") }.toSet()) }
     var applied by remember(id) { mutableStateOf(chosen) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -53,7 +53,7 @@ internal fun ChatModeMenu(id: Long, preferences: ChatModePreferences,
                 ComposerActionTile(Icons.Outlined.CameraAlt, "Фото", true, Modifier.weight(1f)) { onDismiss(); onPhoto() }
                 ComposerActionTile(Icons.Outlined.Image, "Изображение", true, Modifier.weight(1f)) { onDismiss(); onImage() }
             }
-            Text("Файлы: текст UTF-8, DOCX, XLSX, PDF до 12 страниц. Фото и PDF требуют модели с входом image. До 8 вложений по 20 МБ (текст — 256 КБ); отправка только по кнопке.",
+            Text("Файлы: текст UTF-8, DOCX, XLSX, PDF до ${com.ayuemin.ilmar.settings.RuntimeLimits.get("pdf_pages")} страниц. Фото и PDF требуют модели с входом image. До ${com.ayuemin.ilmar.settings.RuntimeLimits.get("attachments")} вложений по ${com.ayuemin.ilmar.settings.RuntimeLimits.get("import_mib")} МиБ (извлечённый текст — ${com.ayuemin.ilmar.settings.RuntimeLimits.get("text_kib")} КиБ); отправка только по кнопке.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 ComposerToggleTile(Icons.Outlined.Psychology, if (reasoning) 2 else 0, 3, levelDescription = "Размышление",

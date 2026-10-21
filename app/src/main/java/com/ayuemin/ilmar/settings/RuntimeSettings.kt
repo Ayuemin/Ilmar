@@ -15,6 +15,13 @@ internal fun RuntimeSettings() {
     var group by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     Text("Глобальные настройки для всех чатов. Новые значения применяются к следующим задачам. Ноль отключает ограничение только там, где это указано. Ограничения памяти устройства, прав доступа и окна модели сохраняются.")
+    OutlinedButton(onClick = {
+        values = values + EconomyProfile.runtimeOverrides.mapValues { it.value.toString() }
+        status = "Подготовлен экономичный профиль: до 8 модельных раундов, 32 tools, 5 минут на задачу и 60 секунд на запрос. Проверь значения и нажми «Сохранить лимиты». Денежная квота и выбор модели не меняются."
+    }) { Text("Подготовить экономичный профиль") }
+    Text("Для экономии браузера можно менять размер DOM, число ссылок и полных наблюдений в истории, резерв ответа модели и длину локальных цепочек. Очень маленький объём может потребовать дополнительных чтений. Полные результаты сохраняются локально.", style = MaterialTheme.typography.bodySmall)
+    Text("«Авто» сначала использует подключённый поиск поставщика; браузер дополняет его для сложных случаев. При доступном браузере поиск поставщика по умолчанию подключается к первому запросу, число таких запросов можно увеличить. Встроенный в саму модель поиск (например, Perplexity) этим лимитом не отключается.", style = MaterialTheme.typography.bodySmall)
+    Text("Файлы из интернета скачиваются только после кнопки «Скачать» и сохраняются для вас в «Загрузки/Ilmar» (Android 10+). Модель получает только ID и место сохранения. По умолчанию лимитов МиБ и общего времени скачивания нет; действуют свободное место и доступность сети. Эти файлы не являются вложениями для модели.", style = MaterialTheme.typography.bodySmall)
     RuntimeLimits.fields.groupBy { it.group }.forEach { (title, fields) ->
         TextButton(onClick = { group = if (group == title) null else title }) { Text("${if (group == title) "⌄" else "›"} $title") }
         if (group == title) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

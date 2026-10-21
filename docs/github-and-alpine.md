@@ -1,0 +1,33 @@
+# GitHub и Alpine Linux
+
+Дополнение по запросу владельца после аудита #9. Это описание реализации и приёмки, не второй Roadmap. Подпись APK не меняется.
+
+## GitHub
+
+Настройки → Инструменты → GitHub: fine-grained Personal Access Token хранится Android Keystore; проверка `/user` показывает подключённый аккаунт. Сначала выбери репозитории и минимальные права токена. Для GitHub-tool нужны глобальное разрешение и выбор в «+» текущего чата.
+
+`github(method, path, body)` работает с REST API api.github.com. Репозитории, branches/refs, contents, blobs/trees/commits, issues/comments/labels, PR/reviews/merge, Actions/workflow_dispatch, releases управляются документированными endpoints. Например GET `/repos/owner/repo/issues?per_page=20&page=1`, POST `/repos/owner/repo/pulls` с JSON title/head/base/body; PUT contents использует base64 и текущий sha. Это полноценный REST-доступ в пределах прав токена, без автоматического merge или записи при настройке подключения.
+
+Все POST/PUT/PATCH/DELETE требуют отдельного нативного подтверждения с полным путём и телом. Разрешения/токен повторно проверяются после диалога. Нет автоматического retry и следования redirect. Неоднозначный сетевой результат нужно проверить чтением перед повтором. Ответ содержит HTTP status, Link pagination, rate remaining/reset/retry-after. До 64 КиБ тела запроса и 32 КиБ ответа по умолчанию (response_limit до 256 КиБ), флаг truncated требует пагинации. Ответы — недоверенные данные. Токен не подставляется моделью и скрывается при случайном отражении сервером.
+
+Границы: github.com REST; GitHub Enterprise, GraphQL, OAuth/device flow, бинарные release uploads и скачивание ZIP artifacts пока не реализованы. Настоящие clone/fetch/pull/add/commit/branch/push выполняет `github_git` через установленный Alpine Git. Для push/pull/fetch/branch ветка указывается явно. Токен выдаёт краткоживущий loopback credential helper только для HTTPS github.com и точного owner/repo; он не записывается в remote URL, env, shell-команду или файл. Helper закрывается после операции. Hooks отключены, push без force, pull ff-only, автор коммитов из настроек. Включи GitHub и Git · Alpine и выбери Git в чате. Для generic alpine_shell токен не экспортируется. Это разделение не создаёт защиту от произвольного вредоносного кода с UID Ilmar: не запускай такой код параллельно с авторизованными Git-операциями.
+
+Actions: workflow YAML читается/создаётся через contents API (для записи нужно право Workflows); POST `/repos/owner/repo/actions/workflows/file.yml/dispatches` с ref/inputs запускает workflow. GET workflows/runs/jobs показывает состояние/conclusion/steps, POST rerun/cancel проходит native approval. GET `/repos/owner/repo/actions/jobs/id/logs` следует одноразовой signed ссылке на GitHub log storage отдельным запросом без Authorization и ограничивает вывод. Бинарные ZIP artifacts/run-log archives этим инструментом не распаковываются.
+
+## Alpine
+
+Референс архитектуры — [Agora](https://github.com/newo-ether/Agora/blob/3e7b0c8c89d591c3cd58a4bc6824861223576c1d/build-proot.sh). Собственная интеграция Ilmar: ARM64 Android NDK 28.2, Termux PRoot commit `a7147b50d708567dbf884d21e0f0c8698bba0d10`, talloc 2.4.2 из официального Samba commit f28966c1638806a5af1fa4e451b668af638491ce (два upstream blob SHA проверяются; конфигурационные headers написаны отдельно для Ilmar). Сборка из исходников, готовые исполняемые файлы с внешнего сайта не устанавливаются.
+
+PRoot и loader включены в APK как извлекаемые native libraries. Alpine 3.24.2 minirootfs (ветка v3.24) устанавливается отдельно с официального HTTPS CDN по кнопке и проверяется закреплённым SHA-256. Ограниченная распаковка в пустой staging-каталог не пишет через symlinks, отбрасывает traversal, повторные пути и неподдерживаемые типы tar, ограничивает размер/число файлов. Перед atomic activation запускается smoke test. Неуспех или отмена не заменяет существующую среду. Нет auto-upgrade, auto-reset или скрытой установки пакетов.
+
+Настройки содержат установку, статус, отмену, выполнение команды и удаление с отдельным подтверждением, включая удаление повреждённой/неактивной среды. Перед командой DNS обновляется из текущей сети Android; можно задать до четырёх IPv4/IPv6 вручную, fallback 1.1.1.1/8.8.8.8 указан в UI. Интернет и исходящий SSH доступны через сеть Android. Для SSH нужен `apk add openssh-client`, ключ/known_hosts внутри Alpine и неинтерактивная команда; PTY/интерактивный парольный ввод не реализованы. `alpine_shell(command, workdir, timeout_seconds)` доступен после установки и двух разрешений. `apk add git curl python3` — пример явной установки пакетов; persistent rootfs одна на приложение, общая для чатов. Процессы выполняются последовательно; stdin закрыт, вывод ограничен 64 КиБ, время 1–300 секунд. Launcher создаёт отдельную session/process group; timeout/cancellation убивает её и PRoot. Секреты/host env не наследуются. Каждая команда агента требует нативного подтверждения.
+
+PRoot — Linux userspace поверх ядра Android, работает с UID Ilmar, **не защитная sandbox**. Сеть и общие файлы доступны; вредоносная команда может навредить данным приложения. Не передавать недоверенному коду секреты и не считать per-chat toggles файловой изоляцией. Нет интерактивного PTY, daemon, root, Docker, systemd или поддержки x86/32-bit APK. Очистка чата не удаляет общие файлы Alpine; для этого есть явное удаление среды.
+
+## Лицензии и приёмка
+
+PRoot — GPL v2+, talloc — LGPL v3+; тексты в APK assets/licenses. Corresponding-source архив (upstream + изменённые build sources + launcher) публикуется рядом с каждым APK как `ilmar-alpine-corresponding-source`. Скрипт `python3 scripts/build_alpine_native.py` использует установленный NDK, затем `./gradlew :app:assembleDebug`. При распространении APK передавай также архив исходников и notices. Kotlin UI и runtime Ilmar написаны отдельно, UI Agora не копируется.
+
+CI проверяет Kotlin, unit tests, lint, SHA/locks Maven dependencies, сборку PRoot из закреплённых исходников и наличие native binaries в APK. Rootfs из официального CDN проходит JVM extraction regression. MockWebServer проверяет GitHub без настоящего токена и без записи в аккаунт.
+
+Перед готовностью на устройстве: установка/отмена/ошибка сети и checksum, smoke test на Android ARM64 (включая 16 КиБ page size), `apk add git`, clone публичного репозитория, persistence/restart, timeout и cancellation с дочерним процессом, удаление среды, revoke во время native approval; GitHub — чтение своего приватного репозитория и подтверждённые draft issue/branch/PR, 403/429, неоднозначный network outcome. CI не подменяет эти проверки. Реальные платные LLM/API не вызываются.
