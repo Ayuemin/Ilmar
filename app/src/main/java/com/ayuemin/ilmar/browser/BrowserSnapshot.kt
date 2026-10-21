@@ -38,18 +38,24 @@ internal object BrowserSnapshot {
       return JSON.stringify({url:location.href,title:document.title,requires_user:login||captcha,page_id:state.id,controls:controls,text:text.slice(0,4000),text_truncated:text.length>=4000,full_read_available:true,scroll_y:scrollY,has_more:scrollY+innerHeight<document.documentElement.scrollHeight,
         links:links.map(a=>({ref:ref(a),title:a.innerText.trim().slice(0,160),url:a.href}))});
     })()"""
-    fun script(full: Boolean) = if (full) SCRIPT.replace("const scrolled=scrollY>0", "const scrolled=false").replace("4000", "12000").replace("slice(0,20)", "slice(0,40)").replace("slice(0,35)", "slice(0,60)") else SCRIPT
-    fun decode(evaluation: String, full: Boolean = false): JSONObject {
+    fun script(full: Boolean, policy: BrowserPolicy = BrowserPolicy()): String {
+        val text = if (full) policy.expandedChars else policy.textChars
+        return SCRIPT.replace("const scrolled=scrollY>0", if (full) "const scrolled=false" else "const scrolled=scrollY>0")
+            .replace("4000", text.toString())
+            .replace("slice(0,20)", "slice(0,${if (full) policy.expandedLinks else policy.links})")
+            .replace("slice(0,35)", "slice(0,${if (full) policy.expandedControls else policy.controls})")
+    }
+    fun decode(evaluation: String, full: Boolean = false, policy: BrowserPolicy = BrowserPolicy()): JSONObject {
         val decoded = org.json.JSONTokener(evaluation).nextValue() as? String ?: error("Страница не вернула текст")
         val page = JSONObject(decoded)
         require(page.has("url") && page.has("text")) { "Неполный снимок страницы" }
         val links = page.optJSONArray("links") ?: JSONArray()
         return JSONObject().put("url", page.getString("url")).put("title", page.optString("title").take(300))
-            .put("requires_user", page.optBoolean("requires_user")).put("page_id", page.optString("page_id")).put("controls", page.optJSONArray("controls") ?: JSONArray())
-            .put("text", page.getString("text").take(if (full) 12000 else 4000)).put("scroll_y", page.optLong("scroll_y"))
+            .put("requires_user", page.optBoolean("requires_user")).put("page_id", page.optString("page_id")).put("controls", JSONArray().apply { val controls = page.optJSONArray("controls") ?: JSONArray(); repeat(minOf(if (full) policy.expandedControls else policy.controls, controls.length())) { put(controls.get(it)) } })
+            .put("text", page.getString("text").take(if (full) policy.expandedChars else policy.textChars)).put("scroll_y", page.optLong("scroll_y"))
             .put("text_truncated", page.optBoolean("text_truncated")).put("full_read_available", !full)
             .put("has_more", page.optBoolean("has_more")).put("links", JSONArray().apply {
-                repeat(minOf(if (full) 40 else 20, links.length())) { i -> val link = links.getJSONObject(i)
+                repeat(minOf(if (full) policy.expandedLinks else policy.links, links.length())) { i -> val link = links.getJSONObject(i)
                     if (BrowserAddress.valid(link.optString("url"))) put(JSONObject().put("ref", link.getInt("ref"))
                         .put("title", link.optString("title").take(160)).put("url", link.getString("url").take(4096)))
                 }

@@ -25,6 +25,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
     private val onHistoryReduced: () -> Unit = {},
     private val replayConfirmed: (String, String) -> ConfirmedToolResult? = { _, _ -> null }) {
     suspend fun run(tools: List<BoundTool>, generate: suspend (List<JSONObject>, List<ToolSchema>) -> GenerationResult): GenerationResult = optionalTimeout(Limits.get("task_seconds")) {
+        val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
         val history = mutableListOf<JSONObject>()
         val repeatThreshold = Limits.get("repeat_threshold")
         val guard = AgentToolLoopGuard(threshold = repeatThreshold.coerceAtLeast(2))
@@ -86,7 +87,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, replay?.result ?: output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))
-            val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(history, Limits.get("trace_tokens"), preserveTrace = true)
+            val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(com.ayuemin.ilmar.browser.BrowserHistoryProjection.project(history, browserPolicy), Limits.get("trace_tokens"), preserveTrace = true)
             if (working.size < history.size) onHistoryReduced()
             history.clear(); history.addAll(working)
         }

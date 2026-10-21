@@ -20,8 +20,9 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
     private val compactCaps: ModelCapabilities = caps, private val compactTarget: ModelTarget = target,
     private val notice: (String) -> Unit = {}, private val failure: (Throwable) -> Unit = {},
     private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" }, private val factualState: () -> String = { "" }) {
+    private val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
     private val limit = policy.limit(caps)
-    private val output = policy.reserve(caps)
+    private val defaultOutput = policy.reserve(caps)
     private val compactLimit = policy.limit(compactCaps)
     private val summaryOutput = minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("summary_tokens"), policy.reserve(compactCaps), compactLimit / 4)
     private val summaryOutputParameter = compactCaps.outputParameter(compactTarget.connection.endpoint)
@@ -30,10 +31,13 @@ internal class ContextEngine(private val chat: Long, private val memory: Context
         private set
     suspend fun prepare(history: List<ChatMessage>, schemas: List<ToolSchema>, toolHistory: List<JSONObject>, force: Boolean = false, extraInputTokens: Int = 0): ContextProjection {
         policy.validate()
+        val browser = schemas.any { it.name.startsWith("browser_") }
+        val outputCap = if (browser) browserPolicy.outputTokens else 0
+        val output = if (outputCap > 0) minOf(defaultOutput, outputCap) else defaultOutput
         if (output >= limit / 2) throw ContextFailure("Резерв ответа слишком велик для контекста этой модели. Уменьши его в настройках памяти.")
         val rules = memory.rules(chat)
         var capsule = validCapsule(history)
-        val projectedTools = ToolHistoryProjection.project(toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3))
+        val projectedTools = ToolHistoryProjection.project(if (browser) com.ayuemin.ilmar.browser.BrowserHistoryProjection.project(toolHistory, browserPolicy) else toolHistory, minOf(com.ayuemin.ilmar.settings.RuntimeLimits.get("trace_tokens"), limit / 3))
         val toolSize = ContextEstimate.text(schemas.joinToString { it.name + it.description + it.parameters.toString() } + projectedTools.joinToString()) + extraInputTokens
         val legacyRecovery = if (schemas.isEmpty()) "" else memory.recoveryNote(chat)
         val recovery = factualState() + boundedRecovery(legacyRecovery, maxOf(128, limit / 8))

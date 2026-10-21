@@ -11,6 +11,8 @@ import kotlin.coroutines.resume
 /** Android adapter kept separate from routing, tool schemas and Compose. Based on Umnik's WebView host. */
 @SuppressLint("SetJavaScriptEnabled")
 internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
+    private var policy = BrowserPolicy()
+    override fun configure(policy: BrowserPolicy) { this.policy = policy }
     private val sessions = mutableMapOf<Long, android.os.Bundle>()
     private var sessionChat: Long? = null
     private var requestedChat: Long? = null
@@ -99,9 +101,9 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         resume()
         require(BrowserAddress.valid(view.url.orEmpty())) { "Нет открытой HTTPS-страницы" }
         val evaluation = suspendCancellableCoroutine<String> { continuation ->
-            view.evaluateJavascript(BrowserSnapshot.script(full)) { value -> if (continuation.isActive) continuation.resume(value) }
+            view.evaluateJavascript(BrowserSnapshot.script(full, policy)) { value -> if (continuation.isActive) continuation.resume(value) }
         }
-        return BrowserSnapshot.decode(evaluation, full).also {
+        return BrowserSnapshot.decode(evaluation, full, policy).also {
             require(it.getString("url") == view.url) { "Страница изменилась при чтении. Повтори browser_read." }
         }
     }

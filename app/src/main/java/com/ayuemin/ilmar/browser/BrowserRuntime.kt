@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 internal interface BrowserPage {
+    fun configure(policy: BrowserPolicy) = Unit
     fun activate(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
     suspend fun readFull(): JSONObject = read()
@@ -28,13 +29,15 @@ internal object BrowserRuntime {
     private var page: BrowserPage? = null
     private var documentChat: Long? = null
     private val lock = Mutex()
+    private val policies = mutableMapOf<Long, BrowserPolicy>()
+    fun configure(chat: Long, policy: BrowserPolicy) { policies[chat] = policy; invalidateObservations(chat) }
     private val observations = BrowserObservations()
     private var lastObservationChat: Long? = null
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
     fun invalidateObservations(chat: Long) { if (lastObservationChat == chat) observations.clear() }
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null; policies.clear() } }
     fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
@@ -50,6 +53,7 @@ internal object BrowserRuntime {
     suspend fun command(chat: Long, operation: String, argument: String = "", details: JSONObject = JSONObject()): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")
+            browser.configure(policies[chat] ?: BrowserPolicy.load())
             if (operation != "open" && operation != "search") require(mutable.value.chat == chat && documentChat == chat) { "Сначала открой страницу для текущего чата" }
             if (mutable.value.waitingUser) {
                 require(mutable.value.chat == chat) { "Браузером управляет пользователь другого чата" }
