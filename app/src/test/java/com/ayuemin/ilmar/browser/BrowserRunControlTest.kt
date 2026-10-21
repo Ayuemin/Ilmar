@@ -70,6 +70,27 @@ class BrowserRunControlTest {
         assertEquals(2, control.summary().getInt("model_rounds"))
         assertFalse(control.summary().getBoolean("includes_tariff_estimate"))
     }
+    @Test fun budgetDenialStopsRunnerBeforeSecondEffectAndBeforeNextModel() = runTest {
+        var effects = 0; var generations = 0; var started = 0
+        val control = BrowserRunControl(1, false, ask = { _, _, _ -> false }, actionLimit = 1)
+        val tool = com.ayuemin.ilmar.agent.BoundTool(ToolSchema("browser_read", "test", JSONObject()),
+            beforeExecute = { control.beforeAction() }) { control.actionStarted("browser_read"); effects++; "facts" }
+        val failure = runCatching {
+            AgentLoopRunner(onCheckpoint = { _, messages -> started = maxOf(started, messages.first().optJSONArray("_started_calls")?.length() ?: 0) }).run(listOf(tool)) { _, _ ->
+                generations++
+                GenerationResult("", toolCalls = listOf(ModelToolCall("one", "browser_read", "{}"), ModelToolCall("two", "browser_read", "{}")))
+            }
+        }.exceptionOrNull() as AgentFailure
+        assertEquals("BROWSER_CANCELLED", failure.code)
+        assertEquals(1, effects); assertEquals(1, generations); assertEquals(1, started)
+    }
+    @Test fun explicitlyEnabledAgentBrowserDoesNotRequireAutoPrompt() = runTest {
+        val preferences = modes(602)
+        preferences.setEnabled(602, "Агент", true); preferences.setEnabled(602, "tool_Браузер", true)
+        val tools = BrowserTools.forChat(602, preferences, false, true)
+        for (tool in tools) tool.beforeExecute(JSONObject())
+        assertNull(BrowserPrompts.pending.value)
+    }
     @Test fun cancelledDialogClearsPendingAndStaleUiResponseCannotApproveNewOne() = runTest {
         val job = launch { BrowserPrompts.ask(1, "Auto", "Confirm") }
         runCurrent(); val old = BrowserPrompts.pending.value!!.id

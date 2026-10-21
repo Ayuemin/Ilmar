@@ -43,6 +43,18 @@ class BrowserControlTest {
             assertArrayEquals(byteArrayOf(1), BrowserRuntime.screenshot(1)); assertEquals(1, page.shots)
         } finally { BrowserRuntime.detach(page) }
     }
+    @Test fun ordinaryCommandsNeverCaptureWithoutExplicitScreenshot() = runTest(dispatcher) {
+        val page = Page().apply { secretPage = false }; BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(1, "search", "IANA")
+            BrowserRuntime.command(1, "open", "https://example.com/")
+            BrowserRuntime.command(1, "read")
+            BrowserRuntime.command(1, "click", details = JSONObject())
+            BrowserRuntime.command(1, "scroll", "down")
+            assertEquals(0, page.shots)
+            BrowserRuntime.screenshot(1); assertEquals(1, page.shots)
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun credentialPageCannotBeCapturedEvenBeforeHandoffWasRequested() = runTest(dispatcher) {
         val page = Page().apply { secretPage = false }; BrowserRuntime.attach(page)
         try {
