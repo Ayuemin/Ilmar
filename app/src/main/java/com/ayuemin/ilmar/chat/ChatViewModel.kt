@@ -152,8 +152,9 @@ class ChatViewModel @JvmOverloads constructor(
         generate(chatId)
     }
     fun setDraft(id: Long, text: String) { mutable.update { it.copy(drafts = it.drafts + (id to text)) } }
-    fun select(id: Long) { if (mutable.value.chats.any { it.id == id }) { mutable.update { it.copy(selectedId = id) }; indexArchive(id) } }
+    fun select(id: Long) { com.ayuemin.ilmar.browser.BrowserRuntime.hide(); if (mutable.value.chats.any { it.id == id }) { mutable.update { it.copy(selectedId = id) }; indexArchive(id) } }
     fun create() {
+        com.ayuemin.ilmar.browser.BrowserRuntime.hide()
         val id = maxOf(System.currentTimeMillis(), (mutable.value.chats.maxOfOrNull { it.id } ?: 0) + 1)
         store.create(id, "Новый чат")
         mutable.update { it.copy(chats = it.chats + ChatSession(id, "Новый чат"), selectedId = id) }

@@ -1,7 +1,6 @@
 package com.ayuemin.ilmar.browser
 
 import android.webkit.WebView
-import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -11,28 +10,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
-internal fun BrowserHost(onResumeTask: (Long) -> Unit) {
+internal fun BrowserHost(onResumeTask: (Long) -> Unit, screenAllowed: Boolean = true) {
     val state by BrowserRuntime.state.collectAsState()
     var adapter by remember { mutableStateOf<AndroidBrowserPage?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
-    BackHandler(state.visible) { BrowserRuntime.hide() }
-    // Keep WebView laid out for agent snapshots; MainActivity layers it below opaque chat while hidden.
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
-                Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                if (state.waitingUser) TextButton(onClick = { state.chat?.let(onResumeTask) }) { Text("Готово, вернуть модели") }
-                TextButton(onClick = { BrowserRuntime.hide() }) { Text("В чат") }
-            } }
+    val visible = state.visible && screenAllowed
+    BackHandler(visible) { BrowserRuntime.hide() }
+    // Keep a stable viewport and instance. Move the entire hidden hit area off-screen.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().offset(x = if (visible) 0.dp else maxWidth + 16.dp)) {
+            Box(Modifier.fillMaxWidth().height(56.dp)) {
+                if (visible) Surface { Row(Modifier.fillMaxWidth().padding(8.dp)) {
+                    Text(state.url, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    if (state.waitingUser) TextButton(onClick = { state.chat?.let(onResumeTask) }) { Text("Готово, вернуть модели") }
+                    TextButton(onClick = { BrowserRuntime.hide() }) { Text("В чат") }
+                } }
+            }
             AndroidView(factory = { context -> WebView(context).also { view ->
                 webView = view
                 adapter = AndroidBrowserPage(view).also { BrowserRuntime.attach(it) }
             } }, update = { view ->
-                // Umnik: hide the Android view itself; Compose alpha/zIndex alone does not reliably hide WebView surfaces.
-                view.visibility = if (state.visible) View.VISIBLE else View.INVISIBLE
-                view.isEnabled = state.visible
-                view.importantForAccessibility = if (state.visible) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-                if (state.visible) view.post { view.requestLayout(); view.invalidate() }
+                BrowserViewVisibility.apply(view, visible)
             }, modifier = Modifier.fillMaxWidth().weight(1f))
         }
     }
