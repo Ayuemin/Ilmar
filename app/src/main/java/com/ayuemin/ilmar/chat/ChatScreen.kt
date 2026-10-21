@@ -131,9 +131,7 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
     if (showModels) ChatProviderDialog(selected.id, controller.registry, onConnectionSettings,
         onSelected = { modelRevision++ }, onDismiss = { showModels = false })
     if (showMemory) ChatMemoryPanel(selected.id, controller, sending, onDismiss = { showMemory = false })
-    if (showStats) AlertDialog(onDismissRequest = { showStats = false }, title = { Text("Статистика чата") },
-        text = { Text(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), text = "Сообщений: ${selected.messages.size}\nСимволов: ${selected.messages.sumOf { it.text.length }}\n\n${controller.usage(selected.id).describe()}") },
-        confirmButton = { TextButton(onClick = { showStats = false }) { Text("Закрыть") } })
+    if (showStats) CompactStats(state.compactGauges[selected.id], controller.usage(selected.id), selected.messages.size) { showStats = false }
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("Очистить чат?") },
         text = { Text("Сообщения будут удалены без возможности восстановления.") },
         confirmButton = { TextButton(onClick = { controller.clear(selected.id); showClear = false }) { Text("Очистить") } },
@@ -155,7 +153,6 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     IconButton(onClick = { overflow = true }) { Icon(Icons.Default.MoreVert, "Действия с чатом") }
                     DropdownMenu(overflow, { overflow = false }) {
                         DropdownMenuItem(text = { Text("Память и сжатие") }, onClick = { overflow = false; showMemory = true })
-                        DropdownMenuItem(text = { Text("Статистика чата") }, onClick = { overflow = false; showStats = true })
                         DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { overflow = false; searchOpen = true })
                         DropdownMenuItem(text = { Text("Выбрать модель") }, onClick = { overflow = false; showModels = true })
                         DropdownMenuItem(text = { Text("Очистить чат") }, onClick = { overflow = false; showClear = true })
@@ -187,7 +184,6 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                     }
                 }
             }
-            state.contextStatus[selected.id]?.let { label -> TextButton(onClick = { showMemory = true }) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             if (inThisChat) {
                 val events = state.activityEvents
                 val label = state.activityLabel.ifBlank { "Агент выполняет задачу…" }
@@ -250,11 +246,14 @@ fun ChatScreen(onSettings: () -> Unit = {}, controller: ChatViewModel = viewMode
                 Column(Modifier.padding(4.dp)) {
                     com.ayuemin.ilmar.attachments.AttachmentList(state.attachments[selected.id].orEmpty(),
                         onRemove = { controller.removeAttachment(selected.id, it) })
-                    TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 5,
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    TextField(draft, { controller.setDraft(selected.id, it) }, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
+                    CompactRing(state.compactGauges[selected.id]) { showStats = true }
+                    }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(enabled = selected.id !in state.importing, onClick = { showModes = true }) { Icon(Icons.Default.Add, "Режимы и инструменты") }
                         TextButton(onClick = { showModels = true }, modifier = Modifier.weight(1f),
