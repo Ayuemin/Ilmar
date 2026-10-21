@@ -232,8 +232,12 @@ class ChatViewModel @JvmOverloads constructor(
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
                 val browserForAgent = modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
+                val browserControl = if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                    com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
+                        event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
+                        notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
                 val tools = agentTools + if (browserForAgent || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
-                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId) else emptyList()
+                    com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl) else emptyList()
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
@@ -265,6 +269,8 @@ class ChatViewModel @JvmOverloads constructor(
                                     }
                                 } else target
                                 val callCaps = if (purpose == "compact") compactCaps else capabilities
+                                browserControl?.beforeModel(estimatedInput, options.maxOutput ?: contextPolicy.reserve(callCaps), callCaps,
+                                    options.observation != null || projectedHistory.any { m -> m.attachments.any { it.images.isNotEmpty() && !it.browserObservation } })
                                 val callStarted = android.os.SystemClock.elapsedRealtime()
                                 val callDetails = taskSession.json().put("request_id", requestId).put("purpose", purpose).put("model", callTarget.model.name)
                                     .put("provider", callTarget.connection.name).put("host", java.net.URI(callTarget.connection.endpoint).host)
@@ -286,6 +292,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     .put("cost_usd", completion.usage.costUsd ?: org.json.JSONObject.NULL).put("cached_tokens", completion.usage.cached ?: org.json.JSONObject.NULL)
                                     .put("reasoning_tokens", completion.usage.reasoning ?: org.json.JSONObject.NULL).put("usage", com.ayuemin.ilmar.model.usageJson(completion.usage))
                                     .put("tool_calls", completion.toolCalls.map { it.name }.joinToString()))
+                                browserControl?.afterModel(completion.usage, callCaps)
                                 recordCall(chatId, requestId, completion.usage, "completed", purpose, saved, completion)
                                 if (purpose == "answer") roundUsage += UsageRecord(completion.usage, "completed")
                                 completion
@@ -293,6 +300,7 @@ class ChatViewModel @JvmOverloads constructor(
                                 recordCall(chatId, requestId, TokenUsage(), "cancelled", purpose); throw e
                             } catch (e: Exception) {
                                 diagnostics.failure("MODEL_ERROR", chatId, e, taskSession.json().put("request_id", requestId).put("purpose", purpose).put("estimated_input", estimatedInput))
+                                browserControl?.afterModel((e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), if (purpose == "compact") compactCaps else capabilities)
                                 recordCall(chatId, requestId, (e as? ProviderFailure)?.reportedUsage ?: TokenUsage(), "failed", purpose); throw e
                             }
                         }).run(history, compactOnly, reasoning, tools)

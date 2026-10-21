@@ -10,7 +10,7 @@ import com.ayuemin.ilmar.settings.RuntimeLimits as Limits
 
 internal data class ConfirmedToolResult(val executionId: String, val result: String)
 
-internal data class BoundTool(val schema: ToolSchema, val execute: suspend (JSONObject) -> String)
+internal data class BoundTool(val schema: ToolSchema, val beforeExecute: suspend (JSONObject) -> Unit = {}, val execute: suspend (JSONObject) -> String)
 
 /** Every execution crosses a bound permission check. No arbitrary downloaded code or implicit retries. */
 internal class AgentFailure(val code: String, message: String) : IllegalStateException(message)
@@ -58,6 +58,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
                     confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
                 } else {
+                    tool?.beforeExecute?.invoke(JSONObject(call.arguments))
+                    currentCoroutineContext().ensureActive()
                     // Planned calls are not execution intents. Persist only this call immediately before entering its executor.
                     history[groupStart].getJSONArray("_started_calls").put(call.id)
                     onCheckpoint(traceId, history.drop(groupStart))

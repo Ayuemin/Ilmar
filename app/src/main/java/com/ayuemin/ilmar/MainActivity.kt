@@ -46,9 +46,10 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(),
                     color = Color(0xFF000000)) {
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    val chatState by controller.state.collectAsState()
                     val browserState by BrowserRuntime.state.collectAsState()
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().zIndex(if (browserState.visible) 1f else 0f).alpha(if (browserState.visible) 1f else 0f)) {
-                        BrowserHost(onResumeTask = controller::resumeBrowserTask, screenAllowed = !settings && browserState.chat == controller.state.collectAsState().value.selectedId)
+                        BrowserHost(onResumeTask = controller::resumeBrowserTask, screenAllowed = !settings && browserState.chat == chatState.selectedId)
                     }
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().zIndex(if (browserState.visible) 0f else 1f)) {
                     if (settings) SettingsScreen(onBack = { settings = false }, initialPage = settingsPage)
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
                         onConnectionSettings = { settingsPage = "Подключения"; settings = true },
                         onSettingsPage = { settingsPage = it; settings = true })
                     }
+                    com.ayuemin.ilmar.browser.BrowserPromptDialog(chatState.selectedId)
                     }
                 }
             }
