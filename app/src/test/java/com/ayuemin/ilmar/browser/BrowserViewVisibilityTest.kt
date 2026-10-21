@@ -16,7 +16,9 @@ class BrowserViewVisibilityTest {
     @Test fun hiddenViewKeepsViewportAndCannotReceiveTouchesOrAccessibilityFocus() {
         val view = WebView(ApplicationProvider.getApplicationContext())
         view.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(1800, View.MeasureSpec.EXACTLY))
-        view.layout(0, 0, 1080, 1800)
+        // Robolectric's Chromium delegate stubs WebView.setFrame. Supply the frame that
+        // AndroidView measures on device, then verify hiding never changes it.
+        view.right = 1080; view.bottom = 1800
         BrowserViewVisibility.apply(view, false)
         assertEquals(View.INVISIBLE, view.visibility)
         assertFalse(view.isEnabled)

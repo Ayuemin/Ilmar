@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 internal interface BrowserPage {
+    fun activate(chat: Long) = Unit
     suspend fun open(url: String): JSONObject
     suspend fun readFull(): JSONObject = read()
     suspend fun read(): JSONObject
@@ -25,14 +26,15 @@ internal data class BrowserUi(val chat: Long? = null, val url: String = "", val 
 /** A foreground browser with an exclusive human-control gate. Commands cannot read another chat's page. */
 internal object BrowserRuntime {
     private var page: BrowserPage? = null
+    private var documentChat: Long? = null
     private val lock = Mutex()
     private val observations = BrowserObservations()
     private var lastObservationChat: Long? = null
     private val mutable = MutableStateFlow(BrowserUi())
     val state = mutable.asStateFlow()
     fun attach(value: BrowserPage) { page = value }
-    fun detach(value: BrowserPage) { if (page === value) { page = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null } }
-    fun show(chat: Long) { if (mutable.value.chat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
+    fun detach(value: BrowserPage) { if (page === value) { page = null; documentChat = null; value.stop(); mutable.value = BrowserUi(); observations.clear(); lastObservationChat = null } }
+    fun show(chat: Long) { if (mutable.value.chat == chat && documentChat == chat) { page?.resume(); mutable.value = mutable.value.copy(visible = true, waitingUser = true) } }
     fun navigated(url: String) { if (mutable.value.chat != null) mutable.value = mutable.value.copy(url = url) }
     fun hide() { mutable.value = mutable.value.copy(visible = false); if (!lock.isLocked) page?.stop() }
     fun completeHandoff(chat: Long): Boolean {
@@ -47,7 +49,7 @@ internal object BrowserRuntime {
     suspend fun command(chat: Long, operation: String, argument: String = "", details: JSONObject = JSONObject()): String = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
             val browser = page ?: error("Браузер ещё не готов. Открой экран чата и повтори запрос.")
-            if (operation != "open" && operation != "search") require(mutable.value.chat == chat) { "Сначала открой страницу для текущего чата" }
+            if (operation != "open" && operation != "search") require(mutable.value.chat == chat && documentChat == chat) { "Сначала открой страницу для текущего чата" }
             if (mutable.value.waitingUser) {
                 require(mutable.value.chat == chat) { "Браузером управляет пользователь другого чата" }
                 return@withContext awaitingUser().toString()
@@ -58,6 +60,7 @@ internal object BrowserRuntime {
             val url = when (operation) { "search" -> BrowserAddress.search(argument); "open" -> argument; else -> null }
             if (url != null) BrowserAddress.parse(url)
             if (lastObservationChat != chat || operation == "open" || operation == "search") { observations.clear(); lastObservationChat = chat }
+            if (url != null) { documentChat = null; browser.activate(chat) }
             mutable.value = BrowserUi(chat, url ?: mutable.value.url, "Загрузка…", mutable.value.visible && mutable.value.chat == chat)
             try {
                 val result = withTimeout(25000) {
@@ -70,6 +73,7 @@ internal object BrowserRuntime {
                         else -> error("Неизвестная команда браузера")
                     }
                 }
+                if (url != null) documentChat = chat
                 if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
                     show(chat)
                     return@withContext awaitingUser().toString()
@@ -85,7 +89,7 @@ internal object BrowserRuntime {
     suspend fun screenshot(chat: Long): ByteArray = captureFrame(chat).bytes
     suspend fun captureFrame(chat: Long): BrowserFrame = lock.withLock {
         withContext(Dispatchers.Main.immediate) {
-            require(mutable.value.chat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
+            require(mutable.value.chat == chat && documentChat == chat && !mutable.value.waitingUser) { "Снимок недоступен: браузер другого чата или управление у пользователя" }
             val browser = page ?: error("Браузер не готов")
             val state = browser.read()
             mutable.value = mutable.value.copy(pageId = state.optString("page_id"))

@@ -11,6 +11,20 @@ import kotlin.coroutines.resume
 /** Android adapter kept separate from routing, tool schemas and Compose. Based on Umnik's WebView host. */
 @SuppressLint("SetJavaScriptEnabled")
 internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
+    private val sessions = mutableMapOf<Long, android.os.Bundle>()
+    private var sessionChat: Long? = null
+    private var requestedChat: Long? = null
+    private var clearHistoryAfterOpen = false
+    override fun activate(chat: Long) {
+        requestedChat = chat
+        if (sessionChat == chat) return
+        stop()
+        sessionChat?.let { owner -> sessions[owner] = android.os.Bundle().also { view.saveState(it) } }
+        sessionChat = null
+        val saved = sessions[chat]
+        clearHistoryAfterOpen = saved == null || view.restoreState(saved) == null
+        if (!clearHistoryAfterOpen) sessionChat = chat
+    }
     private var pending: CompletableDeferred<Unit>? = null
     private var navigationUrl: String? = null
     init {
@@ -71,7 +85,12 @@ internal class AndroidBrowserPage(private val view: WebView) : BrowserPage {
         stop()
         val navigation = CompletableDeferred<Unit>(); pending = navigation; navigationUrl = url
         resume()
-        try { view.loadUrl(url); navigation.await(); delay(300); return read() }
+        try {
+            view.loadUrl(url); navigation.await(); delay(300)
+            if (clearHistoryAfterOpen) { view.clearHistory(); clearHistoryAfterOpen = false }
+            sessionChat = requestedChat
+            return read()
+        }
         finally { if (pending === navigation) pending = null }
     }
     override suspend fun read(): JSONObject = snapshot(false)

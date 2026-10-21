@@ -37,8 +37,10 @@ internal object BrowserTools {
                 prepare()
                 guard.actionStarted("browser_$name")
                 val argument = when (name) { "open" -> args.getString("url"); "search" -> args.getString("query"); "scroll" -> args.getString("direction"); else -> "" }
-                if (name == "screenshot") BrowserVision.capture(requireNotNull(context), chat, run)
+                val output = if (name == "screenshot") BrowserVision.capture(requireNotNull(context), chat, run)
                 else BrowserRuntime.command(chat, name, argument, args)
+                guard.actionResult("browser_$name", output)
+                output
             }, beforeExecute = { prepare() })
         }
         fun reference() = JSONObject().put("page_id", field("string")).put("ref", field("integer"))

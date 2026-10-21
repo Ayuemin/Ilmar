@@ -51,6 +51,11 @@ internal class BrowserRunControl(
         active(); actions++
         event("BROWSER_ACTION", summary().put("tool", name))
     }
+    fun actionResult(name: String, output: String) {
+        event("BROWSER_RESULT", summary().put("tool", name).put("result_chars", output.length)
+            .put("result_utf8_bytes", output.toByteArray(Charsets.UTF_8).size)
+            .put("result_tokens_estimate", com.ayuemin.ilmar.memory.ContextEstimate.text(output)))
+    }
     suspend fun beforeModel(input: Int, output: Int, caps: ModelCapabilities, images: Boolean) {
         active()
         checkCount("раундов", rounds, roundLimit, allowedRounds) { allowedRounds += roundLimit }

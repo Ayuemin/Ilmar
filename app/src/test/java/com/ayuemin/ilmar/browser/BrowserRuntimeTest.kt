@@ -59,6 +59,24 @@ class BrowserRuntimeTest {
             assertTrue(runCatching { BrowserRuntime.command(10, "read") }.isFailure)
         } finally { BrowserRuntime.detach(page) }
     }
+    @Test fun failedOpenInAnotherChatCannotExposePreviousDocumentOrCaptureIt() = runTest(dispatcher) {
+        var fail = false
+        val page = object : BrowserPage {
+            override suspend fun open(url: String): JSONObject { if (fail) error("DNS failed"); return read() }
+            override suspend fun read() = JSONObject().put("url", "https://example.com/").put("text", "private first chat").put("page_id", "old")
+            override suspend fun scroll(down: Boolean) = read()
+            override fun stop() = Unit
+        }
+        BrowserRuntime.attach(page)
+        try {
+            BrowserRuntime.command(50, "open", "https://example.com/")
+            fail = true
+            assertTrue(runCatching { BrowserRuntime.command(51, "open", "https://example.org/") }.isFailure)
+            assertTrue(runCatching { BrowserRuntime.command(51, "read") }.isFailure)
+            assertTrue(runCatching { BrowserRuntime.captureFrame(51) }.isFailure)
+            BrowserRuntime.show(51); assertFalse(BrowserRuntime.state.value.visible)
+        } finally { BrowserRuntime.detach(page) }
+    }
     @Test fun independentSearchGrantCanBeRevokedBeforeToolExecution() = runTest(dispatcher) {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val modes = com.ayuemin.ilmar.chat.ChatModePreferences(app)
