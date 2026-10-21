@@ -33,9 +33,10 @@ internal object BrowserSnapshot {
         sensitive:el.matches('input[type=password],input[autocomplete="one-time-code"],input[autocomplete*="password"],input[autocomplete^="cc-"]'),
         options:el.tagName==='SELECT'?Array.from(el.options).slice(0,30).map(o=>({value:o.value,label:o.label})):undefined
       }));
-      const login=Array.from(document.querySelectorAll('input[type="password"],input[autocomplete="one-time-code"]')).some(el=>el.getClientRects().length && inView(el.getBoundingClientRect()));
-      const captcha=Array.from(document.querySelectorAll('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"]')).some(el=>{const r=el.getBoundingClientRect();return r.width>=150 && r.height>=60 && inView(r);}) || /unusual traffic|verify you are human|подтвердите, что вы человек/i.test(text);
-      return JSON.stringify({url:location.href,title:document.title,requires_user:login||captcha,page_id:state.id,controls:controls,text:text.slice(0,4000),text_truncated:text.length>=4000,full_read_available:true,scroll_y:scrollY,has_more:scrollY+innerHeight<document.documentElement.scrollHeight,
+      const login=Array.from(document.querySelectorAll('input[type="password"],input[autocomplete="one-time-code"],input[autocomplete="current-password"]')).some(el=>el.getClientRects().length && inView(el.getBoundingClientRect()));
+      const loginPage=/(?:\\/|[?&])(?:login|signin|sign-in|auth|authorization|вход)(?:\\/|[?&=#]|$)/i.test(location.pathname+location.search) && !!document.querySelector('form input');
+      const captcha=Array.from(document.querySelectorAll('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"]')).some(el=>{const r=el.getBoundingClientRect();return r.width>=150 && r.height>=60 && inView(r);}) || /unusual traffic|verify you are human|подтвердите, что вы человек|captcha|капча|проверка, что вы не робот/i.test(text);
+      return JSON.stringify({url:location.href,title:document.title,requires_user:login||loginPage||captcha,page_id:state.id,controls:controls,text:text.slice(0,4000),text_truncated:text.length>=4000,full_read_available:true,scroll_y:scrollY,has_more:scrollY+innerHeight<document.documentElement.scrollHeight,
         links:links.map(a=>({ref:ref(a),title:a.innerText.trim().slice(0,160),url:a.href}))});
     })()"""
     fun script(full: Boolean, policy: BrowserPolicy = BrowserPolicy()): String {
