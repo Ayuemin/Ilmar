@@ -30,7 +30,8 @@ internal object BrowserDownload {
             if (approved != key) {
                 val name = args.optString("name").takeIf { it.isNotBlank() }?.let(UserDownloadStore::safeName) ?: "Файл с сайта"
                 val folder = if (android.os.Build.VERSION.SDK_INT >= 29) "Загрузки/Ilmar" else "папку загрузок приложения (Android/data)"
-                if (!ask(chat, "Скачать файл для вас?", "$name\n${args.getString("url")}\nСохранить в $folder? Файл предназначен только вам: модель получит ID и место сохранения, без содержимого. ${if (limit == 0L) "Лимит размера не установлен." else "Лимит: ${limit / 1024 / 1024} МиБ."}"))
+                val archiveWarning = if (name.endsWith(".rar", true) || args.getString("url").substringBefore("?").endsWith(".rar", true)) "\nВНИМАНИЕ: это RAR, не APK и не ZIP. Ilmar не умеет преобразовывать RAR в ZIP. Для установки потребуется отдельная распаковка. Предпочти прямой APK или ZIP, если он доступен." else ""
+                if (!ask(chat, "Скачать файл для вас?", "$name\n${args.getString("url")}$archiveWarning\nСохранить в $folder? Файл предназначен только вам: модель получит ID и место сохранения, без содержимого. ${if (limit == 0L) "Лимит размера не установлен." else "Лимит: ${limit / 1024 / 1024} МиБ."}"))
                     throw AgentFailure("DOWNLOAD_CANCELLED", "Пользователь отменил скачивание. Файл не скачан; скрытого повтора нет.")
                 if (!authorized()) throw AgentFailure("PERMISSION_REVOKED", "Режим изменён во время подтверждения загрузки")
                 approved = key
@@ -38,7 +39,7 @@ internal object BrowserDownload {
         }
         val fields = JSONObject().put("url", JSONObject().put("type", "string")).put("name", JSONObject().put("type", "string"))
         return BoundTool(ToolSchema("browser_download",
-            "Скачать файл ТОЛЬКО по просьбе пользователя в папку Загрузки. Каждый файл требует кнопки Скачать в интерфейсе. Не использовать для чтения моделью: вернёт только ID, статус и место сохранения; содержимое недоступно read_file/vision. url — публичный HTTPS, name — необязательное имя. По умолчанию без лимита МиБ; потоковая запись на диск. Не предлагай самостоятельных загрузок.",
+            "Скачать файл ТОЛЬКО по просьбе пользователя в папку Загрузки. Каждый файл требует кнопки Скачать в интерфейсе. Не использовать для чтения моделью: вернёт только ID, статус и место сохранения; содержимое недоступно read_file/vision. url — публичный HTTPS, name — необязательное имя. По умолчанию без лимита МиБ; потоковая запись на диск. При запросе APK предпочитай прямую ссылку .apk, затем .zip. Не подменяй .rar расширением .zip: это не конвертация. Если доступен только .rar, честно предупреди пользователя до загрузки, что потребуется распаковка. После status=saved_for_user не повторяй скачивание и не открывай ссылку повторно: сообщи путь и фактический формат. Не предлагай самостоятельных загрузок.",
             JSONObject().put("type", "object").put("properties", fields).put("required", JSONArray(listOf("url"))).put("additionalProperties", false)),
             beforeExecute = { args -> if (runCatching { validate(args) }.isSuccess) permission(args) }) { args ->
             permission(args); approved = null

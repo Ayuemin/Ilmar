@@ -95,13 +95,26 @@ internal object BrowserRuntime {
                     }
                 }
                 if (url != null && (result.has("text") || result.optBoolean("download_available") && previousOwner == chat)) documentChat = chat
-                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user")) {
+                if (result.optBoolean("_awaiting_user") || result.optBoolean("requires_user") || BrowserUserGate.requiresUser(result)) {
                     show(chat)
                     return@withContext awaitingUser().toString()
                 }
                 mutable.value = mutable.value.copy(pageId = result.optString("page_id", mutable.value.pageId), url = result.optString("url", mutable.value.url), status = result.optString("title").ifBlank { "Страница прочитана" })
                 observations.encode(result, force = operation in setOf("open", "search", "read"), full = operation == "read" && details.optBoolean("full")).toString()
             } catch (e: Exception) {
+                // HTTP 403 is an access denial, not proof of CAPTCHA or a login form.
+                // Preserve the WebView and hand it to the user instead of making the
+                // agent retry the blocked URL or spending more model rounds.
+                if (url != null && e is IllegalStateException &&
+                    e.message?.startsWith("Страница: HTTP 403.") == true) {
+                    documentChat = chat
+                    show(chat)
+                    mutable.value = mutable.value.copy(status = "HTTP 403 — открой страницу вручную")
+                    return@withContext awaitingUser().put(
+                        "message",
+                        "Сайт вернул HTTP 403. Автоматические попытки остановлены. Открой страницу вручную в браузере; когда закончишь, нажми «Готово, вернуть модели»."
+                    ).put("http_status", 403).toString()
+                }
                 browser.stop(); mutable.value = mutable.value.copy(status = if (e is CancellationException) "Остановлено" else "Ошибка страницы")
                 throw e
             }
@@ -132,7 +145,7 @@ internal object BrowserRuntime {
             val browser = page ?: error("Браузер не готов")
             val state = browser.read()
             mutable.value = mutable.value.copy(pageId = state.optString("page_id"))
-            require(!state.optBoolean("requires_user")) { "Нельзя снимать страницу ввода пароля или CAPTCHA; передай её пользователю" }
+            if (state.optBoolean("requires_user") || BrowserUserGate.requiresUser(state)) { show(chat); error("USER_REQUIRED: авторизация или CAPTCHA — управление передано пользователю") }
             val bytes = withTimeout(5000) { browser.screenshot() }
             require(!mutable.value.waitingUser && mutable.value.chat == chat) { "Снимок отменён: управление передано пользователю" }
             require(browser.read().optString("page_id") == state.optString("page_id")) { "Страница изменилась во время снимка" }
