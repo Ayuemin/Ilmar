@@ -5,6 +5,7 @@ import com.ayuemin.ilmar.documents.*
 import com.ayuemin.ilmar.diagnostics.TaskMetrics
 import com.ayuemin.ilmar.model.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -61,7 +62,7 @@ class RetrievalTaskRegressionTest {
             assertTrue(restored.getJSONArray("fragments").length() > 0)
         }
     }
-    @Test fun scriptedFetchSearchReadOtherSectionAnswerAndCleanup() = runTest {
+    @Test fun scriptedFetchSearchReadOtherSectionAnswerAndCleanup() = runBlocking<Unit> {
         val html = "<h1>Guide</h1>" + "<p>Background.</p>".repeat(400) +
             "<h2>Quota</h2><p>Quota is 25. Not available unless approved.</p><h2>Cancellation</h2><p>Cancellation takes 30 days.</p>"
         val s = DocumentSession(1, "script", DocumentExperiment(DocumentMode.LOCAL), "absent", { true })
@@ -71,15 +72,19 @@ class RetrievalTaskRegressionTest {
             s.fetch("https://example.com/doc", web(html)).also { id = JSONObject(it).getString("document_id") }
         }
         s.use {
-            val result = AgentLoopRunner(onCheckpoint = metrics::checkpoint).run(listOf(fetch) + DocumentTools.forSession(s)) { _, _ ->
+            val result = AgentLoopRunner(onCheckpoint = metrics::checkpoint).run(listOf(fetch) + DocumentTools.forSession(s)) { history, _ ->
                 val call = when (round++) {
                     0 -> ModelToolCall("0", "fetch_url", "{}")
                     1 -> ModelToolCall("1", "document_search", "{\"query\":\"Quota\"}")
-                    2 -> ModelToolCall("2", "document_read", JSONObject().put("document_id", id).put("section_id", "s2").toString())
-                    3 -> ModelToolCall("3", "document_read", JSONObject().put("document_id", id).put("section_id", "s1").put("repeat", true).toString())
+                    2 -> ModelToolCall("2", "document_read", JSONObject().put("document_id", id).put("section_id", "s3").toString())
+                    3 -> ModelToolCall("3", "document_read", JSONObject().put("document_id", id).put("section_id", "s2").put("repeat", true).toString())
                     else -> null
                 }
-                if (call == null) GenerationResult("Quota 25 only after approval; cancellation 30 days.")
+                if (call == null) {
+                    val evidence = history.joinToString { it.optString("content") }
+                    listOf("Quota is 25", "Not available unless approved", "Cancellation takes 30 days").forEach { assertTrue(it, evidence.contains(it)) }
+                    GenerationResult("Quota 25 only after approval; cancellation 30 days.")
+                }
                 else GenerationResult("", toolCalls = listOf(call))
             }
             assertTrue(result.text.contains("approval")); assertEquals(5, round)
@@ -106,7 +111,7 @@ class RetrievalTaskRegressionTest {
             assertEquals(3, round)
         }
     }
-    @Test fun pinnedSqlitePageLegacyAndLocalUseTheSameScriptAndSource() = runTest {
+    @Test fun pinnedSqlitePageLegacyAndLocalUseTheSameScriptAndSource() = runBlocking<Unit> {
         val html = javaClass.classLoader!!.getResource("documents/sqlite-fts5.html")!!.readText()
         val report = org.json.JSONArray()
         val gold = listOf("hard-coded at 1.2 and 0.75", "multiplies the result", "exactly three arguments following", "within the same database")
@@ -120,6 +125,7 @@ class RetrievalTaskRegressionTest {
                 else s.fetch("https://www.sqlite.org/fts5.html", web(html))).also { raw ->
                     val result = JSONObject(raw)
                     id = result.optString("document_id")
+                    if (mode == DocumentMode.LOCAL) assertTrue("Fetch must return a current document ID", id.isNotBlank())
                     accumulated += if (mode == DocumentMode.LOCAL) texts(result) else raw
                     initialGold = gold.count { accumulated.contains(it) }
                 }
@@ -162,7 +168,7 @@ class RetrievalTaskRegressionTest {
         val evidence = JSONObject().put("method", "Pinned SQLite HTML, same four questions and scripted responder. No real model, network or provider billing. Legacy terminates when unavailable local tools cannot supply more evidence. Local script Fetch/Search/three section Reads/Answer uses four model callbacks; this is not a prediction of phone rounds or answer accuracy.")
             .put("source_sha256", java.security.MessageDigest.getInstance("SHA-256").digest(html.toByteArray()).joinToString("") { "%02x".format(it) })
             .put("cases", report)
-        java.io.File("build/reports/retrieval-task-benchmark.json").apply { parentFile.mkdirs(); writeText(evidence.toString(2)) }
+        java.io.File("build/reports/retrieval-task-benchmark.json").apply { parentFile?.mkdirs(); writeText(evidence.toString(2)) }
     }
     @Test fun providerCostsAndEstimatesRemainDistinctIncludingFailures() {
         val m = TaskMetrics { 123L }
