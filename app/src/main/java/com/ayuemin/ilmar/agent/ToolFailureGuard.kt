@@ -31,7 +31,7 @@ internal class ToolFailureGuard {
         val signature = key(name, args)
         if (!data.has("error")) { failures.remove(signature); return }
         val code = data.optString("error")
-        val transient = code in setOf("TOOL_TIMEOUT", "TOOL_IO_ERROR") || data.optBoolean("retryable", false)
+        val transient = data.optBoolean("retryable", code in setOf("TOOL_TIMEOUT", "TOOL_IO_ERROR"))
         failures[signature] = Failure(code, transient, (failures[signature]?.attempts ?: 0) + 1)
     }
 }

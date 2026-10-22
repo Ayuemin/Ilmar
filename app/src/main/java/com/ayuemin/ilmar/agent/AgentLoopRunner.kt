@@ -89,7 +89,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("retryable", false).put("message", e.message).toString() }
                     catch (e: IllegalStateException) {
                         // Run/permission failures remain terminal; missing document navigation is recoverable.
-                        if (e is AgentFailure || !call.name.startsWith("document_")) throw e
+                        if (e is AgentFailure || !call.name.startsWith("document_") ||
+                            listOf("DOCUMENT_UNAVAILABLE", "DOCUMENT_SECTION_UNAVAILABLE").none { e.message.orEmpty().startsWith(it) }) throw e
                         JSONObject().put("error", "DOCUMENT_UNAVAILABLE").put("retryable", false)
                             .put("message", "Document or section unavailable in this run. Use an ID from the current Fetch/outline; expired documents require Fetch again.").toString()
                     }
