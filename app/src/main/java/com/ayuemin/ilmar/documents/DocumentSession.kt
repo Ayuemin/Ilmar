@@ -139,6 +139,22 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
         localIndexSearches++
         return state.index.search(query, 10, config.options)
     }
+    /** A short section introduction complements lexical hits for multi-question requests. */
+    private fun sectionSeed(state: State, query: String, allowance: Int): DocumentHit? {
+        if (!config.options.structure) return null
+        val doc = state.entry.structure
+        val terms = LexicalTerms.terms(query).filter { it.exact !in LexicalTerms.stop }
+        val section = doc.sections.drop(1).mapNotNull { section ->
+            val heading = LexicalTerms.terms(section.title).filter { it.exact !in LexicalTerms.stop && !it.exact.first().isDigit() }
+            val path = LexicalTerms.terms(section.path.joinToString(" "))
+            if (terms.filter { it.exactOnly }.any { q -> path.none { it.exact == q.exact } }) return@mapNotNull null
+            val matches = heading.count { h -> terms.any { q -> h.exact == q.exact || config.options.morphology && h.stem == q.stem } }
+            if (matches == 0 || section.first >= section.until) null else section to matches.toDouble() * matches / heading.size.coerceAtLeast(1)
+        }.maxByOrNull { it.second }?.first ?: return null
+        var until = section.first
+        while (until < section.until && doc.blocks[until].end - doc.blocks[section.first].start <= allowance) until++
+        return if (until > section.first) DocumentHit(section.first, until, 0.0) else null
+    }
     /** One fair pass per question, then bounded local expansion if lexical coverage is weak. */
     private fun initialSearch(state: State, result: JSONObject) {
         val queries = DocumentQueries.split(query, state.entry.structure.title)
@@ -151,10 +167,11 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
             val anchor = DocumentQueries.anchors(q)
             val extra = if (DocumentQueries.coverage(q, selected) < 0.5 && anchor.isNotBlank() && anchor != q)
                 indexSearch(state, anchor).hits else emptyList()
-            (hits.take(2) + extra + hits.drop(2)).distinctBy { it.first to it.until }
+            val seed = if (queries.size > 1) sectionSeed(state, q, charBudget / queries.size) else null
+            (listOfNotNull(seed) + hits.take(2) + extra + hits.drop(2)).distinctBy { it.first to it.until }
         }
-        // At most eight questions/160 windows, independent of agent/model rounds.
-        for (rank in 0 until 20) for (hits in candidates) {
+        // At most eight questions/168 windows, independent of agent/model rounds.
+        for (rank in 0 until 21) for (hits in candidates) {
             val hit = hits.getOrNull(rank) ?: continue
             if (result.getJSONArray("fragments").length() >= config.fragments) break
             append(result, state, hit.first, hit.until, hit.score, maxFragments = config.fragments,
