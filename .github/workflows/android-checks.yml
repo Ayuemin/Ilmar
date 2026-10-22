@@ -131,6 +131,7 @@ jobs:
             app/build/reports/fetch-baseline.json
             app/build/reports/retrieval-benchmark.json
             app/build/reports/retrieval-tokens.json
+            app/build/reports/retrieval-task-benchmark.json
             app/build/reports/retrieval-backend.txt
             app/gradle.lockfile
             gradle/verification-metadata.xml
