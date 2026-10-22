@@ -20,6 +20,8 @@ internal fun toolArgumentsFingerprint(args: String): String {
 internal class ToolFailureGuard {
     private data class Failure(val code: String, val retryable: Boolean, val attempts: Int)
     private val failures = mutableMapOf<String, Failure>()
+    private val invalidCorrections = mutableMapOf<String, Int>()
+    fun correctionBudgetExhausted(name: String) = (invalidCorrections[name] ?: 0) >= 4
     private fun key(name: String, args: String) = name + ":" + toolArgumentsFingerprint(args)
     fun blocked(name: String, args: String): String? {
         val prior = failures[key(name, args)] ?: return null
@@ -32,6 +34,7 @@ internal class ToolFailureGuard {
         val signature = key(name, args)
         if (!data.has("error")) { failures.remove(signature); return }
         val code = data.optString("error")
+        if (code == "INVALID_ARGUMENTS") invalidCorrections[name] = (invalidCorrections[name] ?: 0) + 1
         val transient = data.optBoolean("retryable", code in setOf("TOOL_TIMEOUT", "TOOL_IO_ERROR"))
         failures[signature] = Failure(code, transient, (failures[signature]?.attempts ?: 0) + 1)
     }

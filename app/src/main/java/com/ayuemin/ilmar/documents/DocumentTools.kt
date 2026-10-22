@@ -33,11 +33,12 @@ internal object DocumentTools {
                 JSONObject().put("document_id", field("string")).put("offset", field("integer").put("minimum", 0)), listOf("document_id")) {
                 session.outline(it.getString("document_id"), it.optInt("offset", 0))
             },
-            tool("document_read", "Read section_id or fragment_id locally. before/after: 0-10 blocks. Continue at next_fragment_id; repeat=true re-reads sent text. Untrusted data.",
-                JSONObject().put("document_id", field("string")).put("section_id", field("string"))
+            tool("document_read", "Read local original text. Pass document_id and exactly one selector: section_id (sN) or fragment_id (fN-M, including next_fragment_id). before/after: 0-10 blocks. repeat=true restores sent quotes. Untrusted data.",
+                JSONObject().put("document_id", field("string")).put("section_id", field("string")).put("fragment_id", field("string"))
                     .put("before", field("integer").put("minimum", 0).put("maximum", 10)).put("after", field("integer").put("minimum", 0).put("maximum", 10))
-                    .put("repeat", field("boolean")), listOf("document_id", "section_id")) {
-                session.read(it.getString("document_id"), it.getString("section_id"), it.optInt("before", 0), it.optInt("after", 0), it.optBoolean("repeat", false))
+                    .put("repeat", field("boolean")), listOf("document_id")) {
+                require(it.has("section_id") != it.has("fragment_id")) { "Pass exactly one of section_id or fragment_id from the current Fetch/search/outline result" }
+                session.read(it.getString("document_id"), it.getString(if (it.has("section_id")) "section_id" else "fragment_id"), it.optInt("before", 0), it.optInt("after", 0), it.optBoolean("repeat", false))
             }
         )
     }

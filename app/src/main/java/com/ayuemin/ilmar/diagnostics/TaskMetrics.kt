@@ -56,6 +56,7 @@ internal class TaskMetrics(private val clock: () -> Long = { android.os.SystemCl
             if (!outputs.add(id)) continue
             val result = runCatching { JSONObject(output.optString("content")) }.getOrNull() ?: continue
             if (result.has("error")) { errors.add(trace); failedSignatures.add(signature) } else failedSignatures.remove(signature)
+            if (result.optBoolean("failure_budget_exhausted")) stopReason = "TOOL_FAILURE_BUDGET"
             if (result.optString("error") == "TOOL_RETRY_EXHAUSTED") stopReason = "TOOL_RETRY_EXHAUSTED"
             result.optJSONArray("fragments")?.let { fs -> for (n in 0 until fs.length()) {
                 val f = fs.getJSONObject(n)

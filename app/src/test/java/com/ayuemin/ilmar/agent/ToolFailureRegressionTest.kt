@@ -44,6 +44,18 @@ class ToolFailureRegressionTest {
         assertNotNull(guard.blocked("read", "{\"b\":2,\"a\":1}"))
         assertNull(guard.blocked("read", "{\"section\":\"s3\"}"))
     }
+    @Test fun changingInvalidArgumentsCannotSpendDozensOfPaidRounds() = runTest {
+        var calls = 0; var rounds = 0
+        val tool = BoundTool(ToolSchema("document_read", "test", JSONObject())) {
+            calls++; throw IllegalArgumentException("Invalid selector $calls")
+        }
+        AgentLoopRunner().run(listOf(tool)) { _, schemas ->
+            rounds++
+            if (schemas.isEmpty()) GenerationResult("Cannot confirm missing evidence; invalid tool arguments.")
+            else GenerationResult("", toolCalls = listOf(ModelToolCall("$rounds", "document_read", "{\"section_id\":\"changed$rounds\"}")))
+        }
+        assertEquals(4, calls); assertEquals(5, rounds)
+    }
     @Test fun permissionRevocationIsTerminalAndExecutorNeverStarts() = runTest {
         var executions = 0; var rounds = 0
         val tool = BoundTool(ToolSchema("document_read", "test", JSONObject()), beforeExecute = {

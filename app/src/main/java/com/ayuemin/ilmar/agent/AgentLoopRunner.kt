@@ -64,8 +64,10 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
                 if (blockUnresolved("$traceId:${call.id}", call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
                 val replay = if (tool != null) replayConfirmed(call.name, call.arguments) else null
-                val blockedFailure = failureGuard.blocked(call.name, call.arguments)
-                val output = if (blockedFailure != null) { finalize = true; blockedFailure } else if (replay != null) {
+                val blockedFailure = if (failureGuard.correctionBudgetExhausted(call.name))
+                    JSONObject().put("error", "TOOL_RETRY_EXHAUSTED").put("failure_budget_exhausted", true).put("retryable", false).toString()
+                else failureGuard.blocked(call.name, call.arguments)
+                var output = if (blockedFailure != null) { finalize = true; blockedFailure } else if (replay != null) {
                     onProgress("${call.name}: используется подтверждённый результат без повторного действия")
                     val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
                     confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
@@ -97,6 +99,11 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     catch (e: java.io.IOException) { JSONObject().put("error", "TOOL_IO_ERROR").put("retryable", true).put("message", "Temporary IO failure; at most one identical retry is allowed.").toString() }
                 }
                 failureGuard.observe(call.name, call.arguments, output)
+                if (failureGuard.correctionBudgetExhausted(call.name)) {
+                    finalize = true
+                    output = JSONObject(output).put("failure_budget_exhausted", true).put("retryable", false)
+                        .put("limitation", "Four invalid argument attempts for this tool. Finish using available evidence and explain the limitation.").toString()
+                }
                 if (output.toByteArray(Charsets.UTF_8).size > Limits.bytes("result_kib")) throw AgentFailure("RESULT_LIMIT", "${call.name}: результат превышает глобальный лимит. Увеличь его или читай данные частями.")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output).apply { replay?.let { put("_reused_from", it.executionId) } }
                 // The result must survive a crash before the next tool starts.
