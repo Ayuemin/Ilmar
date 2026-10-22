@@ -43,16 +43,22 @@ internal class WebTools(private val client: OkHttpClient = OkHttpClient.Builder(
     .connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).callTimeout(15, TimeUnit.SECONDS)
     .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()) {
     suspend fun fetch(url: String): String {
+        return fetchDocument(url).legacyResult(Limits.get("excerpt_chars"))
+    }
+    /** Complete HTTP payload; presentation limits must never modify this source. */
+    suspend fun fetchDocument(url: String): FetchedDocument {
         val parsed = url.toHttpUrl()
         require(parsed.scheme == "https" && parsed.username.isEmpty() && parsed.password.isEmpty()) { "Разрешены только публичные HTTPS URL без паролей" }
         validatePublicUrl(parsed)
         val response = load(Request.Builder().url(parsed).header("User-Agent", "Ilmar/0.1 URL reader").build(), Limits.bytes("fetch_kib"))
         require(response.first.startsWith("text/") || response.first.contains("json") || response.first.contains("xml")) { "URL должен возвращать текст или HTML" }
+        if (response.first.contains("html")) require(response.second.count { it == '<' } <= 64000) {
+            "DOCUMENT_PARSE_LIMIT: слишком сложный HTML; документ не индексирован"
+        }
         val text = if (response.first.contains("html")) Jsoup.parse(response.second, url).apply {
             select("script,style,noscript,nav,footer,header,iframe,form,svg").remove()
         }.let { doc -> doc.selectFirst("article,main")?.text() ?: doc.body().text() } else response.second
-        return JSONObject().put("url", parsed.toString()).put("text", text.take(Limits.get("excerpt_chars")))
-            .put("truncated", text.length > Limits.get("excerpt_chars")).put("untrusted", true).toString()
+        return FetchedDocument(parsed.toString(), response.first, response.second, text)
     }
     suspend fun search(query: String, key: String): String = search(query, SearchTarget(SearchProfile.preset("Brave"), key, JSONObject(SearchProfile.headers("Brave"))))
     suspend fun search(query: String, target: SearchTarget): String {

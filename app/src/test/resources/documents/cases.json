@@ -1,0 +1,109 @@
+[
+  {
+    "id": "structured-auth",
+    "file": "structured.html",
+    "query": "authentication token lifetime",
+    "gold": [
+      "expire after 7 days",
+      "Except trial tokens"
+    ]
+  },
+  {
+    "id": "structured-limit",
+    "file": "structured.html",
+    "query": "quota requests",
+    "gold": [
+      "200 requests per minute",
+      "not supported"
+    ]
+  },
+  {
+    "id": "flat-ru",
+    "file": "flat.txt",
+    "query": "цена подписки",
+    "gold": [
+      "19 EUR",
+      "не применяется"
+    ]
+  },
+  {
+    "id": "late",
+    "file": "late.html",
+    "query": "storage limit",
+    "gold": [
+      "73 GB",
+      "Free accounts are excluded"
+    ]
+  },
+  {
+    "id": "table",
+    "file": "tariffs.html",
+    "query": "NovaPro v2.0 price",
+    "gold": [
+      "20 USD"
+    ]
+  },
+  {
+    "id": "morphology",
+    "file": "morphology.md",
+    "query": "ограничение запрос",
+    "gold": [
+      "не более 200 запросов",
+      "не действуют"
+    ]
+  },
+  {
+    "id": "typo",
+    "file": "typo.html",
+    "query": "authentcation token",
+    "gold": [
+      "7 days",
+      "cannot be renewed"
+    ]
+  },
+  {
+    "id": "negative",
+    "file": "negations.md",
+    "query": "refund conditions",
+    "gold": [
+      "No refund is available after 30 days",
+      "Except defective devices"
+    ]
+  },
+  {
+    "id": "version",
+    "file": "versions.html",
+    "query": "NovaLite v2.0 ERR_403 price",
+    "gold": [
+      "ERR_403",
+      "20 USD"
+    ]
+  },
+  {
+    "id": "duplicate",
+    "file": "duplicates.html",
+    "query": "subscription price",
+    "gold": [
+      "14 USD",
+      "No discount applies"
+    ]
+  },
+  {
+    "id": "malformed",
+    "file": "malformed.html",
+    "query": "стоимость подписки условия",
+    "gold": [
+      "250 рублей",
+      "не возвращается после 10 дней"
+    ]
+  },
+  {
+    "id": "refund-ru",
+    "file": "flat.txt",
+    "query": "возврат",
+    "gold": [
+      "только в течение 14 дней"
+    ]
+  }
+]
+

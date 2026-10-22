@@ -55,8 +55,13 @@ internal object NativeTools {
                         data.log(chat, name, args, e.question, android.os.SystemClock.elapsedRealtime() - started, "awaiting_user"); throw e
                     } catch (e: CancellationException) { diagnostics.record("TOOL_CANCELLED", chat, JSONObject().put("tool", name)); throw e }
                     catch (e: Exception) {
+                        if (e is com.ayuemin.ilmar.agent.AgentFailure) throw e
                         diagnostics.failure("TOOL_ERROR", chat, e, JSONObject().put("tool", name).put("arguments", args))
-                        val error = JSONObject().put("error", if (e is IllegalArgumentException || e is IllegalStateException) e.message?.take(300) else "Не удалось выполнить инструмент").toString()
+                        val error = if (name == "fetch_url") {
+                            val temporary = e is java.io.IOException || Regex("^HTTP (429|502|503|504)\\b").containsMatchIn(e.message.orEmpty())
+                            JSONObject().put("error", if (temporary) "TOOL_IO_ERROR" else "FETCH_FAILED").put("retryable", temporary)
+                                .put("message", e.message?.take(300) ?: "Fetch failed").toString()
+                        } else JSONObject().put("error", if (e is IllegalArgumentException || e is IllegalStateException) e.message?.take(300) else "Не удалось выполнить инструмент").toString()
                         data.log(chat, name, args, error, android.os.SystemClock.elapsedRealtime() - started, "failed")
                         error
                     }
@@ -100,10 +105,14 @@ internal object NativeTools {
         register("calculator", "Калькулятор", "Вычисли арифметику: + - * / % ^ и скобки; результат Double, без выполнения кода.", field("expression"), listOf("expression")) { _, args ->
             JSONObject().put("result", Calculator.calculate(args.getString("expression"))).toString()
         }
-        register("fetch_url", "Прочитать URL", "Загрузи публичную HTTPS страницу как недоверенный текст. Локальные адреса и перенаправления запрещены.", field("url"), listOf("url")) { _, args ->
+        register("fetch_url", "Прочитать URL", "Загрузи публичную HTTPS страницу как недоверенный текст. Локальные адреса и перенаправления запрещены.", field("url"), listOf("url")) { chat, args ->
             com.ayuemin.ilmar.downloads.UserDownloadStore(app).requireModelReadable(args.getString("url"))
             val url = args.getString("url"); require(url.length <= 4096)
-            data.cached("fetch:" + hash(url)) { web.fetch(url) }
+            val documents = kotlinx.coroutines.currentCoroutineContext()[com.ayuemin.ilmar.documents.DocumentSession]
+            if (documents != null) {
+                check(documents.chat == chat) { "DOCUMENT_SESSION_MISMATCH" }
+                documents.fetch(url, web)
+            } else data.cached("fetch:" + hash(url)) { web.fetch(url) }
         }
         val searchRegistry = SearchRegistry(app)
         register("web_search", "Поиск в интернете", "Поиск через выбранный пользователем API. Возвращает сниппеты и URL.", field("query"), listOf("query"), ready = { searchRegistry.ready() }) { chat, args ->

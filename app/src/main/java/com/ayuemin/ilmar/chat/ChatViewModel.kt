@@ -286,8 +286,10 @@ class ChatViewModel @JvmOverloads constructor(
         check(runtime.edit().putLong("active_chat", chatId).commit())
         mutable.update { it.copy(activeChatId = chatId, streamingText = "", activityLabel = "Подготавливает запрос…", activityEvents = listOf("Подготавливает запрос…"), errors = it.errors - chatId) }
         var cleanupSession: com.ayuemin.ilmar.agent.TaskSession? = null
+        var cleanupDocuments: com.ayuemin.ilmar.documents.DocumentSession? = null
         var completedNormally = false
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val taskMetrics = com.ayuemin.ilmar.diagnostics.TaskMetrics()
             try {
                 val taskSession = memory.tasks.begin(chatId, history)
                 cleanupSession = taskSession
@@ -298,30 +300,54 @@ class ChatViewModel @JvmOverloads constructor(
                 val roundUsage = mutableListOf<UsageRecord>()
                 var modelRound = 0
                 val capabilities = registry.capabilities(target.model.id)
+                val documentExperiment = com.ayuemin.ilmar.documents.DocumentExperimentPreferences(getApplication()).load()
+                diagnostics.record("DOCUMENT_CONFIG", chatId, taskSession.json()
+                    .put("legacy", documentExperiment.mode == com.ayuemin.ilmar.documents.DocumentMode.LEGACY)
+                    .put("compare", documentExperiment.mode == com.ayuemin.ilmar.documents.DocumentMode.COMPARE)
+                    .put("initial_fragments", documentExperiment.fragments).put("structure", documentExperiment.options.structure)
+                    .put("heat", documentExperiment.options.heat).put("morphology", documentExperiment.options.morphology)
+                    .put("feedback", documentExperiment.options.feedback).put("context_expansion", documentExperiment.options.context)
+                    .put("browser_disabled", documentExperiment.browser == com.ayuemin.ilmar.documents.ExperimentalBrowser.DISABLED)
+                    .put("browser_limited", documentExperiment.browser == com.ayuemin.ilmar.documents.ExperimentalBrowser.LIMITED))
+                val experimentalBrowserAllowed = documentExperiment.browser != com.ayuemin.ilmar.documents.ExperimentalBrowser.DISABLED
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
                 val searchProtocol = com.ayuemin.ilmar.browser.ProviderSearch.resolve(
                     com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).selected(target.connection.id), target.connection.endpoint, capabilities)
                 val searchEngine = com.ayuemin.ilmar.browser.ProviderSearchPreferences(getApplication()).engine(target.connection.id)
-                val browserForAgent = !compactOnly && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
-                val searchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
+                val browserForAgent = !compactOnly && experimentalBrowserAllowed && permissions.granted("Браузер") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_Браузер") && capabilities.tools
+                val configuredSearchRoute = if (compactOnly) com.ayuemin.ilmar.browser.SearchRoute.OFF else com.ayuemin.ilmar.browser.SearchRouting.resolve(
                     modes.enabled(chatId, "Поиск"), com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")), searchProtocol != null, capabilities.tools)
+                val searchRoute = com.ayuemin.ilmar.documents.ExperimentalBrowserGate.route(configuredSearchRoute, documentExperiment.browser)
+                if (searchRoute != configuredSearchRoute) mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to "Автоматический браузер ограничен экспериментом; разрешённые Fetch и API поиска доступны")) }
                 if (searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER && !permissions.granted("Браузер"))
                     throw com.ayuemin.ilmar.agent.AgentFailure("PERMISSION_REVOKED", "Разреши локальный браузер в настройках инструментов")
                 val agentTools = if (modes.enabled(chatId, "Агент") && capabilities.tools)
                     ToolRegistry.authorized(chatId, modes, permissions) else emptyList()
-                val browserFallback = !compactOnly && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
+                val documents = if (!compactOnly && documentExperiment.mode != com.ayuemin.ilmar.documents.DocumentMode.LEGACY && agentTools.any { it.schema.name == "fetch_url" })
+                    com.ayuemin.ilmar.documents.DocumentSession(chatId, taskSession.runId, documentExperiment,
+                        history.lastOrNull { it.fromUser }?.text.orEmpty(),
+                        allowed = { permissions.granted("fetch_url") && modes.enabled(chatId, "Агент") && modes.enabled(chatId, "tool_fetch_url") },
+                        comparison = { data -> diagnostics.record("DOCUMENT_COMPARE", chatId, data.put("run_id", taskSession.runId)) }) else null
+                cleanupDocuments = documents
+                val browserFallback = !compactOnly && experimentalBrowserAllowed && permissions.granted("Браузер") && searchRoute == com.ayuemin.ilmar.browser.SearchRoute.PROVIDER && capabilities.tools &&
                     com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO
                 var primarySearchReady = searchRoute != com.ayuemin.ilmar.browser.SearchRoute.PROVIDER
                 val browserControl = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserRunControl(chatId, !browserForAgent && com.ayuemin.ilmar.browser.SearchRouting.source(modes.choice(chatId, "search_source")) == com.ayuemin.ilmar.browser.SearchSource.AUTO,
                         event = { code, data -> diagnostics.record(code, chatId, data.put("task_id", taskSession.taskId).put("run_id", taskSession.runId)) },
                         notice = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) }; diagnostics.record("BROWSER_BUDGET_WARNING", chatId, org.json.JSONObject().put("message", label)) }) else null
-                val tools = agentTools + if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
+                val rawBrowserTools = if (browserForAgent || browserFallback || searchRoute == com.ayuemin.ilmar.browser.SearchRoute.BROWSER)
                     com.ayuemin.ilmar.browser.BrowserTools.forChat(chatId, modes, searchProtocol != null, capabilities.tools, "image" in capabilities.inputModalities, getApplication(), taskSession.runId, browserControl,
                         fallbackAllowed = browserFallback, primaryReady = { primarySearchReady }, approveAction = browserApproval) else emptyList()
-                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol, browserControl != null)
+                val browserTools = com.ayuemin.ilmar.documents.ExperimentalBrowserGate.tools(rawBrowserTools, documentExperiment.browser) { url, reason ->
+                    browserApproval(chatId, "Разрешить эскалацию браузера?", "$url\nПричина: $reason\nОткройте только при необходимости JavaScript, входа или взаимодействия. Ошибка Fetch сама по себе не требует браузера.")
+                }
+                val tools = agentTools + (documents?.let { com.ayuemin.ilmar.documents.DocumentTools.forSession(it) }.orEmpty()) + browserTools
+                val providerSearchBudget = com.ayuemin.ilmar.browser.ProviderSearchBudget(searchRoute, searchProtocol,
+                    browserControl != null || documentExperiment.browser != com.ayuemin.ilmar.documents.ExperimentalBrowser.EXISTING)
                 diagnostics.record("SEARCH_ROUTE", chatId, taskSession.json().put("route", searchRoute.name)
+                    .put("configured_search_route", configuredSearchRoute.name)
                     .put("protocol", searchProtocol?.name ?: org.json.JSONObject.NULL))
                 val compactId = contextPreferences.compactModelId
                 val compactModel = registry.snapshot().models.find { it.id == compactId }
@@ -330,7 +356,7 @@ class ChatViewModel @JvmOverloads constructor(
                 val compactTarget = if (compactModel != null && compactConnection != null)
                     com.ayuemin.ilmar.model.ModelTarget(compactConnection, compactModel, "") else target
                 val compactCaps = registry.capabilities(compactTarget.model.id)
-                val result = kotlinx.coroutines.withContext(contextDispatcher) {
+                val result = kotlinx.coroutines.withContext(contextDispatcher + (documents ?: kotlin.coroutines.EmptyCoroutineContext)) {
                     com.ayuemin.ilmar.memory.ContextExecution(chatId, memory, attachmentStore, contextPolicy, capabilities, target,
                         status = { label -> mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to label)) } },
                         compactTarget = compactTarget, compactCaps = compactCaps,
@@ -344,6 +370,7 @@ class ChatViewModel @JvmOverloads constructor(
                             if (code == "TOOL_ROUND" || code == "TOOL_ROUND_ERROR" || code == "TASK_CHECKPOINT") mutable.update { it.copy(chats = store.load(), taskRevision = it.taskRevision + (chatId to ((it.taskRevision[chatId] ?: 0) + 1))) }
                         },
                         semanticSearch = { query, through -> archive.search(chatId, query, through) }, session = taskSession,
+                        taskMetrics = taskMetrics,
                         onProjection = { projection -> mutable.update { it.copy(compactGauges = it.compactGauges + (chatId to CompactGauge(projection.estimatedInput, projection.output, projection.limit, projection.saved, contextPolicy.automatic, projection.compactOutcome, projectionKey))) } },
                         takeInterventions = {
                             val delivered = store.deliverInterventions(chatId, "NOW", taskSession.taskId)
@@ -361,6 +388,7 @@ class ChatViewModel @JvmOverloads constructor(
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
                             var providerStarted = false
+                            var providerCompleted = false
                             val roundId = "${taskSession.runId}:${++modelRound}"
                             val lifecycle = taskSession.json().put("request_id", requestId).put("round_id", roundId).put("purpose", purpose)
                             var terminalStatus = "not_sent"
@@ -402,6 +430,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     options.copy(webSearch = requestSearch, webSearchEngine = if (requestSearch == "OPENROUTER") searchEngine.wire else null)) { delta ->
                                     if (purpose == "answer" && delta.isNotEmpty()) activity(chatId, "Модель формирует ответ…")
                                 }
+                                providerCompleted = true
                                 knownUsage = completion.usage
                                 terminalStatus = "completed"
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
@@ -426,12 +455,14 @@ class ChatViewModel @JvmOverloads constructor(
                                 if (providerStarted) browserControl?.afterModel(usage, if (purpose == "compact") compactCaps else capabilities)
                                 recordCall(chatId, requestId, usage, if (providerStarted) "failed" else "not_sent", purpose); throw e
                             } finally {
+                                taskMetrics.model(knownUsage ?: if (providerStarted) TokenUsage() else notSent, if (providerCompleted) "completed" else terminalStatus, purpose, estimatedInput, options.toolHistory)
                                 diagnostics.record("MODEL_FINISH", chatId, lifecycle.put("status", terminalStatus).put("provider_started", providerStarted)
                                     .put("duration_ms", android.os.SystemClock.elapsedRealtime() - lifecycleStarted)
                                     .put("usage", com.ayuemin.ilmar.model.usageJson(knownUsage ?: if (providerStarted) TokenUsage() else notSent)))
                             }
                         }).run(history, compactOnly, reasoning, tools)
                 }
+                if (taskMetrics.stopReason == "FAILED") taskMetrics.stopReason = if (result == null) "COMPACT_COMPLETED" else "COMPLETED"
                 if (result == null) return@launch
                 val reply = result.text
                 if (mutable.value.activeChatId == chatId && mutable.value.chats.any { it.id == chatId }) {
@@ -445,11 +476,14 @@ class ChatViewModel @JvmOverloads constructor(
                     indexArchive(chatId)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                taskMetrics.stopReason = "TASK_TIMEOUT"
                 diagnostics.failure("TASK_TIMEOUT", chatId, e)
                 mutable.update { it.copy(errors = it.errors + (chatId to "Достигнут лимит времени задачи. Автоматический повтор не выполняется.")) }
             } catch (e: CancellationException) {
+                taskMetrics.stopReason = "CANCELLED"
                 throw e
             } catch (e: com.ayuemin.ilmar.tools.ClarificationRequired) {
+                taskMetrics.stopReason = "AWAITING_USER"
                 if (mutable.value.chats.any { it.id == chatId }) {
                     store.append(chatId, ChatMessage(e.question, false), null)
                     mutable.update { it.copy(contextStatus = it.contextStatus + (chatId to "Ожидается ответ пользователя")) }
@@ -462,11 +496,16 @@ class ChatViewModel @JvmOverloads constructor(
                     is ProviderFailure -> "PROVIDER_ERROR"
                     else -> "REQUEST_ERROR"
                 }
+                taskMetrics.stopReason = code
                 diagnostics.failure(code, chatId, e, cleanupSession?.json() ?: org.json.JSONObject())
                 mutable.update { it.copy(errors = it.errors + (chatId to ((e as? ProviderFailure)?.message ?: if (e is com.ayuemin.ilmar.memory.ContextFailure) e.message ?: "Не удалось подготовить контекст" else if (e is com.ayuemin.ilmar.attachments.AttachmentFailure) e.message ?: "Не удалось подготовить вложения" else if (e is com.ayuemin.ilmar.agent.AgentFailure) "Агент остановлен: ${e.message}"
                     else if (e is IllegalStateException || e is IllegalArgumentException) e.message ?: "Проверь параметры запроса; подробности в диагностике."
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
+                cleanupDocuments?.close()
+                diagnostics.record("TASK_SUMMARY", chatId, taskMetrics.json().put("local_index_searches", cleanupDocuments?.localIndexSearches ?: 0).apply {
+                    cleanupSession?.let { put("task_id", it.taskId).put("run_id", it.runId) }
+                })
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { com.ayuemin.ilmar.browser.BrowserRuntime.stop(chatId) }
                 cleanupSession?.let { com.ayuemin.ilmar.browser.BrowserVision.consume(it.runId) }
                 if (!closed) { cleanupSession?.let { memory.tasks.finish(it, "FAILED") }; memory.interrupt(chatId) }

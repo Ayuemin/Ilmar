@@ -82,7 +82,7 @@ class Diagnostics(context: Context) {
 internal object Redaction {
     // Diagnostic exports are metadata only, including records written by older builds.
     private val bodyFields = setOf("arguments", "args", "result", "results", "messages", "text", "content", "prompt", "goal", "steps", "stack", "message", "provider_error", "url", "headers", "query")
-    private val metadataStrings = setOf("event", "status", "purpose", "model", "provider", "host", "tool", "tools", "tool_name", "tool_calls", "exception", "finish_reason", "route", "protocol", "method", "scope", "unit", "zero_meaning", "label", "key", "output_parameter", "compact_model", "search_route", "configured_search_route", "search_protocol", "search_engine", "status_source", "window_zero_meaning", "output_zero_meaning", "task_token_zero_meaning", "usd_null_meaning", "reserved_cost")
+    private val metadataStrings = setOf("stop_reason", "error_code", "validation_code", "argument_fingerprint", "event", "status", "purpose", "model", "provider", "host", "tool", "tools", "tool_name", "tool_calls", "exception", "finish_reason", "route", "protocol", "method", "scope", "unit", "zero_meaning", "label", "key", "output_parameter", "compact_model", "search_route", "configured_search_route", "search_protocol", "search_engine", "status_source", "window_zero_meaning", "output_zero_meaning", "task_token_zero_meaning", "usd_null_meaning", "reserved_cost")
     fun metadata(value: JSONObject): JSONObject = JSONObject().apply {
         value.keys().forEach { key ->
             if (key !in bodyFields) when (val field = value.opt(key)) {
