@@ -17,6 +17,7 @@ internal object ToolErrorMetadata {
             val fingerprint = com.ayuemin.ilmar.agent.toolArgumentsFingerprint(function.optString("arguments"))
             val code = result.optString("error").takeIf { it in codes } ?: "TOOL_FAILURE"
             errors.put("failure_$i", JSONObject().put("tool", function.optString("name")).put("error_code", code)
+                .put("validation_code", com.ayuemin.ilmar.agent.ToolValidation.safe(result.optString("validation_code")))
                 .put("argument_fingerprint", fingerprint).put("retryable", result.optBoolean("retryable", code in setOf("TOOL_TIMEOUT", "TOOL_IO_ERROR"))))
         }
         return errors

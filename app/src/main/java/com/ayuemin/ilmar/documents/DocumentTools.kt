@@ -16,10 +16,10 @@ internal object DocumentTools {
             return BoundTool(ToolSchema(name, description, schema), beforeExecute = { session.authorize() }) { args ->
                 withContext(Dispatchers.IO) {
                     session.authorize()
-                    require(args.keys().asSequence().all { fields.has(it) } && required.all { args.has(it) && !args.isNull(it) })
+                    require(args.keys().asSequence().all { fields.has(it) } && required.all { args.has(it) && !args.isNull(it) }) { "DOCUMENT_ARGUMENT_FIELDS: use only schema properties and include required fields" }
                     fields.keys().forEach { key -> if (args.has(key)) require(when (fields.getJSONObject(key).getString("type")) {
                         "string" -> args.get(key) is String; "integer" -> args.get(key) is Int; "boolean" -> args.get(key) is Boolean; else -> false
-                    }) { "Некорректный тип $key" } }
+                    }) { "DOCUMENT_ARGUMENT_TYPE: incorrect type for $key" } }
                     action(args)
                 }
             }
@@ -37,7 +37,7 @@ internal object DocumentTools {
                 JSONObject().put("document_id", field("string")).put("section_id", field("string")).put("fragment_id", field("string"))
                     .put("before", field("integer").put("minimum", 0).put("maximum", 10)).put("after", field("integer").put("minimum", 0).put("maximum", 10))
                     .put("repeat", field("boolean")), listOf("document_id")) {
-                require(it.has("section_id") != it.has("fragment_id")) { "Pass exactly one of section_id or fragment_id from the current Fetch/search/outline result" }
+                require(it.has("section_id") != it.has("fragment_id")) { "DOCUMENT_SELECTOR: pass exactly one of section_id or fragment_id from the current Fetch/search/outline result" }
                 session.read(it.getString("document_id"), it.getString(if (it.has("section_id")) "section_id" else "fragment_id"), it.optInt("before", 0), it.optInt("after", 0), it.optBoolean("repeat", false))
             }
         )

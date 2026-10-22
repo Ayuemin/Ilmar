@@ -87,8 +87,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                         JSONObject().put("error", "TOOL_TIMEOUT").put("tool", call.name).put("message", "Истекло время вызова. Проверь аргументы или расширенные настройки.").toString()
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                     catch (e: com.ayuemin.ilmar.tools.ClarificationRequired) { throw e }
-                    catch (e: org.json.JSONException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", "Исправь JSON-аргументы ${call.name}: ${e.message}").toString() }
-                    catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("retryable", false).put("message", e.message).toString() }
+                    catch (e: org.json.JSONException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("validation_code", "JSON_FORMAT").put("message", "Исправь JSON-аргументы ${call.name}: ${e.message}").toString() }
+                    catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("validation_code", ToolValidation.from(e.message)).put("retryable", false).put("message", e.message).toString() }
                     catch (e: IllegalStateException) {
                         // Run/permission failures remain terminal; missing document navigation is recoverable.
                         if (e is AgentFailure || !call.name.startsWith("document_") ||

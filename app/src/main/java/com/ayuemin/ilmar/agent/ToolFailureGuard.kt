@@ -16,6 +16,13 @@ internal fun toolArgumentsFingerprint(args: String): String {
     return MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString("") { "%02x".format(it) }
 }
 
+internal object ToolValidation {
+    private val codes = setOf("DOCUMENT_ARGUMENT_FIELDS", "DOCUMENT_ARGUMENT_TYPE", "DOCUMENT_SELECTOR", "DOCUMENT_ID_INVALID",
+        "DOCUMENT_CONTEXT_RANGE", "DOCUMENT_CONTEXT_DISABLED", "DOCUMENT_FRAGMENT_RANGE", "DOCUMENT_OUTPUT_LIMIT", "JSON_FORMAT", "SCHEMA_OR_VALUE")
+    fun safe(code: String) = code.takeIf { it in codes }
+    fun from(message: String?) = safe(message.orEmpty().substringBefore(':')) ?: "SCHEMA_OR_VALUE"
+}
+
 /** Run-owned failure budget. Independent of changing error text and successful reads. */
 internal class ToolFailureGuard {
     private data class Failure(val code: String, val retryable: Boolean, val attempts: Int)

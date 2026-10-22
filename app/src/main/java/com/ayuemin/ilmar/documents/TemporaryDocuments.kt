@@ -31,7 +31,7 @@ internal class TemporaryDocuments(
         return entry
     }
     @Synchronized fun get(id: String): Entry {
-        checkOpen(); require(id.matches(Regex("d-[a-f0-9]{16}"))) { "Некорректный ID документа" }; expire()
+        checkOpen(); require(id.matches(Regex("d-[a-f0-9]{16}"))) { "DOCUMENT_ID_INVALID: use the ID returned by the current Fetch" }; expire()
         return entries[id] ?: error("DOCUMENT_UNAVAILABLE: документ отсутствует в текущем запуске или истёк")
     }
     @Synchronized fun all(): List<Entry> { checkOpen(); expire(); return entries.values.toList() }

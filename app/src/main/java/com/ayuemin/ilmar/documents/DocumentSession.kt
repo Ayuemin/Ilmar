@@ -218,10 +218,11 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
     }
     @Synchronized fun read(id: String, section: String, before: Int, after: Int, repeat: Boolean): String {
         val state = state(id); val doc = state.entry.structure
-        require(before in 0..10 && after in 0..10 && (config.options.context || before == 0 && after == 0)) { "Расширение контекста выключено или превышает 10 блоков" }
+        require(before in 0..10 && after in 0..10) { "DOCUMENT_CONTEXT_RANGE: before/after must be 0-10" }
+        require(config.options.context || before == 0 && after == 0) { "DOCUMENT_CONTEXT_DISABLED: expansion is disabled in experiment settings" }
         val range = doc.sections.find { it.id == section && (config.options.structure || it.id == "s0") }?.let { it.first to it.until } ?: Regex("f([0-9]+)-([0-9]+)").matchEntire(section)?.let {
             val first = it.groupValues[1].toIntOrNull(); val until = it.groupValues[2].toIntOrNull()
-            require(first != null && until != null && first >= 0 && first < until && until <= doc.blocks.size) { "Некорректные границы фрагмента" }; first to until
+            require(first != null && until != null && first >= 0 && first < until && until <= doc.blocks.size) { "DOCUMENT_FRAGMENT_RANGE: use fragment bounds returned by the current source" }; first to until
         } ?: error("DOCUMENT_SECTION_UNAVAILABLE")
         val root = root().put("document_id", id).put("url", state.entry.fetched.url)
         append(root, state, (range.first - before).coerceAtLeast(0), (range.second + after).coerceAtMost(doc.blocks.size), repeat = repeat)

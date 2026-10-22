@@ -56,6 +56,22 @@ class ToolFailureRegressionTest {
         }
         assertEquals(4, calls); assertEquals(5, rounds)
     }
+    @Test fun validationReasonsSurviveWithoutExportingArgumentValues() = runTest {
+        var rounds = 0
+        val tool = BoundTool(ToolSchema("document_read", "test", JSONObject())) {
+            throw IllegalArgumentException("DOCUMENT_SELECTOR: private input must not enter metadata")
+        }
+        AgentLoopRunner().run(listOf(tool)) { history, _ ->
+            if (rounds++ == 0) GenerationResult("", toolCalls = listOf(ModelToolCall("1", "document_read", "{}")))
+            else {
+                val output = JSONObject(history.last().getString("content"))
+                assertEquals("DOCUMENT_SELECTOR", output.getString("validation_code"))
+                assertNull(ToolValidation.safe("private input"))
+                GenerationResult("Correct selector required")
+            }
+        }
+        assertEquals(2, rounds)
+    }
     @Test fun permissionRevocationIsTerminalAndExecutorNeverStarts() = runTest {
         var executions = 0; var rounds = 0
         val tool = BoundTool(ToolSchema("document_read", "test", JSONObject()), beforeExecute = {
