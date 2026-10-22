@@ -1,0 +1,81 @@
+{
+  "runs": {
+    "e6f97c40-014c-46c1-a835-4c432754eb89": {
+      "model_calls": 1,
+      "input_tokens": 67,
+      "output_tokens": 9,
+      "cached_tokens": 0,
+      "known_provider_cost_usd": "0.0000130284",
+      "cost_known_requests": 1,
+      "tool_round_error_events": 0
+    },
+    "1666a620-8415-4d0f-8090-002f024ffec6": {
+      "model_calls": 55,
+      "input_tokens": 474499,
+      "output_tokens": 9760,
+      "cached_tokens": 13568,
+      "known_provider_cost_usd": "0.11113031457",
+      "cost_known_requests": 55,
+      "tool_round_error_events": 24
+    },
+    "bf5eb388-2d4b-442d-b9be-78c4dbdc0e52": {
+      "model_calls": 20,
+      "input_tokens": 156483,
+      "output_tokens": 4424,
+      "cached_tokens": 2048,
+      "known_provider_cost_usd": "0.03758574897",
+      "cost_known_requests": 20,
+      "tool_round_error_events": 0
+    }
+  },
+  "execution_links_by_final_step_status": {
+    "1666a620-8415-4d0f-8090-002f024ffec6": {
+      "fetch_url:SUCCEEDED": 1,
+      "document_search:SUCCEEDED": 14,
+      "document_read:FAILED": 39,
+      "document_outline:SUCCEEDED": 4,
+      "document_read:SUCCEEDED": 41,
+      "search_history:SUCCEEDED": 1
+    },
+    "bf5eb388-2d4b-442d-b9be-78c4dbdc0e52": {
+      "fetch_url:SUCCEEDED": 1,
+      "read_file:SUCCEEDED": 28
+    }
+  },
+  "tool_round_error_events": 24,
+  "errors_by_run": {
+    "1666a620-8415-4d0f-8090-002f024ffec6": 24
+  },
+  "events_without_tool_details": 24,
+  "tool_failures": [],
+  "provider_totals": {
+    "model_calls": 76,
+    "model_successes": 76,
+    "input_tokens": 631049,
+    "output_tokens": 14193,
+    "cached_tokens": 15616
+  },
+  "known_provider_cost_usd": "0.14872909194",
+  "cost_known_requests": 76,
+  "limits": "Counts are observed events, not proof of root cause or causal extra costs. Metadata-only logs cannot recover removed arguments/results. No estimates substituted for provider usage.",
+  "source_sha256": "ec1c3656ff85428f007131b14f7cc4bacb2039e5a278b65854f42da84ad60849",
+  "following_error_requests": {
+    "count": 24,
+    "input_tokens": 204821,
+    "output_tokens": 3369,
+    "cost_usd": "0.04734907947",
+    "interpretation": "Temporal adjacency, not a measured causal savings estimate; mixed rounds can also contain successful evidence."
+  },
+  "local_input_breakdown_estimates": {
+    "chat_tokens_estimate": 17600,
+    "system_tokens_estimate": 121585,
+    "schemas_tokens_estimate": 115225,
+    "other_tool_history_tokens_estimate": 420093
+  },
+  "labels": {
+    "local_run_id": "1666a620-8415-4d0f-8090-002f024ffec6",
+    "legacy_run_id": "bf5eb388-2d4b-442d-b9be-78c4dbdc0e52",
+    "warmup_run_id": "e6f97c40-014c-46c1-a835-4c432754eb89"
+  },
+  "local_duration_ms": 113910
+}

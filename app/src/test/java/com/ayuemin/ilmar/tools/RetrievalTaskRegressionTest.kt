@@ -94,6 +94,16 @@ class RetrievalTaskRegressionTest {
         }
         assertTrue(runCatching { s.search("Quota", 5) }.isFailure)
     }
+    @Test fun returnedFragmentIdIsAValidReadSelectorAndConflictingSelectorsFail() = runTest {
+        DocumentSession(1, "selector", DocumentExperiment(DocumentMode.LOCAL), "quota", { true }).use { s ->
+            val initial = JSONObject(s.fetch("https://example.com/doc", web("<h1>Quota</h1><p>Not permitted without approval.</p>")))
+            val args = JSONObject().put("document_id", initial.getString("document_id"))
+                .put("fragment_id", initial.getJSONArray("fragments").getJSONObject(0).getString("fragment_id")).put("repeat", true)
+            val read = DocumentTools.forSession(s).single { it.schema.name == "document_read" }
+            assertTrue(texts(JSONObject(read.execute(args))).contains("Not permitted without approval"))
+            assertTrue(runCatching { read.execute(args.put("section_id", "s0")) }.isFailure)
+        }
+    }
     @Test fun missingIdProducesToolResultAndCanBeCorrectedWithoutBlockingAnotherSection() = runTest {
         DocumentSession(1, "missing", DocumentExperiment(DocumentMode.LOCAL), "quota", { true }).use { s ->
             val id = JSONObject(s.fetch("https://example.com/doc", web("<h1>Quota</h1><p>Not permitted without approval.</p>"))).getString("document_id")
@@ -118,12 +128,13 @@ class RetrievalTaskRegressionTest {
         for (mode in listOf(DocumentMode.LEGACY, DocumentMode.LOCAL)) {
             val s = DocumentSession(1, "benchmark-$mode", DocumentExperiment(mode), query, { true })
             var fetches = 0; var rounds = 0; var id = ""; var accumulated = ""; var promptEstimate = 0L
-            var initialGold = 0
+            var initialGold = 0; var finalModelGold = 0; var initialResult = ""
             val fetch = BoundTool(ToolSchema("fetch_url", "test", JSONObject())) {
                 fetches++
                 (if (mode == DocumentMode.LEGACY) web(html).fetch("https://www.sqlite.org/fts5.html")
                 else s.fetch("https://www.sqlite.org/fts5.html", web(html))).also { raw ->
                     val result = JSONObject(raw)
+                    initialResult = raw
                     id = result.optString("document_id")
                     if (mode == DocumentMode.LOCAL) assertTrue("Fetch must return a current document ID", id.isNotBlank())
                     accumulated += if (mode == DocumentMode.LOCAL) texts(result) else raw
@@ -155,13 +166,18 @@ class RetrievalTaskRegressionTest {
                         } else emptyList()
                         else -> emptyList()
                     }
-                    if (calls.isEmpty()) GenerationResult("Script finished; evidence completeness recorded separately.") else GenerationResult("", toolCalls = calls)
+                    if (calls.isEmpty()) {
+                        val context = history.joinToString { it.optString("content") }
+                        finalModelGold = gold.count { context.contains(it) }
+                        if (mode == DocumentMode.LOCAL) assertEquals("All source evidence must remain in final model context", gold.size, finalModelGold)
+                        GenerationResult("Script finished; evidence completeness recorded separately.")
+                    } else GenerationResult("", toolCalls = calls)
                 }
                 assertTrue(result.toolCalls.isEmpty()); assertEquals(1, fetches)
                 val found = gold.count { accumulated.contains(it) }
                 if (mode == DocumentMode.LOCAL) assertEquals(gold.size, found)
                 report.put(JSONObject().put("mode", mode.name).put("scripted_model_calls", rounds).put("fetch_calls", fetches)
-                    .put("initial_gold_found", initialGold).put("final_gold_found", found).put("gold_count", gold.size)
+                    .put("initial_result", initialResult).put("initial_gold_found", initialGold).put("final_gold_found", found).put("final_model_context_gold_found", finalModelGold).put("gold_count", gold.size)
                     .put("local_estimated_tool_context_tokens_sum", promptEstimate))
             }
         }
