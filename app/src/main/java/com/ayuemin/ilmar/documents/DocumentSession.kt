@@ -92,7 +92,7 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
             }
             if (candidate == null) {
                 root.put("output_limited", true).put("next_fragment_id", "f$i-$until").put("next_document_id", state.entry.id)
-                if (i == start && output.length() == 0) root.put("atomic_block_too_large", true)
+                if (i == start && output.length() == 0 && allowance >= charBudget) root.put("atomic_block_too_large", true)
                 return i
             }
             output.put(candidate); left -= candidate.getString("text").length
@@ -146,10 +146,10 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
             val anchor = DocumentQueries.anchors(q)
             val extra = if (DocumentQueries.coverage(q, selected) < 0.5 && anchor.isNotBlank() && anchor != q)
                 state.index.search(anchor, 10, config.options).hits else emptyList()
-            (hits + extra).distinctBy { it.first to it.until }
+            (hits.take(2) + extra + hits.drop(2)).distinctBy { it.first to it.until }
         }
         // At most eight questions/160 windows, independent of agent/model rounds.
-        for (rank in 0 until 10) for (hits in candidates) {
+        for (rank in 0 until 20) for (hits in candidates) {
             val hit = hits.getOrNull(rank) ?: continue
             if (result.getJSONArray("fragments").length() >= config.fragments) break
             append(result, state, hit.first, hit.until, hit.score, maxFragments = config.fragments,
