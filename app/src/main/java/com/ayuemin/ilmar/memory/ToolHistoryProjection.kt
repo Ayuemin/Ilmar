@@ -15,7 +15,8 @@ internal object ToolHistoryProjection {
             val calls = group.first().optJSONArray("tool_calls")
             calls != null && (0 until calls.length()).any { calls.getJSONObject(it).optJSONObject("function")?.optString("name")?.startsWith("browser_") == true }
         } else null
-        fun clean(group: List<JSONObject>) = group.map { JSONObject(it.toString()).apply { if (!preserveTrace) { remove("_trace_id"); remove("_started_calls"); remove("_reused_from") } } }
+        fun clean(group: List<JSONObject>) = group.map { JSONObject(it.toString()).apply { if (optString("role") == "tool") put("content", com.ayuemin.ilmar.documents.DocumentHistoryProjection.compact(optString("content")))
+            if (!preserveTrace) { remove("_trace_id"); remove("_started_calls"); remove("_reused_from") } } }
         val reserved = mandatory?.let { ContextEstimate.text(clean(it).joinToString()) } ?: 0
         if (reserved > budget.coerceAtLeast(128)) throw com.ayuemin.ilmar.agent.AgentFailure("BROWSER_CONTEXT_LIMIT", "Актуальный браузерный раунд не помещается в бюджет истории tools. Уменьши DOM/длину цепочки или увеличь бюджет контекста; оригинал сохранён.")
         var remaining = budget.coerceAtLeast(128) - reserved
@@ -33,7 +34,7 @@ internal object ToolHistoryProjection {
                 val results = group.filter { it.optString("role") == "tool" }.joinToString("; ") { item ->
                     val content = item.optString("content")
                     val data = runCatching { JSONObject(content) }.getOrNull()
-                    if (data == null) content.take(180) else listOf("document_id", "fragment_id", "next_fragment_id", "next_document_id", "file_id", "download_id", "location", "user_only", "name", "error", "memory_id", "trace_id", "result").mapNotNull { key -> data.opt(key)?.let { "$key=$it" } }.joinToString().ifBlank { content.take(180) }
+                    if (data == null) content.take(180) else com.ayuemin.ilmar.documents.DocumentHistoryProjection.references(data) ?: listOf("document_id", "fragment_id", "next_fragment_id", "next_document_id", "file_id", "download_id", "location", "user_only", "name", "error", "memory_id", "trace_id", "result").mapNotNull { key -> data.opt(key)?.let { "$key=$it" } }.joinToString().ifBlank { content.take(180) }
                 }
                 older.add(0, if (assistant.optString("role") == "user") assistant.optString("content") else "Инструменты: $names; trace_id=${assistant.optString("_trace_id")}; результат: $results")
             }

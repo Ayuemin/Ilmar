@@ -26,12 +26,12 @@ internal class TemporaryDocuments(
         require(document.retainedBytes + structure.retainedBytes <= maxBytes - entries.values.sumOf { it.retainedBytes }) {
             "DOCUMENT_MEMORY_LIMIT: полный документ не сохранён; частичный документ не индексируется"
         }
-        val entry = Entry("d-" + UUID.randomUUID(), document, clock(), structure)
+        val entry = Entry("d-" + UUID.randomUUID().toString().replace("-", "").take(16), document, clock(), structure)
         entries[entry.id] = entry
         return entry
     }
     @Synchronized fun get(id: String): Entry {
-        checkOpen(); require(id.matches(Regex("d-[a-f0-9-]{36}"))) { "Некорректный ID документа" }; expire()
+        checkOpen(); require(id.matches(Regex("d-[a-f0-9]{16}"))) { "Некорректный ID документа" }; expire()
         return entries[id] ?: error("DOCUMENT_UNAVAILABLE: документ отсутствует в текущем запуске или истёк")
     }
     @Synchronized fun all(): List<Entry> { checkOpen(); expire(); return entries.values.toList() }
