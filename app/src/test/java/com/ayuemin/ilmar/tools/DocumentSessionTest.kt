@@ -73,6 +73,8 @@ class DocumentSessionTest {
             val id = output.getString("document_id")
             val tools = DocumentTools.forSession(session)
             val read = tools.single { it.schema.name == "document_read" }
+            assertEquals(0, read.schema.parameters.getJSONObject("properties").getJSONObject("before").getInt("maximum"))
+            assertEquals(0, read.schema.parameters.getJSONObject("properties").getJSONObject("after").getInt("maximum"))
             assertTrue(runCatching { read.execute(JSONObject().put("document_id", id).put("section_id", "s0").put("before", 1)) }.isFailure)
             assertTrue(runCatching { read.execute(JSONObject().put("document_id", id).put("section_id", "s0").put("evil", "/tmp")) }.isFailure)
             allowed = false
