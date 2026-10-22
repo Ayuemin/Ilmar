@@ -13,6 +13,7 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
     private val event: (String, JSONObject) -> Unit = { _, _ -> },
     private val semanticSearch: suspend (String, Long) -> String = { _, _ -> "" },
     private val session: TaskSession? = null,
+    private val taskMetrics: com.ayuemin.ilmar.diagnostics.TaskMetrics? = null,
     private val observation: () -> ChatMessage? = { null },
     private val consumeObservation: () -> Unit = {},
     private val internetInstructions: String = "",
@@ -57,11 +58,11 @@ internal class ContextExecution(private val chat: Long, private val memory: Cont
                 status(engine.lastNotice ?: "Compact сохранён · оценка контекста ${projection.estimatedInput} + ${projection.output} / ${projection.limit}")
                 null
             } else AgentLoopRunner(
-                onCheckpoint = { id, partial -> memory.tasks.checkpoint(activeSession, id, partial); event("TASK_CHECKPOINT", activeSession.json().put("trace_id", id).put("messages_count", partial.size)) },
+                onCheckpoint = { id, partial -> taskMetrics?.checkpoint(id, partial); memory.tasks.checkpoint(activeSession, id, partial); event("TASK_CHECKPOINT", activeSession.json().put("trace_id", id).put("messages_count", partial.size)) },
                 onRound = { id, round ->
                     memory.saveToolTrace(chat, id, round)
                     event(if (round.any { it.optString("role") == "tool" && runCatching { JSONObject(it.optString("content")).has("error") }.getOrDefault(false) }) "TOOL_ROUND_ERROR" else "TOOL_ROUND",
-                        activeSession.json().put("trace_id", id).put("messages", org.json.JSONArray(round)))
+                        activeSession.json().put("trace_id", id).put("messages", org.json.JSONArray(round)).put("tool_failures", com.ayuemin.ilmar.diagnostics.ToolErrorMetadata.summarize(round)))
                 },
                 onProgress = { status(it); event("AGENT_PROGRESS", activeSession.json().put("message", it)) },
                 blockUnresolved = { id, name, args -> memory.unresolvedExecution(chat, id, name, args) },

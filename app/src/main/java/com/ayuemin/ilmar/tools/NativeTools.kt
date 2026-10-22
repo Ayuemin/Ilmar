@@ -55,8 +55,13 @@ internal object NativeTools {
                         data.log(chat, name, args, e.question, android.os.SystemClock.elapsedRealtime() - started, "awaiting_user"); throw e
                     } catch (e: CancellationException) { diagnostics.record("TOOL_CANCELLED", chat, JSONObject().put("tool", name)); throw e }
                     catch (e: Exception) {
+                        if (e is com.ayuemin.ilmar.agent.AgentFailure) throw e
                         diagnostics.failure("TOOL_ERROR", chat, e, JSONObject().put("tool", name).put("arguments", args))
-                        val error = JSONObject().put("error", if (e is IllegalArgumentException || e is IllegalStateException) e.message?.take(300) else "Не удалось выполнить инструмент").toString()
+                        val error = if (name == "fetch_url") {
+                            val temporary = e is java.io.IOException || Regex("^HTTP (429|502|503|504)\\b").containsMatchIn(e.message.orEmpty())
+                            JSONObject().put("error", if (temporary) "TOOL_IO_ERROR" else "FETCH_FAILED").put("retryable", temporary)
+                                .put("message", e.message?.take(300) ?: "Fetch failed").toString()
+                        } else JSONObject().put("error", if (e is IllegalArgumentException || e is IllegalStateException) e.message?.take(300) else "Не удалось выполнить инструмент").toString()
                         data.log(chat, name, args, error, android.os.SystemClock.elapsedRealtime() - started, "failed")
                         error
                     }
