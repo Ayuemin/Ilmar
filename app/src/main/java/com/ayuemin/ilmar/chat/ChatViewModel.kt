@@ -301,6 +301,14 @@ class ChatViewModel @JvmOverloads constructor(
                 var modelRound = 0
                 val capabilities = registry.capabilities(target.model.id)
                 val documentExperiment = com.ayuemin.ilmar.documents.DocumentExperimentPreferences(getApplication()).load()
+                diagnostics.record("DOCUMENT_CONFIG", chatId, taskSession.json()
+                    .put("legacy", documentExperiment.mode == com.ayuemin.ilmar.documents.DocumentMode.LEGACY)
+                    .put("compare", documentExperiment.mode == com.ayuemin.ilmar.documents.DocumentMode.COMPARE)
+                    .put("initial_fragments", documentExperiment.fragments).put("structure", documentExperiment.options.structure)
+                    .put("heat", documentExperiment.options.heat).put("morphology", documentExperiment.options.morphology)
+                    .put("feedback", documentExperiment.options.feedback).put("context_expansion", documentExperiment.options.context)
+                    .put("browser_disabled", documentExperiment.browser == com.ayuemin.ilmar.documents.ExperimentalBrowser.DISABLED)
+                    .put("browser_limited", documentExperiment.browser == com.ayuemin.ilmar.documents.ExperimentalBrowser.LIMITED))
                 val experimentalBrowserAllowed = documentExperiment.browser != com.ayuemin.ilmar.documents.ExperimentalBrowser.DISABLED
                 val reasoning = capabilities.reasoningConfig(target.connection.endpoint,
                     modes.enabled(chatId, "Размышление"), modes.choice(chatId, "reasoning_effort").takeUnless { it == "auto" })
