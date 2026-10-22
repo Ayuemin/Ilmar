@@ -15,6 +15,7 @@ class RetrievalLogTest(unittest.TestCase):
         self.assertEqual(1, report['provider_totals']['model_calls'])
         self.assertEqual(10, report['provider_totals']['input_tokens'])
         self.assertEqual('0.01', report['known_provider_cost_usd'])
+        self.assertEqual(1, report['runs']['unknown']['model_calls'])
 
     def test_unknown_provider_usage_stays_unknown(self):
         report = analyze([{'event': 'MODEL_FINISH', 'details': {'status': 'failed', 'usage': {}}}])
