@@ -104,7 +104,7 @@ class RetrievalTaskRegressionTest {
             assertTrue(runCatching { read.execute(args.put("section_id", "s0")) }.isFailure)
         }
     }
-    @Test fun missingIdProducesToolResultAndCanBeCorrectedWithoutBlockingAnotherSection() = runTest {
+    @Test fun missingIdProducesToolResultAndCanBeCorrectedWithoutBlockingAnotherSection() = runBlocking<Unit> {
         DocumentSession(1, "missing", DocumentExperiment(DocumentMode.LOCAL), "quota", { true }).use { s ->
             val id = JSONObject(s.fetch("https://example.com/doc", web("<h1>Quota</h1><p>Not permitted without approval.</p>"))).getString("document_id")
             var round = 0
@@ -112,7 +112,7 @@ class RetrievalTaskRegressionTest {
                 when (round++) {
                     0 -> GenerationResult("", toolCalls = listOf(ModelToolCall("0", "document_read", "{\"document_id\":\"d-0000000000000000\",\"section_id\":\"s0\"}")))
                     1 -> {
-                        assertTrue(history.last().getString("content").contains("DOCUMENT_UNAVAILABLE"))
+                        assertTrue(history.last().getString("content"), history.last().getString("content").contains("DOCUMENT_UNAVAILABLE"))
                         GenerationResult("", toolCalls = listOf(ModelToolCall("1", "document_read", JSONObject().put("document_id", id).put("section_id", "s0").put("repeat", true).toString())))
                     }
                     else -> GenerationResult("done")
