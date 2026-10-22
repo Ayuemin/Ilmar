@@ -46,7 +46,7 @@ internal class TaskMetrics(private val clock: () -> Long = { android.os.SystemCl
         for (i in 0 until tools.length()) {
             val call = tools.getJSONObject(i); val id = "$trace:${call.optString("id")}"; val function = call.getJSONObject("function")
             val name = function.getString("name")
-            val signature = hash(name + function.optString("arguments"))
+            val signature = name + ":" + com.ayuemin.ilmar.agent.toolArgumentsFingerprint(function.optString("arguments"))
             val entered = startedCalls != null && (0 until startedCalls.length()).any { startedCalls.optString(it) == call.optString("id") }
             if (entered && calls.add(id)) {
                 counts[name] = (counts[name] ?: 0) + 1

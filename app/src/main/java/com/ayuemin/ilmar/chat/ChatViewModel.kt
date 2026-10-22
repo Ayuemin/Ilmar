@@ -380,6 +380,7 @@ class ChatViewModel @JvmOverloads constructor(
                             val requestId = options.requestId ?: java.util.UUID.randomUUID().toString()
                             check(runtime.edit().putString("active_request", requestId).putString("active_purpose", purpose).commit())
                             var providerStarted = false
+                            var providerCompleted = false
                             val roundId = "${taskSession.runId}:${++modelRound}"
                             val lifecycle = taskSession.json().put("request_id", requestId).put("round_id", roundId).put("purpose", purpose)
                             var terminalStatus = "not_sent"
@@ -421,6 +422,7 @@ class ChatViewModel @JvmOverloads constructor(
                                     options.copy(webSearch = requestSearch, webSearchEngine = if (requestSearch == "OPENROUTER") searchEngine.wire else null)) { delta ->
                                     if (purpose == "answer" && delta.isNotEmpty()) activity(chatId, "Модель формирует ответ…")
                                 }
+                                providerCompleted = true
                                 knownUsage = completion.usage
                                 terminalStatus = "completed"
                                 diagnostics.record("MODEL_RESPONSE", chatId, callDetails.put("latency_ms", android.os.SystemClock.elapsedRealtime() - callStarted)
@@ -445,13 +447,14 @@ class ChatViewModel @JvmOverloads constructor(
                                 if (providerStarted) browserControl?.afterModel(usage, if (purpose == "compact") compactCaps else capabilities)
                                 recordCall(chatId, requestId, usage, if (providerStarted) "failed" else "not_sent", purpose); throw e
                             } finally {
-                                taskMetrics.model(knownUsage ?: if (providerStarted) TokenUsage() else notSent, terminalStatus, purpose, estimatedInput, options.toolHistory)
+                                taskMetrics.model(knownUsage ?: if (providerStarted) TokenUsage() else notSent, if (providerCompleted) "completed" else terminalStatus, purpose, estimatedInput, options.toolHistory)
                                 diagnostics.record("MODEL_FINISH", chatId, lifecycle.put("status", terminalStatus).put("provider_started", providerStarted)
                                     .put("duration_ms", android.os.SystemClock.elapsedRealtime() - lifecycleStarted)
                                     .put("usage", com.ayuemin.ilmar.model.usageJson(knownUsage ?: if (providerStarted) TokenUsage() else notSent)))
                             }
                         }).run(history, compactOnly, reasoning, tools)
                 }
+                if (taskMetrics.stopReason == "FAILED") taskMetrics.stopReason = if (result == null) "COMPACT_COMPLETED" else "COMPLETED"
                 if (result == null) return@launch
                 val reply = result.text
                 if (mutable.value.activeChatId == chatId && mutable.value.chats.any { it.id == chatId }) {
@@ -462,7 +465,6 @@ class ChatViewModel @JvmOverloads constructor(
                     mutable.update { it.copy(chats = it.chats.map { c -> if (c.id == chatId) c.copy(messages = store.load().first { it.id == chatId }.messages) else c }) }
                     diagnostics.record("SUCCESS", chatId)
                     completedNormally = true
-                    if (taskMetrics.stopReason == "FAILED") taskMetrics.stopReason = "COMPLETED"
                     indexArchive(chatId)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -493,7 +495,7 @@ class ChatViewModel @JvmOverloads constructor(
                     else "Не удалось завершить ответ. Проверь подключение и повтори запрос."))) }
             } finally {
                 cleanupDocuments?.close()
-                diagnostics.record("TASK_SUMMARY", chatId, taskMetrics.json().apply {
+                diagnostics.record("TASK_SUMMARY", chatId, taskMetrics.json().put("local_index_searches", cleanupDocuments?.localIndexSearches ?: 0).apply {
                     cleanupSession?.let { put("task_id", it.taskId).put("run_id", it.runId) }
                 })
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { com.ayuemin.ilmar.browser.BrowserRuntime.stop(chatId) }

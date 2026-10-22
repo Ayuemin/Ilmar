@@ -25,6 +25,7 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
     private val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val timers = mutableMapOf<String, Job>()
     private var closed = false
+    var localIndexSearches = 0; private set
     private val byteBudget get() = minOf(24000, (Limits.bytes("result_kib") - 1024).coerceAtLeast(256))
     private val charBudget get() = minOf(8000, Limits.get("excerpt_chars"))
     @Synchronized fun authorize() {
@@ -134,18 +135,22 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
         }
         return output
     }
+    private fun indexSearch(state: State, query: String): SearchResult {
+        localIndexSearches++
+        return state.index.search(query, 10, config.options)
+    }
     /** One fair pass per question, then bounded local expansion if lexical coverage is weak. */
     private fun initialSearch(state: State, result: JSONObject) {
         val queries = DocumentQueries.split(query, state.entry.structure.title)
         val candidates = queries.map { q ->
-            val hits = state.index.search(q, 10, config.options).hits
+            val hits = indexSearch(state, q).hits
             val selected = hits.take(2).joinToString(" ") { hit ->
                 val d = state.entry.structure
                 d.text.substring(d.blocks[hit.first].start, d.blocks[hit.until - 1].end)
             }
             val anchor = DocumentQueries.anchors(q)
             val extra = if (DocumentQueries.coverage(q, selected) < 0.5 && anchor.isNotBlank() && anchor != q)
-                state.index.search(anchor, 10, config.options).hits else emptyList()
+                indexSearch(state, anchor).hits else emptyList()
             (hits.take(2) + extra + hits.drop(2)).distinctBy { it.first to it.until }
         }
         // At most eight questions/160 windows, independent of agent/model rounds.
@@ -164,7 +169,7 @@ internal class DocumentSession(val chat: Long, run: String, val config: Document
     private fun searchObject(query: String, limit: Int, only: String? = null, result: JSONObject = root()): JSONObject {
         authorize(); require(query.isNotBlank() && query.length <= 1000 && limit in 1..10)
         val root = result; val results = states.values.filter { only == null || it.entry.id == only }.flatMap { state ->
-            state.index.search(query, 10, config.options).hits.map { state to it }
+            indexSearch(state, query).hits.map { state to it }
         }.sortedByDescending { it.second.score }
         for ((state, hit) in results) {
             if (root.getJSONArray("fragments").length() >= limit) break

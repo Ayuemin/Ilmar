@@ -1,7 +1,6 @@
 package com.ayuemin.ilmar.diagnostics
 
 import org.json.JSONObject
-import java.security.MessageDigest
 
 /** Failure evidence that survives metadata-only export without leaking tool arguments/documents. */
 internal object ToolErrorMetadata {
@@ -15,8 +14,7 @@ internal object ToolErrorMetadata {
                 ?.let { runCatching { JSONObject(it.optString("content")) }.getOrNull() } ?: continue
             if (!result.has("error")) continue
             val function = call.getJSONObject("function")
-            val fingerprint = MessageDigest.getInstance("SHA-256").digest(function.optString("arguments").toByteArray())
-                .joinToString("") { "%02x".format(it) }
+            val fingerprint = com.ayuemin.ilmar.agent.toolArgumentsFingerprint(function.optString("arguments"))
             val code = result.optString("error").takeIf { it in codes } ?: "TOOL_FAILURE"
             errors.put("failure_$i", JSONObject().put("tool", function.optString("name")).put("error_code", code)
                 .put("argument_fingerprint", fingerprint).put("retryable", result.optBoolean("retryable", code in setOf("TOOL_TIMEOUT", "TOOL_IO_ERROR"))))
