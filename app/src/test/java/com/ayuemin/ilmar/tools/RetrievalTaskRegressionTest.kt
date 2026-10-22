@@ -34,6 +34,7 @@ class RetrievalTaskRegressionTest {
     }
     @Test fun numberedQuestionsAreSplitWithoutAnExtraModelAndQuotesStayExact() {
         assertEquals(4, DocumentQueries.split(query, "title").size)
+        assertEquals(listOf("First?", "Second?"), DocumentQueries.split("1. First?\n2. Second?", "title"))
         val original = "Not valid unless approved; -1.0 is not a probability."
         val f = JSONObject().put("document_id", "d-123").put("fragment_id", "f1-2").put("url", "https://example.com")
             .put("text", original).put("version", "version")
@@ -171,6 +172,16 @@ class RetrievalTaskRegressionTest {
         assertEquals(15, data.getLong("provider_input_tokens")); assertEquals(190, data.getLong("local_estimated_input_tokens"))
         assertEquals("0.012", data.getString("provider_cost_usd")); assertTrue(data.getBoolean("provider_tokens_incomplete"))
         assertEquals(1, data.getInt("model_failures"))
+    }
+    @Test fun exportedTaskAndFailureMetadataContainsNoArgumentsOrQuotes() {
+        val messages = listOf(JSONObject().put("role", "assistant").put("tool_calls", org.json.JSONArray().put(JSONObject().put("id", "c")
+            .put("function", JSONObject().put("name", "document_read").put("arguments", "{\"private\":\"secret document\"}")))),
+            JSONObject().put("role", "tool").put("tool_call_id", "c").put("content", "{\"error\":\"DOCUMENT_UNAVAILABLE\",\"message\":\"secret document\"}"))
+        val safe = com.ayuemin.ilmar.diagnostics.Redaction.metadata(JSONObject().put("stop_reason", "TOOL_RETRY_EXHAUSTED")
+            .put("tool_failures", com.ayuemin.ilmar.diagnostics.ToolErrorMetadata.summarize(messages)))
+        assertFalse(safe.toString().contains("secret document"))
+        assertTrue(safe.toString().contains("DOCUMENT_UNAVAILABLE")); assertTrue(safe.toString().contains("argument_fingerprint"))
+        assertEquals("TOOL_RETRY_EXHAUSTED", safe.getString("stop_reason"))
     }
     @Test fun errorClosesSessionAndInvalidatesAllOldDocuments() = runTest {
         val s = DocumentSession(1, "cleanup", DocumentExperiment(DocumentMode.LOCAL), "quota", { true })

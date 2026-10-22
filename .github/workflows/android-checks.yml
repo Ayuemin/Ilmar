@@ -52,6 +52,8 @@ jobs:
         run: node scripts/test_browser_snapshot.cjs
       - name: Test dependency advisory parser
         run: python3 -m unittest discover -s scripts -p 'test_check_dependencies.py'
+      - name: Test retrieval diagnostic log parser
+        run: python3 -m unittest discover -s scripts -p 'test_analyze_retrieval_log.py'
       - name: Test native process-group cancellation
         run: python3 scripts/test_process_group.py
       - name: Verify official Alpine rootfs
