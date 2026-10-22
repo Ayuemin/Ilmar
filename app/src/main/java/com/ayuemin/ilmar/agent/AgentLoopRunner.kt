@@ -28,6 +28,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
         val browserPolicy = com.ayuemin.ilmar.browser.BrowserPolicy.load()
         val history = mutableListOf<JSONObject>()
         val repeatThreshold = Limits.get("repeat_threshold")
+        val failureGuard = ToolFailureGuard()
+        var finalize = false
         val guard = AgentToolLoopGuard(threshold = repeatThreshold.coerceAtLeast(2))
         var calls = 0
         fun reserveCall() {
@@ -42,8 +44,9 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
             round++
             currentCoroutineContext().ensureActive()
             onProgress("Раунд $round · вызовов tools: $calls")
-            val result = generate(history.toList(), tools.map { it.schema })
+            val result = generate(history.toList(), if (finalize) emptyList() else tools.map { it.schema })
             if (result.toolCalls.isEmpty()) return@optionalTimeout result
+            if (finalize) return@optionalTimeout GenerationResult("Не удалось продолжить: исчерпан лимит повторов неуспешного инструмента. Полученных данных недостаточно для подтверждения полного ответа.", result.usage)
             if (tools.isEmpty()) throw AgentFailure("TOOLS_DISABLED", "Модель запросила инструмент, но режим агента или инструменты не включены.")
             require(result.toolCalls.map { it.id }.distinct().size == result.toolCalls.size) { "Повторяющиеся ID вызовов" }
             val traceId = java.util.UUID.randomUUID().toString()
@@ -61,7 +64,8 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (call.arguments.toByteArray(Charsets.UTF_8).size > Limits.bytes("argument_kib")) throw AgentFailure("ARGUMENT_LIMIT", "${call.name}: аргументы превышают глобальный лимит. Увеличь его в расширенных настройках.")
                 if (blockUnresolved("$traceId:${call.id}", call.name, call.arguments)) throw AgentFailure("UNRESOLVED_TOOL", "${call.name}: повтор неопределённой операции заблокирован. Сначала проверь результат.")
                 val replay = if (tool != null) replayConfirmed(call.name, call.arguments) else null
-                val output = if (replay != null) {
+                val blockedFailure = failureGuard.blocked(call.name, call.arguments)
+                val output = if (blockedFailure != null) { finalize = true; blockedFailure } else if (replay != null) {
                     onProgress("${call.name}: используется подтверждённый результат без повторного действия")
                     val confirmed = runCatching { JSONObject(replay.result) }.getOrElse { JSONObject().put("result", replay.result) }
                     confirmed.put("_reused_confirmed", true).put("_original_execution_id", replay.executionId).toString()
@@ -82,8 +86,16 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                     catch (e: com.ayuemin.ilmar.tools.ClarificationRequired) { throw e }
                     catch (e: org.json.JSONException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", "Исправь JSON-аргументы ${call.name}: ${e.message}").toString() }
-                    catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("message", e.message).toString() }
+                    catch (e: IllegalArgumentException) { JSONObject().put("error", "INVALID_ARGUMENTS").put("retryable", false).put("message", e.message).toString() }
+                    catch (e: IllegalStateException) {
+                        // Run/permission failures remain terminal; missing document navigation is recoverable.
+                        if (e is AgentFailure || !call.name.startsWith("document_")) throw e
+                        JSONObject().put("error", "DOCUMENT_UNAVAILABLE").put("retryable", false)
+                            .put("message", "Document or section unavailable in this run. Use an ID from the current Fetch/outline; expired documents require Fetch again.").toString()
+                    }
+                    catch (e: java.io.IOException) { JSONObject().put("error", "TOOL_IO_ERROR").put("retryable", true).put("message", "Temporary IO failure; at most one identical retry is allowed.").toString() }
                 }
+                failureGuard.observe(call.name, call.arguments, output)
                 if (output.toByteArray(Charsets.UTF_8).size > Limits.bytes("result_kib")) throw AgentFailure("RESULT_LIMIT", "${call.name}: результат превышает глобальный лимит. Увеличь его или читай данные частями.")
                 history += JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", output).apply { replay?.let { put("_reused_from", it.executionId) } }
                 // The result must survive a crash before the next tool starts.
@@ -93,6 +105,7 @@ internal class AgentLoopRunner(private val maxRounds: Int = Limits.get("rounds")
                 if (repeatThreshold > 0 && guard.observe(call.name, call.arguments, replay?.result ?: output)) throw AgentFailure("NO_PROGRESS", "${call.name}: повторяющиеся вызовы без прогресса. Защита настраивается в расширенных лимитах.")
             }
             onRound(traceId, history.drop(groupStart))
+            if (finalize) history += JSONObject().put("role", "user").put("content", "Tool retry budget exhausted. Finish now using available evidence, explicitly explain missing information. No more tools are available for this run.")
             val working = com.ayuemin.ilmar.memory.ToolHistoryProjection.project(com.ayuemin.ilmar.browser.BrowserHistoryProjection.project(history, browserPolicy), Limits.get("trace_tokens"), preserveTrace = true, preserveLatestBrowser = tools.any { it.schema.name.startsWith("browser_") })
             if (working.size < history.size) onHistoryReduced()
             history.clear(); history.addAll(working)

@@ -31,9 +31,10 @@ class AgentLoopTest {
     @Test fun unknownToolCannotExecuteAndNoProgressHasHardRoundBudget() = runTest {
         var executed = false
         val tool = BoundTool(ToolSchema("known", "test", JSONObject())) { executed = true; "x" }
-        assertTrue(runCatching { AgentLoopRunner().run(listOf(tool)) { _, _ ->
+        val stopped = AgentLoopRunner().run(listOf(tool)) { _, _ ->
             GenerationResult("", toolCalls = listOf(ModelToolCall("1", "unknown", "{}")))
-        } }.isFailure)
+        }
+        assertTrue(stopped.text.contains("исчерпан"))
         assertFalse(executed)
         var rounds = 0
         assertTrue(runCatching { AgentLoopRunner(maxRounds = 3).run(listOf(tool)) { _, _ ->
